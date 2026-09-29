@@ -26,7 +26,10 @@ detect_target() {
     *) die "unsupported architecture: $arch" ;;
   esac
   case "$os" in
-    Darwin) echo "$arch-apple-darwin" ;;
+    Darwin)
+      [ "$arch" = "aarch64" ] || die "Intel Macs are not supported yet (no prebuilt ONNX Runtime); build from source"
+      echo "$arch-apple-darwin"
+      ;;
     Linux) echo "$arch-unknown-linux-gnu" ;;
     *) die "unsupported OS: $os (Windows: download the .zip from the releases page)" ;;
   esac

@@ -7,7 +7,7 @@
 ## Binary
 
 ```sh
-# macOS and Linux (x86_64, arm64). Verifies the SHA-256 before installing to ~/.local/bin.
+# macOS (Apple silicon) and Linux (x86_64, arm64). Verifies the SHA-256 before installing to ~/.local/bin.
 curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh
 
 # Homebrew (tap, once published)
@@ -34,9 +34,10 @@ gh attestation verify wn-x86_64-unknown-linux-gnu.tar.gz --repo andreylukin/wher
 
 Each archive also has an SPDX SBOM (`wn-<target>.spdx.json`).
 
-Supported targets: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`,
-`aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`. Static musl builds are not offered yet:
-ONNX Runtime has no prebuilt musl binaries.
+Supported targets: `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`
+(glibc 2.39+, e.g. Ubuntu 24.04), `x86_64-pc-windows-msvc`. Not offered yet, because ONNX Runtime
+has no prebuilt binaries for them: Intel Macs (`x86_64-apple-darwin`) and static musl Linux. Those
+need ONNX Runtime built from source.
 
 ## Models
 
