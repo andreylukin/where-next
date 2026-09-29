@@ -9,8 +9,8 @@ explicitly.
 
 ### Added
 
-- Usability docs: the README quick start states the model situation up front (no public weights yet,
-  so a lexical fallback unless a model is installed; `wn status` shows which), adds `wn bench` as the
+- Usability docs: the README quick start states the model situation up front (a lexical fallback
+  unless a model is installed; `wn status` shows which), adds `wn bench` as the
   "try it on your repo" step with real sample output, query-writing tips, and a Troubleshooting table.
   `wn --help`, `wn init`, `wn ask`, `wn bench`, `wn report` and `wn skill sync` now end with examples
   (snapshot-tested). `docs/quickstart.md` no longer claims `wn init` downloads a model.

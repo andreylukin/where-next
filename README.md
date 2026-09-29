@@ -5,9 +5,9 @@ A fast, local "where next" model for coding agents and developers. Given what yo
 your repositories from their git history, on your machine.
 
 > **Status: early.** This repository is the new home of a research prototype. `wn` works end to end
-> when built from source (the one-line installer below does that). There are no release binaries or
-> published model weights yet, so unless you have a model directory, `wn` answers with a weaker
-> lexical fallback (see [About models](#quick-start)). See [PLAN.md](PLAN.md) and
+> when built from source (the one-line installer below does that); there are no release binaries yet.
+> Without a model installed, `wn` answers with a weaker lexical fallback (see
+> [About models](#quick-start)). See [PLAN.md](PLAN.md) and
 > [docs/building.md](docs/building.md).
 
 ## What it does
@@ -34,17 +34,16 @@ wn bench                                 # try it on your repo: replay its histo
 wn skill sync                            # teach Claude Code / Codex / Cursor when to call `wn`
 ```
 
-**About models.** There are no public model weights yet. Without a model, `wn` answers with a
-**lexical fallback** (keyword matching), which is much weaker than the model; `wn status` and
-`wn init` say which one is in use:
+**About models.** Without a model installed, `wn` answers with a **lexical fallback** (keyword
+matching), which is much weaker than the model; `wn status` and `wn init` say which one is in use:
 
 ```text
 model: gemma-xl1 (gemma-xl1-30ae960f08a8d9e8-model-wn-sources-v1)      # a model is installed
 model: hash-bow2-1024 (lexical fallback: no model installed)           # no model
 ```
 
-If you have a model directory (or, later, a published one), install it with
-`wn model pull <name> --source <dir|https-url|hf:owner/repo>`; `wn` then uses it automatically.
+Install a model with `wn model pull` (see [Install](#install) and
+[docs/install.md](docs/install.md)); `wn` then uses it automatically.
 
 A real answer, on a clone of [ripgrep](https://github.com/BurntSushi/ripgrep) with the default model:
 

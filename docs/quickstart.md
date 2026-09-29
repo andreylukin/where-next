@@ -1,9 +1,9 @@
 # Quickstart
 
-> **Early.** `wn` builds and runs from source today; there are no release binaries or public model
-> weights yet. Without a model, `wn` uses a much weaker lexical fallback and says so (`wn status`
-> shows `lexical fallback: no model installed`). If you have a model directory, install it with
-> `wn model pull <name> --source <dir|https-url|hf:owner/repo>`.
+> **Early.** `wn` builds and runs from source today; there are no release binaries yet. Without a
+> model installed, `wn` uses a much weaker lexical fallback and says so (`wn status` shows
+> `lexical fallback: no model installed`); install one with `wn model pull` (see
+> [install.md](install.md)).
 
 ## Install
 
