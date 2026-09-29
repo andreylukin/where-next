@@ -50,3 +50,36 @@ jobs:
         run: shellcheck install.sh packaging/package.sh packaging/test-install.sh
       - name: Test install.sh
         run: packaging/test-install.sh
+
+  install-from-source:
+    name: install.sh from source (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Environment
+        # The PR's own checkout is the "upstream"; build output is cached across runs.
+        run: |
+          {
+            echo "WN_REPO_URL=$GITHUB_WORKSPACE"
+            echo "WN_HOME=$RUNNER_TEMP/wn-home"
+            echo "WN_BIN_ROOT=$RUNNER_TEMP/wn-root"
+            echo "CARGO_TARGET_DIR=$GITHUB_WORKSPACE/target"
+          } >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install with install.sh
+        run: sh install.sh --ref "$GITHUB_SHA" --yes
+      - name: wn --version reports the commit
+        run: |
+          "$WN_BIN_ROOT/bin/wn" --version
+          "$WN_BIN_ROOT/bin/wn" --version | grep -q "$(printf '%s' "$GITHUB_SHA" | cut -c1-7)"
+      - name: wn update --check is up to date
+        run: '"$WN_BIN_ROOT/bin/wn" update --check --ref "$GITHUB_SHA"'
+      - name: Re-running install.sh is a no-op
+        run: sh install.sh --ref "$GITHUB_SHA" --yes 2>&1 | tee rerun.log && grep -q "up to date" rerun.log

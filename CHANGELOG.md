@@ -9,6 +9,13 @@ explicitly.
 
 ### Added
 
+- One-line install and update from source: `curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh`
+  clones into a private `$WN_HOME/src`, builds with `cargo install --locked`, and on later runs
+  rebuilds only when the ref moved (`--ref`, `--yes`, `--force`, `--dry-run`, `--uninstall`;
+  asks before installing Rust). The checksum-verified release path moved behind `WN_FROM=release`.
+- `wn update` (`--check` exits 10 when an update is available, `--ref`, `--yes`, `--force`):
+  fetches the source clone and rebuilds, as an explicit state machine with exhaustive and
+  model-based tests. `wn --version` now includes the commit and date it was built from.
 - `wn bench` (`--history`, the default): replays the repository's own commits against their parent
   trees and reports hit@1/3/10 and MRR for lexical BM25, the model and the rolling, ancestry-safe
   personal adapter, by repository size and era; vectors cached between runs. `wn bench --contextbench

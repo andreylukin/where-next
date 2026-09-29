@@ -5,8 +5,8 @@ A fast, local "where next" model for coding agents and developers. Given what yo
 your repositories from their git history, on your machine.
 
 > **Status: early.** This repository is the new home of a research prototype. `wn init`, `wn ask`
-> and `wn mcp` work end to end when built from source with a model directory installed locally;
-> there are no release binaries or published model weights yet. See [PLAN.md](PLAN.md) and
+> and `wn mcp` work end to end when built from source (the one-line installer below does that) with
+> a model directory installed locally; there are no release binaries or published model weights yet. See [PLAN.md](PLAN.md) and
 > [docs/building.md](docs/building.md).
 
 ## What it will do
@@ -30,17 +30,27 @@ claude mcp add where-next -- wn mcp      # expose it to Claude Code
 
 ## Install
 
-> **Coming soon.** Release binaries, Homebrew and crates.io are set up but not published yet.
-> Today, build from source: [docs/building.md](docs/building.md).
+One command installs `wn`, and re-running it updates to the latest `main`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh   # verifies SHA-256
-brew install andreylukin/tap/where-next
-cargo install where-next
+curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh
 ```
 
-Models are downloaded separately (`wn model pull`) and have their own license. Details and how to
-verify a release: [docs/install.md](docs/install.md).
+It clones this repository into a private directory (`~/.local/share/where-next/src`), builds it
+with `cargo install --path crates/wn-cli --locked` (asks before installing Rust if `cargo` is
+missing), and installs `wn` into `~/.cargo/bin`. The first build takes a few minutes. After that:
+
+```sh
+wn update            # fetch main and rebuild if it moved (wn update --check: exit 10 if an update exists)
+wn --version         # wn 0.0.1 (abc1234 2026-09-29): the commit it was built from
+```
+
+Options: `--ref <branch|tag|sha>`, `--yes`, `--dry-run`, `--uninstall`
+(`curl -fsSL …/install.sh | sh -s -- --uninstall`). Models are separate: there are no public
+weights yet, so without a model `wn` uses a lexical fallback; install one with
+`wn model pull <name> --source <path|url|hf:owner/repo>`. Prebuilt, checksum-verified release
+binaries, Homebrew and crates.io are set up but not published yet. Details:
+[docs/install.md](docs/install.md).
 
 ## Preliminary results
 

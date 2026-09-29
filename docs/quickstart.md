@@ -1,21 +1,17 @@
 # Quickstart
 
-> **Not installable yet.** This page describes the M1 release. Until then, `wn` prints a
-> placeholder. The MCP server can already be built and run from source with a local model; see
-> [building.md](building.md#run-the-mcp-server). Follow progress in [PLAN.md](../PLAN.md).
+> **Early.** `wn` builds and runs from source today; there are no release binaries or public model
+> weights yet. Without a model, `wn` uses a lexical fallback and says so.
 
 ## Install
 
 ```sh
-brew install where-next        # macOS and Linux
-# or
-cargo install where-next
-# or, for Node-based agent setups
-npx where-next --version
+curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh
 ```
 
-Release binaries for macOS, Linux and Windows are signed and checksummed. See
-[privacy-and-licensing.md](privacy-and-licensing.md#verifying-a-release) for how to verify one.
+This builds `wn` from the latest `main` (a few minutes the first time) and installs it into
+`~/.cargo/bin`. Re-run it, or run `wn update`, to update. Details and options:
+[install.md](install.md). Brew, crates.io and prebuilt binaries come with the first release.
 
 ## First answer
 
