@@ -215,10 +215,26 @@ mod tests {
             let c = builtin_calibration(name).expect("parses");
             assert_eq!(&c.model, name);
             assert!(c.kinds.contains_key("default"));
-            assert_eq!(
-                c.kinds.get("issue"),
-                Some(&None),
-                "issue starts never abstain"
+            // Issue-style starts never abstain by default (the agent trial found withheld start
+            // hints were mostly right); only strict mode has fitted issue thresholds.
+            use wn_core::rank::{Hint, QueryKind};
+            let low = [Hint {
+                path: "a.py".into(),
+                similarity: 0.01,
+                name: None,
+                line: None,
+            }];
+            for adapted in [false, true] {
+                let th = c.thresholds(QueryKind::Issue, adapted, false);
+                assert!(
+                    th.is_none_or(|t| wn_core::rank::abstain_with(&low, t).is_none()),
+                    "{name}: issue starts never abstain by default"
+                );
+            }
+            // Errors have their own fitted thresholds.
+            assert!(
+                c.kinds.get("error").is_some_and(|k| k.is_some()),
+                "{name}: error thresholds"
             );
         }
         assert_eq!(builtin_calibration("unknown-model"), None);

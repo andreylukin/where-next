@@ -1,0 +1,727 @@
+[
+{
+"query": "Also hide the usage config and health check buttons for official providers.",
+"context": "Assistant: The Claude provider editor now has a Disable Auto-Upgrade checkbox.\nEarlier change: feat(claude): add \"Disable Auto-Upgrade\" checkbox to provider config editor",
+"kind": "conversational"
+},
+{
+"query": "Make the ffmpeg availability check detect whether it's installed, like the other engines.",
+"context": "Assistant: The other render engines already check whether their executables are available during preflight.\nEarlier change: test: include dashscope in tts provider contract",
+"kind": "conversational"
+},
+{
+"query": "\u5e2e\u6211\u66f4\u65b0\u4e00\u4e0b library \u7684\u6784\u5efa\u914d\u7f6e\uff0c\u8865\u4e0a namespace \u548c consumer ProGuard \u8bbe\u7f6e\uff0c\u8c03\u6574 SDK \u7248\u672c\u548c Kotlin \u9009\u9879\u3002",
+"context": "Assistant: \u597d\u7684\uff0c\u6211\u5148\u770b\u770b\u9879\u76ee\u73b0\u5728\u7684 Gradle \u914d\u7f6e\u3002\n",
+"kind": "conversational"
+},
+{
+"query": "Keep the explorer tabs visible even when the explorer request fails.",
+"context": "Assistant: I\u2019ve moved the settings and close buttons and fixed the panel sizing.\nEarlier change: move settings/close button, fix sizing and position",
+"kind": "conversational"
+},
+{
+"query": "Can you make the hardware probe report real CPU and memory info on macOS too?",
+"context": "Assistant: That hardware panel is still blank on macOS, even though Linux and Windows report correctly.\nEarlier change: fix(st.h): validate negative numel in st_read_f32_cap",
+"kind": "conversational"
+},
+{
+"query": "Can you include the device name in the traffic preview thread name for debugging?",
+"context": "Assistant: I fixed the panic in `CaptureContext::consume`; what should I tackle next?\nEarlier change: avoid panic in CaptureContext::consume",
+"kind": "error"
+},
+{
+"query": "The template-method tests are failing with Mockito\u2014can you fix them?",
+"context": "Assistant: I\u2019ve finished correcting the documentation typos; what should I tackle next?\nEarlier change: fix: typos in documentation files (#3186)",
+"kind": "conversational"
+},
+{
+"query": "Can you add autoreload support, including the command-line option and config docs?",
+"context": "Assistant: The interactive scene embed update is done; what should I tackle next?\nEarlier change: Update InteractiveSceneEmbed (#2267)",
+"kind": "conversational"
+},
+{
+"query": "Can you fix the stale dirs and format-truncation warnings in the Windows mirror tests?",
+"context": "Assistant: The Windows mirror test is still failing because of leftover directories and a compiler warning.\nEarlier change: quant: AVX-512 arm for matmul_i3 (fmt=5 int3-g64), high plane as __mmask64",
+"kind": "conversational"
+},
+{
+"query": "Now reset and refresh the calendar whenever its popup opens.",
+"context": "Assistant: The power-state icon is now available beside the battery widget.\nEarlier change: feat: added an option to show the power state icon (lightning or power plug) near the battery widget (#2008)",
+"kind": "conversational"
+},
+{
+"query": "Also add an API version to Vulkan init info and load core rendering commands on 1.3.",
+"context": "Assistant: I\u2019ve cleaned up the warning and added a clarifying comment.\nEarlier change: Fixed minor warning. Added comment.",
+"kind": "conversational"
+},
+{
+"query": "Clean up the extra blank line in the 2FAuth script.",
+"context": "Assistant: The Immich libvips pin is in place; what should I tackle next?\nEarlier change: [Fix] Immich: Pin libvips to 8.17.3 (#12744)",
+"kind": "conversational"
+},
+{
+"query": "Can you also emit SWC\u2019s recoverable errors?",
+"context": "Assistant: I\u2019ve updated the dev dependency error handling to check for build aborts before logging.\nEarlier change: Check for BuildAbortError before logging dev dep error (#9647)",
+"kind": "error"
+},
+{
+"query": "Also validate after building an index that its data count matches the source.",
+"context": "Assistant: The Spring Boot upgrade issue is fixed; what should we tackle next?\nEarlier change: Fix \"Missing exception attribute in ServerWebExchange\" error after upgrading Spring Boot 3.3.3 (#6515)",
+"kind": "error"
+},
+{
+"query": "Can you fix SSR imports when Vite base and router basename match the app directory?",
+"context": "Assistant: The router now calls onError for errors present in its initial state.\nEarlier change: fix: fire onError for errors already present in initial router state (#14942)",
+"kind": "error"
+},
+{
+"query": "Also skip loading download metadata when we\u2019re only listing installed Python interpreters.",
+"context": "Assistant: The project files are now restored if removal or versioning fails.\nEarlier change: Restore project files when remove and version fail (#21856)",
+"kind": "error"
+},
+{
+"query": "Great, now use cronie instead of BusyBox for cron during Alpine installs.",
+"context": "Assistant: The community repository is enabled now, and dependency installation errors are handled.\nEarlier change: Alpine: Ensure community repo is enabled and handle dependency install errors",
+"kind": "error"
+},
+{
+"query": "Also fix Ctrl+A so selecting all frames puts them in the correct order, even after a prior selection.",
+"context": "Assistant: That collection modified error should be fixed now.\nEarlier change: Small fix for colection modified error.",
+"kind": "error"
+},
+{
+"query": "Great, it compiles now\u2014make it generate output and keep working on the filters.",
+"context": "Assistant: The compile error is fixed, so the script should build again.\nEarlier change: Fixed compile error in nextjs/clean_html.rb",
+"kind": "error"
+},
+{
+"query": "Also properly handle values returned or thrown from `data()` in resource routes.",
+"context": "Assistant: The middleware errors now bubble to the right boundary; I\u2019ll check resource routes next.\nEarlier change: Bubble client middleware errors before next to the right boundary (#14138)",
+"kind": "error"
+},
+{
+"query": "Also hardcode the PID file location while you're in there.",
+"context": "Assistant: I\u2019ve updated the download checks so retrieval errors only appear once.\nEarlier change: Only check for curl/local file retrieval if download == true, prevents double error messages in certain situations",
+"kind": "error"
+},
+{
+"query": "Now remove the obsolete compatibility bits from integration tests, and fix boilerplate for Python in non-.py files.",
+"context": "Assistant: The error-message docs are updated; I can clean up the integration tests next.\nEarlier change: docs: update error message (#81554)",
+"kind": "error"
+},
+{
+"query": "Also fix clientLoader.hydrate when hydration errors bubble up.",
+"context": "Assistant: I fixed the partial hydration issues with errors; what else should I check?\nEarlier change: Fix partial hydration bugs when hydrating with errors (#12070)",
+"kind": "error"
+},
+{
+"query": "Also fix fetcher.submit when plain objects have a tagName property.",
+"context": "Assistant: The ancestor-thrown middleware error case is fixed and covered by a regression test.\nEarlier change: Fix bug with fetcher submission ancestor-thrown middleware errors (#14517)",
+"kind": "error"
+},
+{
+"query": "java.lang.NullPointerException in SqlDelightFoldingBuilder.kt:79\n## Error in SQL Delight IntelliJ Plugin\n\n**java.lang.NullPointerException** in **SqlDelightFoldingBuilder.kt:79**\nnextSibling must not be null\n\n[View on Bugsnag](https://app.bugsnag.com/square-inc/sql-delight-intellij-plugin/errors/60967a6f7d8e8d000751a733?event_id=60967a6f007a892c354a0000&i=gh&m=ci)\n\n## Stacktrace\n\n    SqlDelightFoldingBuilder.kt:79 - com.squareup.sqldelight.intellij.lang.SqlDelightFoldingBuilder.toCreateTableDescriptor\n    SqlDelightFoldingBuilder.kt:56 - com.squareup.sqldelight.intellij.lang.SqlDelightFoldingBuilder.createFoldingDescriptors\n    SqlDelightFoldingBuilder.kt:39 - com.squareup.sqldelight.intelli",
+"context": "",
+"kind": "error"
+},
+{
+"query": "[Bug] Error generating notebook DD\n**Describe the bug**\r\n```\r\n---------------------------------------------------------------------------\r\nException encountered at \"In [12]\":\r\n---------------------------------------------------------------------------\r\nValueError                                Traceback (most recent call last)\r\n<ipython-input-12-09e82de1763f> in <module>\r\n----> 1 mw.prepare_df_financials(ticker, \"income\")\r\n\r\n~\\\\Documents\\\\PY-Projects\\\\GamestonkTerminal\\\\gamestonk_terminal\\\\fundamental_analysis\\\\market_watch_model.py in prepare_df_financials(ticker, statement, quarter)\r\n     75     s_header_end_trend = (\"5-year trend\", \"5- qtr trend\")[quarter]\r\n     76     df_financials = pd.",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Trouble with import conflict in request.py\n```\r\nTraceback (most recent call last):\r\n  File \"/env/lib/python3.6/site-packages/sanic/__main__.py\", line 4, in <module>\r\n    from sanic.log import logger\r\n  File \"/env/lib/python3.6/site-packages/sanic/__init__.py\", line 1, in <module>\r\n    from sanic.app import Sanic\r\n  File \"/env/lib/python3.6/site-packages/sanic/app.py\", line 21, in <module>\r\n    from sanic.server import serve, serve_multiple, HttpProtocol, Signal\r\n  File \"/env/lib/python3.6/site-packages/sanic/server.py\", line 31, in <module>\r\n    from sanic.request import Request\r\n  File \"/env/lib/python3.6/site-packages/sanic/request.py\", line 6, in <module>\r\n    from http.cookies import Sim",
+"context": "",
+"kind": "error"
+},
+{
+"query": "yahoo collector returns error\ncommand:\r\n`python .qlib/scripts/data_collector/yahoo/collector.py download_data --source_dir .csv-yahoo --region US --start 2021-03-18 --end 2021-03-19 --delay 0.1 --interval 1d`\r\nBug report:\r\n\r\n\r\n```\r\nTraceback (most recent call last):\r\n  File \".qlib/scripts/data_collector/yahoo/collector.py\", line 642, in <module>\r\n    fire.Fire(Run)\r\n  File \"xxxxxxxxxxxxxxxx/.venv/lib/python3.7/site-packages/fire-0.3.1-py3.7.egg/fire/core.py\", line 138, in Fire\r\n    component_trace = _Fire(component, args, parsed_flag_args, context, name)\r\n  File \"xxxxxxxxxxxxxxxx/.venv/lib/python3.7/site-packages/fire-0.3.1-py3.7.egg/fire/core.py\", line 468, in _Fire\r\n    target=component.__",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Could not decode res(arsc)\n### Information\r\n1. **Apktool Version (`2.2.3`)** -\r\n2. **Operating System (Windows)** -\r\n3. **APK From? I don't know.** -\r\n\r\n### Stacktrace/Logcat\r\n```\r\nI: Using Apktool 2.2.3 on test.zip\r\nI: Loading resource table...\r\nW: null\r\nException in thread \"main\" java.lang.NullPointerException\r\n        at brut.androlib.res.data.value.ResValueFactory.factory(ResValueFactory.java:74)\r\n        at brut.androlib.res.decoder.ARSCDecoder.readValue(ARSCDecoder.java:315)\r\n        at brut.androlib.res.decoder.ARSCDecoder.readEntry(ARSCDecoder.java:241)\r\n        at brut.androlib.res.decoder.ARSCDecoder.readTableType(ARSCDecoder.java:226)\r\n        at brut.androlib.res.decoder.ARSCDeco",
+"context": "",
+"kind": "error"
+},
+{
+"query": "RootViewWatcher onRootViewAdd crashed\n### Description\r\n\r\n```\r\nandroid.content.res.Resources$NotFoundException: Resource ID #0x7f050008 type #0x5 is not valid\r\n        at android.content.res.Resources.getBoolean(Resources.java:1088)\r\n        at leakcanary.RootViewWatcher$listener$1.onRootViewAdded(RootViewWatcher.kt:49)\r\n        at curtains.OnRootViewAddedListener$DefaultImpls.onRootViewsChanged(Listeners.kt:37)\r\n        at leakcanary.RootViewWatcher$listener$1.onRootViewsChanged(RootViewWatcher.kt:43)\r\n        at curtains.internal.RootViewsSpy$delegatingViewList$1.add(RootViewsSpy.kt:25)\r\n        at curtains.internal.RootViewsSpy$delegatingViewList$1.add(RootViewsSpy.kt:23)\r\n        at andro",
+"context": "",
+"kind": "error"
+},
+{
+"query": "custom target spec not resolved correctly\n<!--\r\nHello and thank you for the issue!\r\nIf you would like to report a bug, we have added some points below that you can fill out.\r\nConsider using \"Help | Create New Issue\" action that fills out all necessary information automatically.\r\nFeel free to remove all the irrelevant text to request a new feature.\r\n-->\r\n\r\n## Environment\r\n\r\n* **IntelliJ Rust plugin version:** 0.4.179.4903-221\r\n* **Rust toolchain version:** 1.63.0 & 1.64.0 (displayed in settings, actually 1.66 nightly)\r\n* **IDE name and version:** CLion 2022.1.3, Build #CL-221.5921.27, built on June 21, 2022\r\n* **Operating system:** macOS 12.5.1, 12.6 (Intel & M2 chip)\r\n\r\n## Problem descriptio",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Bug with list_direct_messages\nHi,\r\n\r\nI'm trying to use the list_direct_messages api but any time I try to iterate through the items it returns I get this error\r\n\r\nTraceback (most recent call last):\r\n  File \"reply_dm.py\", line 41, in <module>\r\n    main()\r\n  File \"reply_dm.py\", line 36, in main\r\n    check_messages(api)\r\n  File \"reply_dm.py\", line 29, in check_messages\r\n    for message in tweepy.Cursor(api.list_direct_messages).items():\r\n  File \"C:\\\\Python27\\\\bot\\\\twitter\\\\lib\\\\site-packages\\\\tweepy\\\\cursor.py\", line 195, in next\r\n    self.current_page = self.page_iterator.next()\r\n  File \"C:\\\\Python27\\\\bot\\\\twitter\\\\lib\\\\site-packages\\\\tweepy\\\\cursor.py\", line 73, in next\r\n    **self.kargs)\r\n  ",
+"context": "",
+"kind": "error"
+},
+{
+"query": "tf.keras.layers.Conv2D seems to accept 0 as the value of filters by mistake.\n**System information**.\r\n- Have I written custom code (as opposed to using a stock example script provided in Keras): No\r\n- OS Platform and Distribution (e.g., Linux Ubuntu 16.04): Windows 10\r\n- TensorFlow installed from (source or binary): 2.7.0\r\n- Python version: 3.8\r\n\r\nPlease refer to tensorflow/python/keras/layers/convolutional.py, lines 139-141:\r\n```python\r\n if filters is not None and filters < 0:\r\n      raise ValueError(f'Received a negative value for `filters`.'\r\n                       f'Was expecting a positive value, got {filters}.')\r\n```\r\nThe error message says that the filters expects a positive value. It",
+"context": "",
+"kind": "error"
+},
+{
+"query": "NoHttpResponseException while intensive inserts\nHi!\r\nI catch an error using sendStream in RowBinary format intensive queries(1M rows in batch every 3 second) One batch inserts in ~10-15 seconds. \r\nClickhouse machine cpu usage is about 25%.\r\nIt appears after 5 minutes of job start.\r\n\r\nI tried to catch problematic batch and insert in separately. Everything was fine.\r\n\r\nclickouse-jdbc 0.2.4\r\n\r\n #https://github.com/ClickHouse/ClickHouse/issues/11766\r\n\r\nSample of usage\r\n```\r\ntry (ClickHouseStatement statement = clickHouseDataSource.getConnection().createStatement()) {\r\n                statement.write().send(QUERY_INSERT, batch, ClickHouseFormat.RowBinary);\r\n```\r\n\r\nSimple schema\r\n```\r\nCREATE TABLE",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "[Bug]ProducerTopicManager throw NPE when runtime module started\n### Search before asking\n\n- [X] I had searched in the [issues](https://github.com/apache/eventmesh/issues?q=is%3Aissue) and found no similar issues.\n\n\n### Environment\n\nWindows\n\n### EventMesh version\n\nmaster\n\n### What happened\n\nwhen I start eventmesh runtime module. when ProducerTopicManager.scheduler execute then will throw java.lang.NullPointerException:\r\n\r\n```\r\n2023-03-12 12:27:53,048 INFO  [eventMesh-metrics-2] HTTPMetricsServer(HTTPMetricsServer.java:155) - maxPushMsgTPS: 0.0, avgPushMsgTPS: 0.0, sum: 0, sumFail: 0, sumFailRate: 0.0, maxClientLatency: 0.0, avgClientLatency: 0.0\r\n2023-03-12 12:27:53,048 INFO  [eventMesh-metri",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Python Lint failing on CI, blocking merges\nJobs have begun failing with errors in linting the Python SDK, specifically failing on running `mypy`: https://github.com/pulumi/pulumi/actions/runs/3624968763/jobs/6112540141\r\n\r\nLogs:\r\n\r\n```\r\n. venv/*/activate && \\\\\r\n\tMYPYPATH=./stubs python -m mypy ./lib/pulumi --config-file=mypy.ini\r\nlib/pulumi/runtime/invoke.py:[19](https://github.com/pulumi/pulumi/actions/runs/3624968763/jobs/6112540141#step:16:22)0: note: By default the bodies of untyped functions are not checked, consider using --check-untyped-defs  [annotation-unchecked]\r\nlib/pulumi/runtime/invoke.py:236: note: By default the bodies of untyped functions are not checked, consider using --chec",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Case sensitivity problem in account>folders settings\nI have an IMAP account with two directories, one named \"Spam\", and other named \"spam\".\n\nIn K9Mail I go to Account Preferences, Folders, Spam folder, and try to choose the lower case \"spam\".\n\nAfter that, marking a message as spam, K9Mail will still move it to the \"Spam\" folder, instead of \"spam\".\n\nI suppose the problem is case sensitivity?\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "[JetSurvey]: RadioButton parent should have selectableGroup modifier\n### Is there an existing issue for this?\n\n- [X] I have searched the existing issues\n\n### Is there a StackOverflow question about this issue?\n\n- [X] I have searched StackOverflow\n\n### Is this an issue related to one of the samples?\n\n- [X] Yes, this is a specific issue related to this samples repo.\n\n### Sample app\n\nJetsurvey\n\n### What happened?\n\nRadioButton parent should have selectableGroup modifier set to help TalkBack. Children with selectable modifier should have role set to RadioButton.\n\n### Relevant logcat output\n\n_No response_\n\n### Code of Conduct\n\n- [X] I agree to follow this project's Code of Conduct",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "[Bug] Cleanup output of `chia data create_data_store`\n### What happened?\n\nThe current output of `chia data create_data_store` is overly verbose and although appearing to be JSON is not proper JSON so it cannot be piped to `jq` or other json processing tools\r\n\r\nexample: \r\n```\r\n\u276f chia data create_data_store -m 0.01\r\n{'id': '1a34a5b320767bcbba0d12f1204f2495aaddc4dca717f249a3a2253c7c67771c', 'success': True, 'txs': [{'additions': [{'amount': 1, 'parent_coin_info': '0x23ea7929e6842408f76ebef0de82e61d3e1faac149f6541b54b45a77d2b2dfa8', 'puzzle_hash': '0xeff07522495060c066f66f32acc2a77e3a3e737aca8baea4d1a64ea4cdc13da9'}, {'amount': 99972799999996, 'parent_coin_info': '0x23ea7929e6842408f76ebef0de82e",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Pipenv clean fails if venv doesn't exist\n\r\n\r\n<details><summary>$ python -m pipenv.help output</summary>\r\nPipenv version: `'11.7.1'`\r\n\r\nPipenv location: `'/usr/local/Cellar/pipenv/11.7.1/libexec/lib/python3.6/site-packages/pipenv'`\r\n\r\nPython location: `'/usr/local/Cellar/pipenv/11.7.1/libexec/bin/python'`\r\n\r\nOther Python installations in `PATH`:\r\n\r\n  - `2.7`: `/usr/bin/python2.7`\r\n  - `2.7`: `/usr/bin/python2.7`\r\n  - `3.6`: `/usr/local/bin/python3.6m`\r\n  - `3.6`: `/usr/local/Cellar/pipenv/11.7.1/libexec/bin/python3.6`\r\n  - `3.6`: `/usr/local/bin/python3.6`\r\n  - `3.6`: `/usr/local/bin/python3.6`\r\n\r\n  - `3.6.4`: `/usr/local/Cellar/pipenv/11.7.1/libexec/bin/python`\r\n  - `2.7.10`: `/usr/bin/pytho",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Compose: LottieAnimation recomposes on every frame degrading performance\nIssue Repro Compose Fork : [https://github.com/MSDarwish2000/lottie-android-performance](Fork)\r\n\r\n**Describe the bug**\r\n`LottieAnimation` recomposes itself on every frame. This is completely unnecessary in most cases as the only actual change happens during the draw phase, not composition or layout phases. This happens as a result of passing `progress` to `LottieAnimation`. Even when using the function without progress, this happens internally reducing the scope of recomposition but not preventing it.\r\n\r\n**Steps To Reproduce**\r\nSteps to reproduce the behavior:\r\n\r\n1. This can be reproduced with any Lottie Compose sample ",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Generated Kotlin code with member `adapter` is hiding supertype member\n## About:\r\nIf the proto definition contains field named `adapter` it will cause that the generated Kotlin code will contain conflicting member.\r\n\r\nThis is caused by the fact that `nameAllocatorStore` in `KotlinGenerator` is [set only with the constant variant (uppercase)](https://github.com/square/wire/blob/7aab9195bf1c898d355b117a9b5e3c954219789f/wire-library/wire-kotlin-generator/src/main/java/com/squareup/wire/kotlin/KotlinGenerator.kt#L257) of the member name but in the supertype `Message` it is defined lowercase.\r\n\r\n## Example proto:\r\n```proto\r\nmessage Broken {\r\n\r\n    // This will hide supertype member\r\n    optional ",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "bug: graphql-dgs-spring-boot-micrometer uses a Timer.Sampler API not supported in micrometer 1.6 \n## Expected behavior\r\n\r\nDevelopers should be able to use the`graphql-dgs-spring-boot-micrometer` module with Spring Boot 2.3 and Spring Boot 2.4. The first recommends micrometer 1.5 while the latter 1.6.\r\n\r\n## Actual behavior\r\n\r\nThere's an API breakage in micrometer regarding the `Timer.Sampler` between micrometer-core 1.5 and 1.6. \r\nThe following call pattern is not supported in 1.6:\r\n\r\n```\r\n timerSampler.stop(registry, Timer.builder(\"some.key\"))\r\n```\r\n\r\nRef.\r\n* https://javadoc.io/doc/io.micrometer/micrometer-core/1.5.12/io/micrometer/core/instrument/Timer.Sample.html\r\n\r\n\r\n---\r\nThanks @paulbakk",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "ArrowInvalid: Could not convert <PIL.Image.Image image mode=RGB when adding image to Dataset\n## Describe the bug\r\n\r\nWhen adding a Pillow image to an existing Dataset on the hub, `add_item` fails due to the Pillow image not being automatically converted into the Image feature.\r\n\r\n## Steps to reproduce the bug\r\n```python\r\nfrom datasets import load_dataset\r\nfrom PIL import Image\r\n\r\ndataset = load_dataset(\"hf-internal-testing/example-documents\")\r\n\r\n# load any random Pillow image\r\nimage = Image.open(\"/content/cord_example.png\").convert(\"RGB\")\r\n\r\nnew_image = {'image': image}\r\ndataset['test'] = dataset['test'].add_item(new_image)\r\n```\r\n\r\n## Expected results\r\nThe image should be automatically casted",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "swagger/ipam/ip-addresses/: Invalid type for \"assigned_object\"\n### NetBox version\n\nv3.2.6\n\n### Python version\n\n3.8\n\n### Steps to Reproduce\n\nHi there,\r\n\r\nthe netbox swagger.yml states that the IP address list endpoint `/ipam/ip-addresses/` returns a value of type map[string]string for key `assigned_object ` instead of the correct type object. This causes issues for me since I use an auto-generated api client which will error out in case it receives something _not string-like_ - in this case e.g. a number as id.\r\n\r\nAnother similar issue has been opened here already: https://github.com/netbox-community/go-netbox/issues/133\r\n\r\nWhat can we do about that? :)\r\n\r\nThanks a lot!\n\n### Expected Behavior",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Fix sandbox on small screen devices\nOn small screen devices (you can reproduce by using split screen if required) several of the lists within the sandbox do not scroll.\r\n\r\nThis causes the content to become truncated. We should add the vertical scrolling modifier to fix these Nodes.",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "jax.random.fold_in function is using static_argnum=(1,)\nCurrently, the implementation of `jax.random.fold_in` function treats second argument `data` as static:\r\nhttps://github.com/google/jax/blob/4c34541c00c02fa750b63a6ea9149909e6c4078f/jax/random.py#L193\r\nIs that the intended behavior? \r\nIf I understand correctly, it means, for instance, that innocent-looking loops of sort:\r\n```python\r\nbase_key = jax.random.PRNGKey(0)\r\nfor i in range(N): \r\n   do_something_random(jax.random.fold_in(base_key, i))\r\n```\r\ncause fold_in to recompile at every iteration of the loop and take a lot of time. \r\nOn the other hand, if we jit-compile `fold_in` function, things seem to work correctly and fast; like in this",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Indexing of TEXINPUTS\n### Discussed in https://github.com/Hannah-Sten/TeXiFy-IDEA/discussions/3035\r\n\r\n<div type='discussions-op-text'>\r\n\r\n<sup>Originally posted by **mvscheven** April 14, 2023</sup>\r\nWe are using a lot of custom classes and style files to keep the preamble of the main tex-file clean. If these custom files are in the source directory, they are known by TeXiFy and included commands are recognized. But if these files are in a location specified by the TEXINPUTS environment variable this does not work. Is it possible to index also files located at TEXINPUTS?\r\n\r\nThanks for any advice!\r\n\r\n### Minimal Example:\r\n#### main.tex\r\n```\r\n\\\\documentclass[11pt]{scrartcl}\r\n\\\\RequirePackage{m",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Make truncating_iterator an output_iterator\nI agree that my contributions are licensed under the {fmt} license, and agree to future changes to the licensing.\r\n\r\nFixes #2156.\n\ntruncating_iterator is no std::output_iterator\nMy formatter for a custom type has C++20 delegates to a function that has a requirement `template <std::output_iterator<char> It>`. Unfortunately, that one fails when used within `fmt::format_to_n`, because the iterator found in `ctx.out()` is of type `fmt::v6::internal::truncating_iterator<char*, std::false_type>`. That one fails to be a `std::output_iterator`, apparently because it is missing default construction. Potentially, there are other requirements missing.\r\n\r\nIs t",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Add shutdown step of DLQ flusher scheduled service\n\r\n## Release notes\r\n[rn:skip]\r\n\r\n\r\n## What does this PR do?\r\n\r\nThis PR adds a `shutdown` method to the `SchedulerService` class used to handle actions to be executed on a certain cadence. In particular is used to execute scheduled finalization of DLQ head segment.\r\nUpdates the `close` method of the DLQ writer to invoke this additional shutdown on the service instance.\r\n\r\n## Why is it important/What is the impact to the user?\r\n\r\nTime to time in unit tests an error related to segment finalization happend.\r\nIt's mostly likely:\r\n```\r\n[WARN ] 2024-02-21 12:46:44.723 [dlq-flush-check] DeadLetterQueueWriter - Unable to finalize segment\r\n    java.ni",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "fix select macro to process 64 branches\nCloses #4501\r\n\r\n## Motivation\r\n\r\nFix the bug wherein select macro fails with input of 64 branches.\r\n\r\n## Solution\r\n\r\nFix the count macro to handle 64 branches. Before the fix, count macro will not expand when the input has 64 branches and will fail with compile error.\r\n\n\ntokio::select! only supports 63 branches when it seems like it should support 64\n**Version**\r\ntokio v1.16.1\r\n\r\n**Description**\r\nThe `tokio::select!` macro looks like it was intended to support up to 64 branches, but something seems to go wrong when I try to use it with 64 branches:\r\n\r\nI tried this code (I'm sorry):\r\n\r\n```rust\r\nuse std::future::ready;\r\n\r\n#[tokio::main]\r\nasync fn main() ",
+"context": "",
+"kind": "error"
+},
+{
+"query": "fix: make `defaultValue` work with spread\nCloses #14634\r\n\r\nI was not able to fully port the test without spreads because there's one single test I tried and failed to fix which is the textarea with `defaultValue` and a `child`. Do anyone has any idea on how could i fix this?\r\n\r\n### Before submitting the PR, please make sure you do the following\r\n\r\n- [x] It's really useful if your PR references an issue where it is discussed ahead of time. In many cases, features are absent for a reason. For large changes, please create an RFC: https://github.com/sveltejs/rfcs\r\n- [x] Prefix your PR title with `feat:`, `fix:`, `chore:`, or `docs:`.\r\n- [x] This message body should clearly illustrate what proble",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "api: handle HTTP 409 error message from the server\nPreviously, \"errors\" field was either an array of strings or an array of error objects. This covers an additional case when \"errors\" is a string:\r\n\r\n    $ gh api orgs/cli/actions/permissions/repositories\r\n    {\r\n      \"message\": \"Conflict\",\r\n      \"errors\": \"Actions are enabled for all repositories\",\r\n      \"documentation_url\": \"https://docs.github.com/rest/reference/actions#list-selected-repositories-enabled-for-github-actions-in-an-organization\"\r\n    }\r\n\r\nFixes #4734\n\nUnclear Error Handling for Status-Only API Response\n### Describe the bug\r\n\r\nI've hit an issue where a `gh api` call returns a 409 and no body (or a blank body), and `gh api` ",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Add `--clobber` /  `--skip-existing` to `run download` and `release download`\nFixes #2598\r\n\r\n- Add `--clobber` to `run download`\r\n- Add `--clobber` to `release download`\r\n- Add `--skip-existing` to `run download`\r\n- Add `--skip-existing` to `release download`\n\nrelease download skip if file exists and exit without an error\n# CLI Feedback\r\n\r\n\r\n## What was confusing or gave you pause?\r\n\r\nWhen we want a release to be download, the expected outcome is the file downloaded. Some times get an error because the file already exists is not the desirable outcome, specially with automation. Scripts stops when get an error.\r\n\r\n## Are there features you'd like to see added?\r\n\r\nI would like to have a flag `",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Fix assertion failure in diagnostics\nCloses #2838.\n\nAssertion failure when inserting into arrays with JSON_DIAGNOSTICS set\n#### What is the issue you have?\r\nThe assertion checking parent correctness in `assert_invariants()` fails for arrays when using `JSON_DIAGNOSTICS`. It seems parents of objects being inserted into arrays are not being updated.\r\n\r\n#### Please describe the steps to reproduce the issue.\r\nTo reproduce compile and run the following:\r\n```c++\r\n#define JSON_DIAGNOSTICS 1\r\n\r\n#include <nlohmann/json.hpp>\r\n\r\nusing json = nlohmann::json;\r\n\r\nint main()\r\n{\r\n    json j_arr = json::array();\r\n    j_arr.push_back(json::object());\r\n    j_arr.push_back(json::object());\r\n    json j_obj = jso",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "fix: hr, script and template as valid select children\n## Svelte 5 rewrite\r\n\r\nCloses #11342, i've added script and template too as pointed out by @brunnerh but up to remove them if it feels weird.\r\n\r\nPlease note that [the Svelte codebase is currently being rewritten for Svelte 5](https://svelte.dev/blog/runes). Changes should target Svelte 5, which lives on the default branch (`main`).\r\n\r\nIf your PR concerns Svelte 4 (including updates to [svelte.dev.docs](https://svelte.dev/docs)), please ensure the base branch is `svelte-4` and not `main`.\r\n\r\n### Before submitting the PR, please make sure you do the following\r\n\r\n- [x] It's really useful if your PR references an issue where it is discussed a",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "fix: validate form inside a form\n## Svelte 5 rewrite\r\n\r\nCloses #11941 (unless we also want to tackle the eventual runtime error here)\r\n\r\ninitially i added the form to the interactive elements but those are also used by the parser to check for the latest autoclosing parent so i moved the check for the form to it's own check.\r\n\r\nPlease note that [the Svelte codebase is currently being rewritten for Svelte 5](https://svelte.dev/blog/runes). Changes should target Svelte 5, which lives on the default branch (`main`).\r\n\r\nIf your PR concerns Svelte 4 (including updates to [svelte.dev.docs](https://svelte.dev/docs)), please ensure the base branch is `svelte-4` and not `main`.\r\n\r\n### Before submittin",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Generalize REST error parsing\nFixes #1474\r\n\r\nChanges:\r\n- Parsed REST errors in its different forms\r\n- Implemented a test for recreating the scenario described in #1474\n\n\"json: cannot unmarshal string\" error message for unsuccessful \"gh api\" request\n### Describe the bug\r\n\r\nFrom within a GitHub Actions workflow, I want to delete review requests using `gh api`, but I get both an HTTP 422 response and an error message.\r\n\r\nI'm using the `gh` version provided in the Ubuntu 18.04 GitHub-hosted runners, version 0.11.0 currently.\r\n\r\n### Steps to reproduce the behavior\r\n\r\nI use\r\n\r\n```sh\r\ngh api \"repos/:owner/:repo/pulls/$prid/requested_reviewers\" \\\r\n    --method DELETE --input - --silent --include < r",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Handle invalid BJData optimized type, fix #3461\nThis patch should fix #3461. Tested both with the fuzzer unit and the unit-test.\n\njson:parse_bjdata_fuzzer reaches assertion\n### Description\r\n\r\nThe input `0x5b, 0x24, 0x5b` triggers an assertion in the fuzzer for BJData.\r\n\r\n- https://bugs.chromium.org/p/oss-fuzz/issues/detail?id=47145\r\n- https://oss-fuzz.com/testcase-detail/5643490366717952\r\n\r\n### Reproduction steps\r\n\r\n- Call the fuzzer on input `0x5b, 0x24, 0x5b`.\r\n- Observe the assertion.\r\n\r\n### Expected vs. actual results\r\n\r\nNo assertion should be triggered. Either the fuzzer must be made more robust against or there is a bug in the library that must be fixed.\r\n\r\n### Minimal code example\r\n\r\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "fix(hydration): css vars should only be added to expected on component root dom\nclose #10317 \r\n\r\nCss vars are only added to root node, so when matches expect and actual on hydration phase, only the root node of the instance should set css vars.\n\nHydration style mismatch\n### Vue version\n\n3.4.18\n\n### Link to minimal reproduction\n\nhttps://play.vuejs.org/#__SSR__eNqNUk1vEzEQ/SuWL01QdzchHNCSVgVUCTgAAo572diTxK2/ZM/uBkX574y9JKQBVdzG897Mm3mePX/rfdl3wGu+jCIojywCdv62scp4F5DtWYA1O7B1cIZdEfWqscLZiGxQErfsJuGT+Ww2beyyGntQNT0QjNctAr0YW0rV52AMmdBtjDcNp1bYKguh4SziTw2U862Uym5q9nLmdw2//QBaOza4oOWyOvY5RsvqTIeeuQmLwnmQlClPAmyfyoTTLtRs2CqENymxasXjJrjOyuI3FkBmJO9XM9FqMemLlbJyklNT9oLN/W5KpEPeOSmSFL/mSLp2rTblQ3SWPM2",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "placeholder\nplaceholder\n\nplaceholder\nplaceholder",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Fix precedence of 'not' operator\n<!--\r\nif this PR closes one or more issues, you can automatically link the PR with\r\nthem by using one of the [*linking keywords*](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue#linking-a-pull-request-to-an-issue-using-a-keyword), e.g.\r\n- this PR should close #xxxx\r\n- fixes #xxxx\r\n\r\nyou can also mention related issues, PRs or discussions!\r\n-->\r\n\r\n# Description\r\n\r\nA bit hackish but this fixes the precedence of the `not` operator.\r\n\r\nBefore: `not false and false` => true\r\n\r\nNow: `not false and false` => false\r\n\r\nFixes #11633\r\n\r\n# User-Facing Changes\r\n<!-- List of all changes that impact the user experience her",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Fix issue #2181\nCloses #2181 \r\n\r\n# Summary \r\n\r\nThis PR propose a fix for issue #2181.\r\n\r\n# Issue/Examples\r\n\r\nExample application source code: \r\n\r\n```\r\n\u276f tree clap_issue_2181/\r\nclap_issue_2181/\r\n\u251c\u2500\u2500 Cargo.lock\r\n\u251c\u2500\u2500 Cargo.toml\r\n\u2514\u2500\u2500 src\r\n    \u2514\u2500\u2500 main.rs\r\n\r\n1 directory, 3 files\r\n```\r\n\r\n`main.rs` source file: \r\n\r\n```rust\r\nuse clap::Clap;\r\n\r\n#[derive(Clap)]\r\n#[clap(name = \"my-bin\", version = clap::crate_version!())]\r\nenum Opts {}\r\n\r\nfn main() {\r\n    Opts::parse();\r\n}\r\n```\r\n\r\nWith beta version:\r\n\r\n```\r\n\u276f cargo run --quiet -- -V\r\nclap_issue_2181 0.1.0\r\n\r\n\u276f cargo run --quiet -- --version\r\nclap_issue_2181 0.1.0\r\n\r\n\u276f cargo run --quiet -- --help\r\nclap_issue_2181 0.1.0\r\n\r\nUSAGE:\r\n    clap_issue_2181\r\n\r\nF",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "[joy-ui] Introduce color inversion utilities\n<!-- Thanks so much for your PR, your contribution is appreciated! \u2764\ufe0f -->\r\n\r\n**Sandbox**: https://codesandbox.io/s/joy-ui-cra-ts-forked-h8prkz?file=/src/App.tsx\r\n\r\ncloses #38912\r\n\r\nFor detailed motivation, read #38912.\r\n\r\nThe utilities let developers apply the color inversion on any component. \r\n\r\n## Breaking Changes\r\n\r\n- Color inversion context has been **removed**. To apply color inversion on any parent component, use an independent function named `applySolidInversion` or `applySoftInversion` to the `sx` prop or `styled`.\r\n\r\n  ```diff\r\n  + import { applySolidInversion } from '@mui/joy/styles';\r\n  \r\n  <Box\r\n   sx={[\r\n     { bgcolor: 'black', },\r\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Separate scheduling of segments flushes from time\n<!-- Type of change\r\nPlease label this PR with the release version and one of the following labels, depending on the scope of your change:\r\n- bug\r\n- enhancement\r\n- breaking change\r\n- doc\r\n-->\r\n\r\n## Release notes\r\n<!-- Add content to appear in  [Release Notes](https://www.elastic.co/guide/en/logstash/current/releasenotes.html), or add [rn:skip] to leave this PR out of release notes -->\r\n[rn:skip]\r\n\r\n## What does this PR do?\r\n\r\nIntroduces a new interface named `SchedulerService` to abstract from the `ScheduledExecutorService` to execute the DLQ flushes of segments. Abstracting from time provides a benefit in testing, where the test doesn't have",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "placeholder\nplaceholder\n\nplaceholder\nplaceholder",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "placeholder\nplaceholder\n\nplaceholder\nplaceholder",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "[system] Add outlineColor to defaultSxConfig\nCloses #39491\r\nCloses #33335\r\n\r\n<!-- Thanks so much for your PR, your contribution is appreciated! \u2764\ufe0f -->\r\n\r\n- [x] I have followed (at least) the [PR section of the contributing guide](https://github.com/mui/material-ui/blob/HEAD/CONTRIBUTING.md#sending-a-pull-request).\r\n\n\n[system] `sx` field outlineColor doesn't take the theme into account\n### Duplicates\r\n\r\n- [X] I have searched the existing issues\r\n\r\n### Latest version\r\n\r\n- [X] I have tested the latest version\r\n\r\n### Current behavior \ud83d\ude2f\r\n\r\nUsing `background.action` for the sx field `outlineColor` does not update to the correct color in the theme. It simply is rendered as `background.action`\r\n\r\n<i",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Add new command `issue pin`\n<!--\r\n  Thank you for contributing to GitHub CLI!\r\n  To reference an open issue, please write this in your description: `Fixes #NUMBER`\r\n-->\r\n\r\nFixes #5585 \r\n\r\nAdds the `issue pin` command to pin issues to a repository\r\nAdds the `--remove` flag to remove pinned issues from a repository\r\n\r\n![image](https://user-images.githubusercontent.com/35144141/167524995-993b756c-ad22-4552-a0f9-be93c5d0d777.png)\r\n\n\nissue pinning\n### Describe the feature or problem you\u2019d like to solve\r\n\r\nsupport [issue pinning](https://docs.github.com/en/issues/tracking-your-work-with-issues/pinning-an-issue-to-your-repository)\r\n\r\n### Proposed solution\r\n\r\nEither add `--pin`, `--unpin` to `issue ",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "fix(compiler-core): records loop variables\nfix #8378 \n\nloop varible is undefined in inline anonymous function in template \n### Vue version\n\nlatest\n\n### Link to minimal reproduction\n\nhttps://play.vuejs.org/#eNqFUcFOwzAM/RUrl7bS1gqOoxsDCRDiAAc4LTuUkqKKNIkaDyFV+XecZmXdijQpBz/7xX5+7tiNMen3TrAFy1E0RhYoVlwB5LWStRJzFBY9BkDxg0vObt8eOAuZtRVSlDivaikslUIWIO6gT4FLYLmCbsgDVLqFuNTKYs8AXQVmMiYBSP0ZR0URzfrqdaqKRiRXB4Ybwn0QRme98GPpg+rnJ84megO894gz/zvPRh7ktmxrg2AF7gzhujG6RXjsm7/63lWrG5qdZoec9zKo4SrsSbvAEnyspUgJDYXRdCL859lZt0ZdY86KgrOpY2QRvTwL29AebMaO9U5v/75D1ArWpazLLzJKNDXG0UgwXWavdwGbDvy0BVyAmw3xJbgtrcLZqutMq41N/SGcy7PQ+9Tsqd1h7/4v2fMhKlL84lG8iXyvaJsMJC/vj3NHgDgn1916M8YmuF91Vv1F\n\n### Steps to reproduce\n\nClic",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Make simdjson_result<element>.is() return bool\nFixes #708.\n\nRationale for is<T> when exceptions are disabled\nWhen exceptions are disabled, then the is<T> template will return `simdjson_return<bool>`.  So we have to do something like...\r\n\r\n```C++\r\n bool v;\r\n error_code x;\r\n doc.is<uint64_t>().tie(v,x);\r\n```\r\n\r\nThat seems like a lot of work just to get a bool?\r\n\r\nIt seems much more useful to call directly `get<uint64_t>`.\r\n\r\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "[Select][base] Add event parameter to the onChange callback\nThe SelectUnstyled and MultiSelectUnstyled onChange callbacks did not have event as the first parameter, leading to inconsistency with other components and native HTML elements.\r\nThis PR adds the event parameter as the first one and moves the newly selected value to the second position. Because of this, **it's a breaking change**.\r\n\r\n```jsx\r\n// before\r\n<SelectUnstyled onChange={(newValue) => { /* ... */ }} />\r\n\r\n// after\r\n<SelectUnstyled onChange={(event, newValue) => { /* ... */ }} />\r\n```\r\n\r\nI've also changed the signature of Joy Select's `onChange` to match the one in Base (CC @siriwatknp).\r\n\r\nThe `onHighlightChange` in useListbo",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "ChatMistralAI with chat history : Assistant message must have either content or tool_calls error\n### Checked other resources\n\n- [X] I added a very descriptive title to this issue.\n- [X] I searched the LangChain documentation with the integrated search.\n- [X] I used the GitHub search to find a similar question and didn't find it.\n- [X] I am sure that this is a bug in LangChain rather than my code.\n- [X] The bug is not resolved by updating to the latest stable version of LangChain (or the specific integration package).\n\n### Example Code\n\n-\n\n### Error Message and Stack Trace (if applicable)\n\nhttpx.HTTPStatusError: Error response 400 while fetching https://api.mistral.ai/v1/chat/completions: {\"o",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Change terminal quick fix exit code checking to simple fail and success\nWindows exit codes normally act differently, I suggest we just check success and fail instead of specific exit codes. Alternatively we could just do this on Windows, it's not worth the effort imo though as it's added complexity (eg. we need to make sure we check process OS, not platform).\r\n\r\nMatching only on fail or success also makes it easier to write the quick fixes.\n",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Problem caused by boolean attention mask in `pretrained_model.generate` of Flax GPT2\nHi! \r\n\r\nI notice that the usage of a boolean attention mask in `pretrained_model.generate` of Flax GPT2 can cause an error. Here is a short, self-contained code block to showcase the problem; I also prepared a [colab notebook here](https://colab.research.google.com/drive/1fIfOr0AFfWlAho1dwuk8zqxKxlKmzd7i?usp=sharing):\r\n\r\n``` python\r\nimport transformers\r\nimport jax\r\nimport jax.numpy as jnp\r\n\r\ntokenizer = transformers.AutoTokenizer.from_pretrained(\r\n  \"gpt2\", padding_side=\"right\")\r\ntokenizer.pad_token = tokenizer.eos_token\r\nquery = jnp.array([\r\n    [tokenizer.pad_token_id, tokenizer.pad_token_id, 23073],\r\n])\r\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Bug in Keras 3.4.0: Loading model error 'No such file or directory: 'model.weights.h5'\n### Environment:\r\n\r\nUbuntu 22.04\r\nTensorflow 2.16.1\r\nKeras 3.4.0\r\n\r\n### Reproducing steps\r\n\r\n(1) Create the following python script `tf-save.py` to generate model file:\r\n\r\n```\r\nimport os.path\r\n\r\nimport pandas as pd\r\nimport numpy as np\r\nfrom sklearn import datasets\r\nfrom tensorflow.keras.layers import Concatenate, Dense, Input, Lambda\r\nfrom tensorflow.keras.saving import register_keras_serializable\r\nfrom tensorflow.keras.models import Model, Sequential\r\nfrom tensorflow.keras.optimizers import SGD\r\nimport cloudpickle\r\nimport sys\r\n\r\nsave_path = sys.argv[1]\r\n\r\niris = datasets.load_iris()\r\ndata = pd.DataFrame(\r",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "[Bug] Deleting the last item problem of the ACL topic/group perms or the global white list caused by the UtilAll#split func flaw\n### Before Creating the Bug Report\n\n- [X] I found a bug, not just asking a question, which should be created in [GitHub Discussions](https://github.com/apache/rocketmq/discussions).\n\n- [X] I have searched the [GitHub Issues](https://github.com/apache/rocketmq/issues) and [GitHub Discussions](https://github.com/apache/rocketmq/discussions)  of this repository and believe that this is not a duplicate.\n\n- [X] I have confirmed that this bug belongs to the current repository, not other repositories of RocketMQ.\n\n\n### Runtime platform environment\n\nOS(CentOS release 7.6.1",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Exception if LOD has no levels defined\n##### Description of the problem\r\nThis is a very simple problem in the code of `getObjectForDistance` in `LOD.js`:\r\n```\r\n\tgetObjectForDistance: function ( distance ) {\r\n\t\tvar levels = this.levels;\r\n\t\tfor ( var i = 1, l = levels.length; i < l; i ++ ) {\r\n\t\t\tif ( distance < levels[ i ].distance ) {\r\n\t\t\t\tbreak;\r\n\t\t\t}\r\n\t\t}\r\n\t\treturn levels[ i - 1 ].object;\r\n\t},\r\n```\r\n\r\nIf there's no level defined, the last line `return levels[i-1].object` will throw an exception. The code should look something like `return (i > 0) ? levels[i-1].object : undefined`.\r\n\r\nI ran into this in a corner case when using `react-three-fiber` and I understand this might not be an issue ",
+"context": "",
+"kind": "error"
+},
+{
+"query": "In dev mode, provide better error than 'cannot read property _init of null'\nIf a component references a store `$property`, it will try to subscribe to the store. If there is no store, it will result in a weird error. The error could be much friendlier, at least in dev mode\n",
+"context": "",
+"kind": "error"
+},
+{
+"query": "`keras.ops.softmax` errors out when used in a TensorFlow compiled function\n## MRE\r\n\r\n```python\r\nimport keras\r\nfrom keras import ops\r\n\r\nclass SoftmaxLayer(keras.Layer):\r\n  def call(self, x):\r\n    return ops.softmax(x, axis=-1)\r\n\r\nclass Model(keras.Model):\r\n  def __init__(self):\r\n    x = keras.Input(shape=(None,))\r\n    y = SoftmaxLayer()(x)\r\n    super().__init__(inputs=x, outputs=y)\r\n\r\nmodel = Model()  # Error\r\n```\r\n\r\n## Additional Details\r\n\r\nThe regression was introduced in [d5a4521](https://github.com/keras-team/keras/commit/d5a452155a415d5fcbe568eb2a8441f64e57aa90)\r\n\r\nDiscovered by KerasCV test run with `keras-nightly`: https://github.com/keras-team/keras-cv/actions/runs/8259807616/job/2259",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Not handled case when use_weighted_layer_sum and return-dict=True in WhisperForAudioClassification\n@sanchit-gandhi \r\nI use WhisperForAudioClassification task and want to use `use_weighted_layer_sum=True`, but there is a problem when call forward, \r\nthe encoder part can return tuple or dict if `return_dict=True` but the code for use `use_weighted_layer_sum=True` assume the return to be tuple only and this line raise error `hidden_states = torch.stack(encoder_outputs, dim=1)` if the encoder return dict, there are workaround by using `return_dict=False` but when use the model later with `pipeline` it will raise error because it assume the model to return dict not tuple. [Link to code with the p",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Remove dependency on node require for startup code path\nRefs https://github.com/microsoft/vscode/issues/92164\r\n\r\n**Things to do:**\r\n* [x] V8 cached options support (needs Electron patch) @deepak1556 \r\n* [x] :runner: validate no performance regressions\r\n* [x] remove traces of node cached data (e.g. cleanup from shared process, `VSCODE_NODE_CACHED_DATA_DIR`)\r\n* [x] figure out alternative to know when cached data was used or not ([here](https://github.com/microsoft/vscode/blob/f4ab083c28ef1943c6636b8268e698bfc8614ee8/src/vs/workbench/services/timer/electron-sandbox/timerService.ts#L85-L85))\r\n\r\n---\r\n\r\nWhile rewriting our asset resolution over file protocol to use a custom protocol https://github",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Loading tokenizer using from_pretrained seems to be broken for v4\n### System Info\n\nAccording to following `FutureWarning` loading tokenizer using a file path should work in v4:\r\n```\r\nFutureWarning: Calling AlbertTokenizer.from_pretrained() with the path to a single file or url is deprecated and won't be possible anymore in v5. Use a model identifier or the path to a directory instead.\r\n```\r\n\r\nNevertheless it seems to be broken in latest 4.22.0.\r\n\r\nI bisected the issue to [this commit](https://github.com/huggingface/transformers/commit/5cd40323684c183c30b34758aea1e877996a7ac9)\r\n\r\nIs the cord cut for the previous logic starting 4.22.0?\n\n### Who can help?\n\n_No response_\n\n### Information\n\n- [ ] ",
+"context": "",
+"kind": "error"
+},
+{
+"query": "RuntimeError: The size of tensor a (16) must match the size of tensor b (16000) at non-singleton dimension 2\n### System Info\n\n- `transformers` version: 4.30.0.dev0\r\n- Platform: Linux-5.10.147+-x86_64-with-glibc2.31\r\n- Python version: 3.10.11\r\n- Huggingface_hub version: 0.14.1\r\n- Safetensors version: not installed\r\n- PyTorch version (GPU?): 2.0.0+cu118 (False)\r\n- Tensorflow version (GPU?): 2.12.0 (False)\r\n- Flax version (CPU?/GPU?/TPU?): 0.6.9 (cpu)\r\n- Jax version: 0.4.8\r\n- JaxLib version: 0.4.7\r\n- Using GPU in script?: YES\r\n- Using distributed or parallel set-up in script?: NO\n\n### Who can help?\n\n@ArthurZucker \n\n### Information\n\n- [ ] The official example scripts\n- [X] My own modified script",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Inconsistent Normalization for ViTImageProcessor when `do_resize` is False\n### System Info\n\n- `transformers` version: 4.26.1\r\n- Platform: Linux-5.4.0-121-generic-x86_64-with-glibc2.31\r\n- Python version: 3.10.9\r\n- Huggingface_hub version: 0.13.2\r\n- PyTorch version (GPU?): 2.0.0+cu117 (True)\r\n- Tensorflow version (GPU?): not installed (NA)\r\n- Flax version (CPU?/GPU?/TPU?): not installed (NA)\r\n- Jax version: not installed\r\n- JaxLib version: not installed\r\n- Using GPU in script?: no\r\n- Using distributed or parallel set-up in script?: no\n\n### Who can help?\n\n@amyeroberts\n\n### Information\n\n- [ ] The official example scripts\n- [X] My own modified scripts\n\n### Tasks\n\n- [X] An officially supported tas",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Support gradient checkpointing for ESM models\nWould you please add `gradient_checkpointing_enable()` feature for ESM models?\r\nThese models currently are the best available pre-trained protein language models for researchers.\r\nMany thanks.\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "DDP grads not synced when static_graph=True\n### System Info\n\nRelated: https://github.com/pytorch/pytorch/issues/106690\r\n\r\nThis behavior seems to be a quirk of `DistributedDataParallel.forward` and how it chooses to handle serializing and deserializing model output types. Even though `ModelOutput` is a subclass of a supported type (`collecitons.OrderedDict`), `ModelOutput` subclasses do not get serialized and deserialized that way since it looks up the serialization/deserialization method by the exact class, and so gradients computed over tensors in `ModelOutput` do not have their gradients synchronized when `static_graph=True`.\r\n\r\nA simple solution is to manually register all `ModelOutput` t",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Support reentrant orderly consumption for proxy\nSee more in #6690\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "\"Unexpected token\" when expression with function involving return statement is assigned to non-local variable\nI got `\"Unexpected token (Note that you need plugins to import files that are not JavaScript)\"` when I did something like this:\r\n\r\n```html\r\n<button on:click={event => {\r\n  list = list.map(item => {\r\n    const newItem = bunchaCodeGoesHere();\r\n    return newItem;\r\n  });\r\n}}>\r\n   ...\r\n</button>\r\n```\r\n\r\nAfter some experimentation to reduce it, the error seems to happen when an event handler has:\r\n\r\n1) an assignment to a non-local variable, and\r\n2) the assigned expression includes a function, and\r\n3) the function includes a \"return\" statement\r\n\r\nExample:\r\n\r\nhttps://svelte.dev/repl/a10f297",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "State Variants Priority Order\n## Foreword ##\r\nPeople are (or at least, I am) increasingly excited about the possibility of having everything they need out of the box thanks to Tailwind, and state variants are a vital part of building user interfaces.\r\nTailwind already supports a bunch of them, but new ones are always proposed and discussed (see #136) and, as time goes on, they may get introduced as well.\r\n\r\n## Purpose ##\r\nThere is a problem though: since Tailwind does not rely on `!important` \r\n rules to override styles, the output order of the state variants becomes crucially important.\r\nIt's true: users may tailor their code by implementing priorities by themselves and fit their needs!\r\nGo",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Unable to export reloaded model\nSaving and reloading model makes it impossible to export it as a SavedModel artifact. \r\nReloaded model has shapes defined as lists while export function expect tuples. \r\nCasting the shape to tuple in this particular place resolves the issue, but there may be other errors related to this in other places, though.\r\n\r\nSteps to reproduce:\r\n\r\n1) Make a subclassed model (maybe reproducible with Functional too?)\r\n2) Save the model as `.keras`\r\n3) Reload `.keras`\r\n4) Try to `model.export()` on your reloaded model\r\n\r\nHere's the notebook with the same steps for your convenience:\r\nhttps://colab.research.google.com/drive/1oO4JxoYK4I4UO0VdyYPAlCQY9fT1pYlw\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "`getFileInfo()` should try to resolve config by default\n[`getFileInfo()`](https://prettier.io/docs/en/api.html#prettiergetfileinfofilepath--options) returns `ignored` and `inferredParser`, it accepts a `resolveConfig` option, it's default to `false`, I think it's more reasonable to set default to `true`, or even remove this option and always to `true`.\r\n\r\nRef: https://github.com/prettier/prettier/pull/8551#issuecomment-645225864\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Nameserver RouteInfoManager logic can be simplified.\na lot of code logic relate to find target brokerName in queueData list.\r\nthis can be replaced by add a mapping from brokerName to queueData.\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Use string as the configuration parameter type of metrics collector mode\nCurrent parameter type of metrics  is `int` - `0/1/2` ,  which may confuse the developer.\r\n\r\nor we could use the string type - `on/off/proxy`, which may make it much clearer.\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "When writing to existing table with JDBC-based connector, temporary table should match destination table's column types\nSee TODO in the code\r\n https://github.com/prestosql/presto/blob/d7032e84ba2e36aa7a3ebb3962b6889d8a47d3c8/presto-base-jdbc/src/main/java/io/prestosql/plugin/jdbc/BaseJdbcClient.java#L325-L326\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "JsonObject.entrySet() Entry.setValue(...) does not prevent null values\nThe Map.Entry objects in the Set returned by `JsonObject.entrySet()` do not validate the value passed to their `Entry.setValue(...)` method, allowing Java `null`s. This can cause runtime exceptions when the user of the JsonObject later expects that the values returned by JsonObject are never `null`:\n```java\nJsonObject jsonObject = new JsonObject();\njsonObject.addProperty(\"test\", 1);\njsonObject.entrySet().iterator().next().setValue(null);\n\nSystem.out.println(\"has=\" + jsonObject.has(\"test\"));\njsonObject.getAsJsonPrimitive(\"test\").toString(); // NullPointerException\n```\n\nThe Map.Entry objects should instead throw a NullPoint",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Sandbox: Enable on Insiders by default\n\n",
+"context": "",
+"kind": "request"
+},
+{
+"query": "Allow to set header and footer skip line count for CSV tables\n\n",
+"context": "",
+"kind": "request"
+},
+{
+"query": "improve terminal quick fix telemetry\n\n",
+"context": "",
+"kind": "request"
+},
+{
+"query": "HistGradientBoostingClassifier does not work with string target when early stopping turned on\n<!--\r\nIf your issue is a usage question, submit it here instead:\r\n- StackOverflow with the scikit-learn tag: https://stackoverflow.com/questions/tagged/scikit-learn\r\n- Mailing List: https://mail.python.org/mailman/listinfo/scikit-learn\r\nFor more information, see User Questions: http://scikit-learn.org/stable/support.html#user-questions\r\n-->\r\n\r\n<!-- Instructions For Filing a Bug: https://github.com/scikit-learn/scikit-learn/blob/master/CONTRIBUTING.md#filing-bugs -->\r\n\r\n#### Description\r\n<!-- Example: Joblib Error thrown when calling fit on LatentDirichletAllocation with evaluate_every > 0-->\r\n\r\nThe ",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Confusing (broken?) colormap name handling\nConsider the following example in which one creates and registers a new colormap and attempt to use it with the `pyplot` interface.\n\n``` python\nfrom matplotlib import cm\nfrom matplotlib.colors import LinearSegmentedColormap\nimport matplotlib.pyplot as plt\nimport matplotlib\nmatplotlib.__version__\n'1.4.3.'\n\nmy_cmap_data = [[  1.5e-03,   4.7e-04,   1.4e-02],\n                             [  2.3e-03,   1.3e-03,   1.8e-02],\n                             [  3.3e-03,   2.3e-03,   2.4e-02]]\nmy_cmap = LinearSegmentedColormap.from_list('some_cmap_name', my_cmap_data)\ncm.register_cmap(name='my_cmap_name', cmap=my_cmap)\n```\n\nEverything OK so far. Note the differe",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "IndexError: list index out of range in export_text when the tree only has one feature\n<!--\r\nIf your issue is a usage question, submit it here instead:\r\n- StackOverflow with the scikit-learn tag: https://stackoverflow.com/questions/tagged/scikit-learn\r\n- Mailing List: https://mail.python.org/mailman/listinfo/scikit-learn\r\nFor more information, see User Questions: http://scikit-learn.org/stable/support.html#user-questions\r\n-->\r\n\r\n<!-- Instructions For Filing a Bug: https://github.com/scikit-learn/scikit-learn/blob/master/CONTRIBUTING.md#filing-bugs -->\r\n\r\n#### Description\r\n`export_text` returns `IndexError` when there is single feature.\r\n\r\n#### Steps/Code to Reproduce\r\n```python\r\nfrom sklearn.",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Errors with db_collation \u2013 no propagation to foreignkeys\nDescription\n\t \n\t\t(last modified by typonaut)\n\t \nUsing db_collation with a pk that also has referenced fks in other models causes foreign key constraint errors in MySQL.\nWith the following models:\nclass Account(models.Model):\n\tid = ShortUUIDField(primary_key=True, db_collation='utf8_bin', db_index=True, max_length=22) \n\t\u2026\nclass Address(models.Model):\n\tid = ShortUUIDField(primary_key=True, db_collation='utf8_bin', db_index=True, max_length=22)\n\taccount = models.OneToOneField(Account, on_delete=models.CASCADE)\n\t\u2026\nclass Profile(models.Model):\n\tid = ShortUUIDField(primary_key=True, db_collation='utf8_bin', db_index=True, max_length=22)\n\t\u2026\n\t",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Voting estimator will fail at fit if weights are passed and an estimator is None\nBecause we don't check for an estimator to be `None` in `sample_weight` support, `fit` is failing`.\r\n\r\n```python\r\n    X, y = load_iris(return_X_y=True)\r\n    voter = VotingClassifier(\r\n        estimators=[('lr', LogisticRegression()),\r\n                    ('rf', RandomForestClassifier())]\r\n    )\r\n    voter.fit(X, y, sample_weight=np.ones(y.shape))\r\n    voter.set_params(lr=None)\r\n    voter.fit(X, y, sample_weight=np.ones(y.shape))\r\n```\r\n\r\n```\r\nAttributeError: 'NoneType' object has no attribute 'fit'\r\n```\n",
+"context": "",
+"kind": "error"
+},
+{
+"query": "KeyError with migration autodetector and FK field with hardcoded reference\nDescription\n\t\nHi,\nI encountered this issue on an old Django project (probably 10 years old) with tons of models and probably a lot of questionable design decisions.\nThe symptom is that running our test suite in verbose mode doesn't work:\n$ python manage.py test -v 2\nCreating test database for alias 'default' ('test_project')...\nOperations to perform:\n Synchronize unmigrated apps: [... about 40 apps]\n Apply all migrations: (none)\nSynchronizing apps without migrations:\n Creating tables...\n\tCreating table auth_permission\n\tCreating table auth_group\n\tCreating table auth_user\n\tCreating table django_content_type\n\tCreating ta",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "ManifestStaticFilesStorage crashes with max_post_process_passes = 0.\nDescription\n\t\nTo reproduce:\nDerive a custom class from ManifestStaticFilesStorage and set max_post_process_passes to 0:\nclass MyManifestStaticFilesStorage(ManifestStaticFilesStorage):\n\tmax_post_process_passes = 0\n# settings.py\nSTATICFILES_STORAGE = \"MyManifestStaticFilesStorage\"\nrun collectstatic\n File \"lib/python3.7/site-packages/django/contrib/staticfiles/management/commands/collectstatic.py\", line 188, in handle\n\tcollected = self.collect()\n File \"lib/python3.7/site-packages/django/contrib/staticfiles/management/commands/collectstatic.py\", line 128, in collect\n\tfor original_path, processed_path, processed in processor:\n F",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Extend linkchecker GET fallback logic to handle Too Many Redirects\nSubject: linkcheck - fallback to GET requests when HEAD requests returns Too Many Redirects\r\n\r\n### Feature or Bugfix\r\n\r\n- Bugfix\r\n\r\n### Purpose\r\n\r\nSome websites will enter infinite redirect loops with HEAD requests. In this case, the GET fallback is ignored as the exception is of type `TooManyRedirects` and the link is reported as broken.\r\nThis extends the except clause to retry with a GET request for such scenarios.\r\n\r\n### Detail\r\n\r\nClassifying this as a bug fix as URLs like https://idr.openmicroscopy.org/webclient/?show=well-119093 used to pass the linkchecking prior to Sphinx 3.2.0 but are now failing as HEAD requests have",
+"context": "",
+"kind": "error"
+},
+{
+"query": "xr.where with scalar as second argument fails with keep_attrs=True\n### What happened?\n\n``` python\r\nimport xarray as xr\r\n\r\nxr.where(xr.DataArray([1, 2, 3]) > 0, 1, 0)\r\n```\r\n\r\nfails with\r\n\r\n```\r\n   1809 if keep_attrs is True:\r\n   1810     # keep the attributes of x, the second parameter, by default to\r\n   1811     # be consistent with the `where` method of `DataArray` and `Dataset`\r\n-> 1812     keep_attrs = lambda attrs, context: attrs[1]\r\n   1814 # alignment for three arguments is complicated, so don't support it yet\r\n   1815 return apply_ufunc(\r\n   1816     duck_array_ops.where,\r\n   1817     cond,\r\n   (...)\r\n   1823     keep_attrs=keep_attrs,\r\n   1824 )\r\n\r\nIndexError: list index out of range",
+"context": "",
+"kind": "error"
+},
+{
+"query": "docstring default arg is broken\n**Describe the bug**\r\ndocstring default arg is broken in html.\r\nPython class method\r\n>     def add_lines(self, lines, color=(1, 1, 1), width=5, label=None, name=None):\r\nis rendered as\r\n>    add_lines(lines, color=1, 1, 1, width=5, label=None, name=None)\r\n\r\n**To Reproduce**\r\nSteps to reproduce the behavior (Dockerfile):\r\n```\r\nFROM python:3.7-slim\r\nRUN apt update; apt install -y git make python3-vtk7\r\nRUN git clone https://github.com/tkoyama010/pyvista.git\r\nWORKDIR /pyvista\r\nRUN git checkout patch-1\r\nRUN pip install . \r\nRUN pip install -r requirements_docs.txt\r\nRUN (cd docs; make html)\r\n```\r\n\r\n**Expected behavior**\r\nA clear and concise description of what you ex",
+"context": "",
+"kind": "error"
+},
+{
+"query": "exception serialization should include chained exceptions\ngiven some simple tests:\r\n```\r\ndef test_chained_exception_with_from():\r\n    try:\r\n        try:\r\n            raise ValueError(11)\r\n        except Exception as e1:\r\n            raise ValueError(12) from e1\r\n    except Exception as e2:\r\n        raise ValueError(13) from e2\r\n\r\n\r\ndef test_chained_exception_without_from():\r\n    try:\r\n        try:\r\n            raise ValueError(21)\r\n        except Exception:\r\n            raise ValueError(22)\r\n    except Exception:\r\n        raise ValueError(23)\r\n```\r\nwhen run without xdist it displays whole exception trace nicely :\r\n```\r\n================ FAILURES ==========================\r\n___________________",
+"context": "",
+"kind": "error"
+},
+{
+"query": "fowlkes_mallows_score returns RuntimeWarning when variables get too big\n<!--\r\nIf your issue is a usage question, submit it here instead:\r\n- StackOverflow with the scikit-learn tag: http://stackoverflow.com/questions/tagged/scikit-learn\r\n- Mailing List: https://mail.python.org/mailman/listinfo/scikit-learn\r\nFor more information, see User Questions: http://scikit-learn.org/stable/support.html#user-questions\r\n-->\r\n\r\n<!-- Instructions For Filing a Bug: https://github.com/scikit-learn/scikit-learn/blob/master/CONTRIBUTING.md#filing-bugs -->\r\n\r\n#### Description\r\n<!-- Example: Joblib Error thrown when calling fit on LatentDirichletAllocation with evaluate_every > 0-->\r\nsklearn\\metrics\\cluster\\super",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "[Bug]: dataLims get replaced by inf for charts with twinx if ax1 is a stackplot\n### Bug summary\r\n\r\nBringing this over from Discourse https://discourse.matplotlib.org/t/datalims-get-replaced-by-inf-for-charts-with-twinx-if-ax1-is-a-stackplot/23887.\r\n\r\n In Matplotlib 3.4.0 and later versions, when using twin x-axis (two-y-axis charts), the data limits (dataLims) of the first axis (ax1) get changed to \u00b1inf when plotting a stackplot on the second axis (ax2), which is unexpected.\r\n\r\n### Code for reproduction\r\n\r\n```python\r\nimport matplotlib.pyplot as plt\r\n\r\ndef print_datalim(*ax):\r\n    for ax_ in ax:\r\n        print(ax_.dataLim.intervaly, end=' / ')\r\n    print()\r\n\r\ndf1_index = ['16 May', '17 May'] ",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Combine fast delete queries\nDescription\n\t\nWhen emulating ON DELETE CASCADE via on_delete=models.CASCADE the deletion.Collector will try to perform fast queries which are DELETE FROM table WHERE table.pk IN .... There's a few conditions required for this fast path to be taken but when this happens the collection logic should combine such queries by table to reduce the number of roundtrips to the database.\nFor example, given the following models\nclass Person(models.Model):\n\tfriends = models.ManyToManyField('self')\nclass User(models.Model):\n\tpass\nclass Entry(models.Model):\n\tcreated_by = models.ForeignKey(User)\n\tupdated_by = models.ForeignKey(User)\nIssuing a person.delete() or user.delete() will",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "[Bug]: Datetime axis with usetex is unclear\n### Bug summary\n\nThe spacing for a datetime axis when using `usetex=True` is unclear in matplotlib version 3.4 when comparing it to 3.3.\n\n### Code for reproduction\n\n```python\nimport matplotlib\r\nimport matplotlib.pyplot as plt\r\nimport numpy as np\r\nimport pandas as pd\r\n\r\nnp.random.seed(1)\r\nmatplotlib.rcParams[\"text.usetex\"] = True\r\n\r\ndates = pd.date_range(\"2020-01-01 00:00:00\", end=\"2020-01-01 00:10:00\", periods=100)\r\ndata = np.random.rand(100)\r\n\r\nfig, ax = plt.subplots(constrained_layout=True)\r\nax.plot(dates, data)\r\nplt.savefig(matplotlib.__version__ + \".png\")\n```\n\n\n### Actual outcome\n\nExample of how it look in 3.3.4:\r\n![3 3 4](https://user-images.g",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "bug in is_subset(Reals)\nSolving issue #19513 has given rise to another bug.\r\nNow:\r\n```\r\nIn [8]: S1 = imageset(Lambda(n, n + (n - 1)*(n + 1)*I), S.Integers)\r\n\r\nIn [9]: S1\r\nOut[9]: {n + \u2148\u22c5(n - 1)\u22c5(n + 1) \u2502 n \u220a \u2124}\r\n\r\nIn [10]: 2 in S1\r\nOut[10]: False\r\n\r\nIn [11]: 2 in S1.intersect(Reals)\r\nOut[11]: True\r\n```\r\nThis output is incorrect.\r\n\r\nCorrect output is:\r\n```\r\nIn [4]: S1\r\nOut[4]: {n + \u2148\u22c5(n - 1)\u22c5(n + 1) \u2502 n \u220a \u2124}\r\n\r\nIn [5]: 2 in S1\r\nOut[5]: False\r\n\r\nIn [6]: 2 in S1.intersect(Reals)\r\nOut[6]: False\r\n\r\nIn [7]: S2 = Reals\r\n\r\nIn [8]: S1.intersect(S2)\r\nOut[8]: {-1, 1}\r\n```\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Simplify signature of `DatabaseOperations.execute_sql_flush()`\nDescription\n\t\nThe current signature is:\ndef execute_sql_flush(self, using, sql_list):\nThe using argument can be dropped and inferred by the calling instance: self.connection.alias.\ndef execute_sql_flush(self, sql_list):\nSome internal ises of this method are already doing:\nconnection.ops.execute_sql_flush(connection.alias, sql_flush)\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Decorated __init__ doesn't show up in docs\nSubject: Decorated __init__ won't be documented. I'm working on [tensorpack](github.com/ppwwyyxx/tensorpack)\r\n\r\n### Problem\r\n- I have `napoleon_include_init_with_doc = True`, so `__init__` will be documented. But if I decorate the `__init__` method, it will not show up in docs.\r\nI decorate it with `functools.wraps`, so the decorated object still has the same `__doc__`.\r\nI've found that the bug is due to this commit: https://github.com/sphinx-doc/sphinx/commit/bbfd0d058aecf85bd3b711a846c83e2fe00fa136\r\nI've printed the relevant variables in that function:\r\n```\r\nqualname='DistributedTrainerReplicated.__init__'\r\nname='__init__'\r\nobj.__doc__ has contents",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Morse encoding for \"1\" is not correct\nThe current Morse mapping in simpy.crypto.crypto contains an incorrect mapping of \r\n`\"----\": \"1\"`   \r\n\r\nThe correct mapping is `\".----\": \"1\"`.\r\n\r\n\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Using symbols to create functions doesn't work if there is an extra layer of parentheses\nSympy version == 1.10.1\r\n\r\nUsing `symbols` to create symbol-like objects like instances of `Function` as shown in the [documentation](https://docs.sympy.org/latest/modules/core.html?highlight=symbols#symbols) creates objects of class `Symbol` instead of `Function` if there is an extra layer of parentheses.\r\n\r\nThe extra layer of parentheses are necessary to deconstruct the output as separate tuples.\r\n\r\nRunning the code:\r\n```\r\nq, u = smp.symbols(('q:2', 'u:2'), cls=smp.Function)\r\nprint(type(q[0]))\r\n```\r\n#### Expected result:\r\n<class 'sympy.core.function.UndefinedFunction'>\r\n\r\n#### Actual result: \r\n<class '",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "[Bug]: ax.hist density not auto-scaled when using histtype='step'\n### Bug summary\r\n\r\nI need to plot a histogram of some data (generated by `numpy.save` in binary format) from my work using the `matplotlib.axes.Axes.hist` function. I noted that the histogram's density axis (when setting `density=True`) is not automatically adjusted to fit the whole histogram.  \r\n\r\nI played with different combinations of parameters, and noted that the densities changes if you rescale the whole data array, which is counterintuitive as rescaling the data should only affect the x-axis values. I noted that if you set `histtype=\"step\"`, the issue will occur, but is otherwise okay for other `histtype`s.\r\n\r\nI started",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "DateFormat.Y() is not zero-padded.\nDescription\n\t\nThe Y specifier for django.utils.dateformat.DateFormat is supposed to always return a four-digit year padded with zeros. This doesn't seem to be the case for year < 1000.\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "ModelAdmin with defined radio_fields override empty_label\nDescription\n\t\nModelAdmin drops my \"empty_label\" and set \"default_empty_label\". For example:\nclass MyModelAdmin(ModelAdmin):\n\tradio_fields = 'myfield',\n\tdef formfield_for_foreignkey(self, db_field, *args, **kwargs):\n\t\tif db_field.name == 'myfield':\n\t\t\tkwargs['empty_label'] = \"I WANT TO SET MY OWN EMPTY LABEL\"\n\t\treturn super().formfield_for_foreignkey(db_field, *args, **kwargs)\nYou get never the \"I WANT TO SET MY OWN EMPTY LABEL\"\nHow to fix it:\nIn django\\contrib\\admin\\options.py, row 234:\nkwargs['empty_label'] = _('None') if db_field.blank else None\nShould be changed on:\nkwargs['empty_label'] = (kwargs.get('empty_label') or _('None')) i",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "Inconsistency in double single-quote ('') management in FITS Card\n### Description\r\n\r\nThe management of single-quotes in FITS cards seem correct, except *sometimes* when dealing with null strings, i.e. double single quotes (`''`), which sometimes are transformed into single single quotes (`'`).\r\n\r\nE.g.:\r\n```python\r\nIn [39]: from astropy.io import fits\r\nIn [40]: for n in range(60, 70):\r\n    ...:     card1 = fits.Card('CONFIG', \"x\" * n + \"''\")\r\n    ...:     card2 = fits.Card.fromstring(str(card1))  # Should be the same as card1\r\n    ...:     print(n, card1.value == card2.value)\r\n    ...:     if card1.value != card2.value:\r\n    ...:         print(card1.value)\r\n    ...:         print(card2.value)",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__1.9\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__1.9. Consider the following PR description:\n\n<pr_description>\nCannot dvc add an already tracked file that lies in a folder\n## Bug Report\r\n\r\n**dvc version:** 1.8.0\r\n\r\n----**Use case problem**----\r\nSo I have folder that looks like that:\r\n```\r\n.\r\n\u251c\u2500\u2500 Annotations.json -> /media/newhdd/data/ki67_er_pr/data/dvc_cache/44/7b62afed38955cb2a2f4ca35c5133c\r\n\u251c\u2500\u2500 Annotations.json.dvc\r\n\u2514\u2500\u2500 annotator\r\n    \u251c\u2500\u2500 ki67_20x__perez_2019_04_12__7__1___Annotation_0_hotspot_0.json -> /media/newhdd/data/ki67_er_pr/data/dvc_cache/12/6285610f25480393ca3e153378352b\r\n    \u251c\u2500\u2500 ki67_20x__p",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__2.8\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__2.8. Consider the following PR description:\n\n<pr_description>\nNegative numbers from a Python file are not recognized as parameters\n# Bug Report\r\n\r\n## dvc repro: does not recognize negative numbers from a Python file as parameters\r\n\r\n## Description\r\n\r\nWhen trying to do ```dvc run``` or ```dvc repro``` with a stage whose parameters include a negative number in a Python file there is this error:\r\n```\r\nERROR: Parameters 'my_int' are missing from 'my_params.py'.           \r\n```\r\nHowever, when using YAML files instead of Python, everything works as expected.\r\n\r\n",
+"context": "Files opened so far: iterative__dvc__2.8\nLast output:\nOBSERVATION:\nHere's the files and directories up to 2 levels deep in /workspace/iterative__dvc__2.8, excluding hidden items:\n/workspace/iterative__dvc__2.8",
+"kind": "error"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__0.50\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__0.50. Consider the following PR description:\n\n<pr_description>\nDelete the Output-Files by checkout to other branches.\nHi guys,\r\n\r\nin the current DVC-Version the DVC-Output / Metric-Files get not deleted after switching the Branch. I.E.: The `someout.txt` should not be in the `master` branch\r\n\r\n```\r\nrm -R test\r\nmkdir test\r\ncd test\r\n\r\ngit init\r\ndvc init\r\n\r\ndvc run --no-exec -o someout.txt \"echo HELLO_WORLD > someout.txt\"\r\n\r\ngit add -A\r\ngit commit -m 'add job'\r\n\r\ngit checkout -b second_branch\r\n\r\ndvc repro -P\r\n\r\ngit add -A\r\ngit commit -m 'pipeline was execute",
+"context": "ge,\n   536\t        outs,\n   537\t        outs_no_cache,\n   538\t        metrics,\n   539\t        metrics_no_cache,\n   540\t        outs_persist,\n   541\t        outs_persist_no_cache,\n   542\t    ):\n   543\t        stage.outs = output.loads_from(stage, outs, use_cach<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/python__mypy__0.820\n</uploaded_files>\nI've uploaded a python code repository in the directory python__mypy__0.820. Consider the following PR description:\n\n<pr_description>\nINTERNAL ERROR when defining \"__add__\" in two related Protocol classes\nThe following minimal example causes a crash:\r\n\r\n```\r\nfrom typing import Protocol, TypeVar, Union\r\n\r\nT1 = TypeVar(\"T1\", bound=float)\r\nT2 = TypeVar(\"T2\", bound=float)\r\n\r\n\r\nclass Vector(Protocol[T1]):\r\n\r\n    def __len__(self) -> int:\r\n        ...\r\n\r\n    def __add__(\r\n        self: \"Vector[T1]\",\r\n        other: Union[T2, \"Vector[T2]\"],\r\n    ) -> \"Vector[Union[T1, T2]]\":\r\n        ...\r\n\r\n\r\nclass Matrix(Protocol[T1]):\r\n\r\n    def __",
+"context": "Files opened so far: python__mypy__0.820\nLast output:\nOBSERVATION:\nHere's the files and directories up to 2 levels deep in /workspace/python__mypy__0.820, excluding hidden items:\n/workspace/python__mypy__0.820",
+"kind": "error"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__0.51\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__0.51. Consider the following PR description:\n\n<pr_description>\nrun: running the same command twice on a callback stage doesn't reproduce\nversion: `0.35.7+8ef52f`\r\n\r\n----\r\n```bash\r\n\u276f dvc run -o hello 'echo hello > hello'\r\nRunning command:\r\n\techo hello > hello\r\nSaving 'hello' to cache '.dvc/cache'.\r\nSaving information to 'hello.dvc'.\r\n\r\n\u276f dvc run -o hello 'echo hello > hello'\r\nStage is cached, skipping.\r\n```\r\n\r\nThe second run should have run the command again, as it is a callback stage.\n\n</pr_description>\n\nCan you help me implement the necessary changes to ",
+"context": "gnore_build_cache,\n    57\t            remove_outs=remove_outs,\n    58\t            outs_persist=outs_persist,\n    59\t            outs_persist_no_cache=outs_persist_no_cache,\n    60\t        )\n    61\t\n    62\t    if stage is None:\n    63\t        return None\n    64\t\n    65\t    self.check_dag(self.stages() + [stage])\n    66\t\n    67\t    with self.state:\n    68\t        if not no_exec:\n    69\t            stage.run(no_commit=no_commit)\n    70\t\n    71\t    stage.dump()\n    72\t\n    73\t    return stage\n    74",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/python__mypy__0.920\n</uploaded_files>\nI've uploaded a python code repository in the directory python__mypy__0.920. Consider the following PR description:\n\n<pr_description>\ncrash for protocol member with contravariant type variable\n\r\n**Reproducer**\r\n\r\n```\r\nfrom typing import overload, Protocol, TypeVar\r\n\r\nI = TypeVar('I')\r\nV_contra = TypeVar('V_contra', contravariant=True)\r\n\r\nclass C(Protocol[I]):\r\n    def __abs__(self: 'C[V_contra]') -> 'C[V_contra]':\r\n        ...\r\n\r\n    @overload\r\n    def f(self: 'C', q: int) -> int:\r\n        ...\r\n    @overload\r\n    def f(self: 'C[float]', q: float) -> 'C[float]':\r\n        ...\r\n```\r\n\r\n**Traceback**\r\n\r\n```\r\n$  mypy --show-tracebac",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__2.0\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__2.0. Consider the following PR description:\n\n<pr_description>\nlist: Add --show-json (or similar flag)\nIn the vs code project we have a view that uses `dvc list . --dvc-only` to show all paths that are tracked by DVC in a tree view.  Reasons for this view, some discussion around it and a short demo are shown here: https://github.com/iterative/vscode-dvc/issues/318.\r\n\r\nAt the moment we take the stdout from the command, split the string into a list (using `\\n` as a delimiter) and then post process to work out whether or not the paths relate to files or direct",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/python__mypy__0.820\n</uploaded_files>\nI've uploaded a python code repository in the directory python__mypy__0.820. Consider the following PR description:\n\n<pr_description>\nLook into @python2 subdirectories of mypy search path entries in Python 2 mode\nTypeshed uses the `@python2` subdirectory for Python 2 variants of stubs. Mypy could also support this convention for custom search paths. This would make dealing with mixed Python 2/3 codebases a little easier.\r\n\r\nIf there is a user-defined mypy search path directory `foo`, first look for files under `foo/@python2` when type checking in Python 2 mode. Ignore `@python2` directories in Python 3 mode. We should still lo",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/python__mypy__0.800\n</uploaded_files>\nI've uploaded a python code repository in the directory python__mypy__0.800. Consider the following PR description:\n\n<pr_description>\nCan't assign to ()\nMypy incorrectly complains about assignments to `()`. The simplest example of this is\r\n```python\r\n() = []\r\n```\r\nThis code executes without a problem, but mypy says `error: can't assign to ()`\r\n\r\nA more real world use case might be code like this\r\n```python\r\n(a, b), () = [[1, 2], []]\r\n```\r\nIn this case the assignment to `()` is a concise way of asserting that the second list is empty.\r\n\r\n* What is the actual behavior/output?\r\n`error: can't assign to ()`\r\n* What is the behavior/",
+"context": "6\t            pass\n  1937\t\n  1938\t    #\n  1939\t    # Assignment\n  1940\t    #\n  1941\t\n  1942\t    def visit_assignment_expr(self, s: AssignmentExpr) -> None:\n  1943\t        s.value.accept(self)\n  1944\t        self.analyze_lvalue(s.target, escape_comprehensions=True)\n  1945\t\n  1946\t    def visit_assignment_stmt(self, s: AssignmentStmt) -> None:\n  1947\t        self.statement = s\n  1948\t\n  1949\t        # Special case assignment like X = X.\n  1950\t        if self.analyze_identity_global_assignment(s):",
+"kind": "error"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__1.1\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__1.1. Consider the following PR description:\n\n<pr_description>\nNewlines after dvc metrics diff\nI am working on printing `dvc metrics diff --show-md` into a markdown document, i.e....\r\n\r\n`dvc metrics diff --show-md >> doc.md`\r\n\r\n and if I don't manually follow this command with a newline:\r\n`echo >> doc.md`\r\n\r\nThen everything that follows in `doc.md` gets inserted into the table. Is there maybe a newline character missing from the metrics .md table?\n\n</pr_description>\n\nCan you help me implement the necessary changes to the repository so that the requirements ",
+"context": "        return {}\n    14\t\n    15\t\n    16\tdef diff(repo, *args, a_rev=None, b_rev=None, **kwargs):\n    17\t    if repo.scm.no_commits:\n    18\t        return {}\n    19\t\n    20\t    with_unchanged = kwargs.pop(\"all\", False)\n    21\t\n    22\t    old = _get_metrics(repo, *args, **kwargs, rev=(a_rev or \"HEAD\"))\n    23\t    new = _get_metrics(repo, *args, **kwargs, rev=b_rev)\n    24\t\n    25\t    return _diff(\n    26\t        format_dict(old), format_dict(new), with_unchanged=with_unchanged\n    27\t    )\n    28",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/python__mypy__0.820\n</uploaded_files>\nI've uploaded a python code repository in the directory python__mypy__0.820. Consider the following PR description:\n\n<pr_description>\nINTERNAL ERROR when defining \"__add__\" in two related Protocol classes\nThe following minimal example causes a crash:\r\n\r\n```\r\nfrom typing import Protocol, TypeVar, Union\r\n\r\nT1 = TypeVar(\"T1\", bound=float)\r\nT2 = TypeVar(\"T2\", bound=float)\r\n\r\n\r\nclass Vector(Protocol[T1]):\r\n\r\n    def __len__(self) -> int:\r\n        ...\r\n\r\n    def __add__(\r\n        self: \"Vector[T1]\",\r\n        other: Union[T2, \"Vector[T2]\"],\r\n    ) -> \"Vector[Union[T1, T2]]\":\r\n        ...\r\n\r\n\r\nclass Matrix(Protocol[T1]):\r\n\r\n    def __",
+"context": "Files opened so far: python__mypy__0.820\nLast output:\nOBSERVATION:\nHere's the files and directories up to 2 levels deep in /workspace/python__mypy__0.820, excluding hidden items:\n/workspace/python__mypy__0.820",
+"kind": "error"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__2.7\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__2.7. Consider the following PR description:\n\n<pr_description>\nalias `list` as `ls`?\nI have been reaching for `dvc ls` out of habit instead of `dvc list`. Should we introduce an alias for `dvc list`?\n\n</pr_description>\n\nCan you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met?\nI've already taken care of all changes to any of the test files described in the <pr_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!\nYour task is to make the",
+"context": "\n    24\t\n    25\t[mypy]\n    26\t# Error output\n    27\tshow_column_numbers = True\n    28\tshow_error_codes = True\n    29\tshow_error_context = True\n    30\tshow_traceback = True\n    31\tpretty = True\n    32\t\n    33\t# See https://mypy.readthedocs.io/en/latest/running_mypy.html#missing-imports.\n    34\tignore_missing_imports = True\n    35\tcheck_untyped_defs = False\n    36\t\n    37\t# Warnings\n    38\twarn_no_return=True\n    39\twarn_redundant_casts=True\n    40\twarn_unreachable = True\n    41\tfiles = dvc\n    42",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__2.7\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__2.7. Consider the following PR description:\n\n<pr_description>\npull -r remote: Disregards specified http remote\n# Bug Report\r\n<!--\r\n## Issue name\r\n\r\nIssue names must follow the pattern `command: description` where the command is the dvc command that you are trying to run. The description should describe the consequence of the bug. \r\n\r\nExample: `repro: doesn't detect input changes`\r\n-->\r\n\r\n## Description\r\nWhen running `dvc pull -r <remote>`, the requests sent in order to retrieve directory data are sent to the default remote instead of the specified one.\r\n\r\n",
+"context": "cksum\n   576\t                and filter_info\n   577\t                and filter_info != self.path_info\n   578\t            )\n   579\t            if granular:\n   580\t                obj = self._commit_granular_dir(filter_info)\n   581\t            else:\n   582\t     <response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__2.7\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__2.7. Consider the following PR description:\n\n<pr_description>\npull -r remote: Disregards specified http remote\n# Bug Report\r\n<!--\r\n## Issue name\r\n\r\nIssue names must follow the pattern `command: description` where the command is the dvc command that you are trying to run. The description should describe the consequence of the bug. \r\n\r\nExample: `repro: doesn't detect input changes`\r\n-->\r\n\r\n## Description\r\nWhen running `dvc pull -r <remote>`, the requests sent in order to retrieve directory data are sent to the default remote instead of the specified one.\r\n\r\n",
+"context": "Files opened so far: iterative__dvc__2.7\nLast output:\nOBSERVATION:\nERROR:\nThe `view_range` parameter is not allowed when `path` points to a directory.",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__2.7\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__2.7. Consider the following PR description:\n\n<pr_description>\npull -r remote: Disregards specified http remote\n# Bug Report\r\n<!--\r\n## Issue name\r\n\r\nIssue names must follow the pattern `command: description` where the command is the dvc command that you are trying to run. The description should describe the consequence of the bug. \r\n\r\nExample: `repro: doesn't detect input changes`\r\n-->\r\n\r\n## Description\r\nWhen running `dvc pull -r <remote>`, the requests sent in order to retrieve directory data are sent to the default remote instead of the specified one.\r\n\r\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__2.7\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__2.7. Consider the following PR description:\n\n<pr_description>\npull -r remote: Disregards specified http remote\n# Bug Report\r\n<!--\r\n## Issue name\r\n\r\nIssue names must follow the pattern `command: description` where the command is the dvc command that you are trying to run. The description should describe the consequence of the bug. \r\n\r\nExample: `repro: doesn't detect input changes`\r\n-->\r\n\r\n## Description\r\nWhen running `dvc pull -r <remote>`, the requests sent in order to retrieve directory data are sent to the default remote instead of the specified one.\r\n\r\n",
+"context": "",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__2.7\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__2.7. Consider the following PR description:\n\n<pr_description>\npull -r remote: Disregards specified http remote\n# Bug Report\r\n<!--\r\n## Issue name\r\n\r\nIssue names must follow the pattern `command: description` where the command is the dvc command that you are trying to run. The description should describe the consequence of the bug. \r\n\r\nExample: `repro: doesn't detect input changes`\r\n-->\r\n\r\n## Description\r\nWhen running `dvc pull -r <remote>`, the requests sent in order to retrieve directory data are sent to the default remote instead of the specified one.\r\n\r\n",
+"context": "cksum\n   576\t                and filter_info\n   577\t                and filter_info != self.path_info\n   578\t            )\n   579\t            if granular:\n   580\t                obj = self._commit_granular_dir(filter_info)\n   581\t            else:\n   582\t     <response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>",
+"kind": "issue"
+},
+{
+"query": "<uploaded_files>\n/workspace/iterative__dvc__2.7\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__2.7. Consider the following PR description:\n\n<pr_description>\npull -r remote: Disregards specified http remote\n# Bug Report\r\n<!--\r\n## Issue name\r\n\r\nIssue names must follow the pattern `command: description` where the command is the dvc command that you are trying to run. The description should describe the consequence of the bug. \r\n\r\nExample: `repro: doesn't detect input changes`\r\n-->\r\n\r\n## Description\r\nWhen running `dvc pull -r <remote>`, the requests sent in order to retrieve directory data are sent to the default remote instead of the specified one.\r\n\r\n",
+"context": "Files opened so far: iterative__dvc__2.7\nLast output:\nOBSERVATION:\nHere's the files and directories up to 2 levels deep in /workspace/iterative__dvc__2.7, excluding hidden items:\n/workspace/iterative__dvc__2.7",
+"kind": "issue"
+},
+{
+"query": "Rename ErrorBoundary to FallbackBoundary",
+"context": "",
+"kind": "request"
+},
+{
+"query": "fix the flaky upload test",
+"context": "test_upload FAILED",
+"kind": "error"
+},
+{
+"query": "why?",
+"context": "  File \"x.py\", line 2\nKeyError: 'a'",
+"kind": "error"
+},
+{
+"query": "now the same for billing",
+"context": "Assistant: done with invoices",
+"kind": "conversational"
+}
+]

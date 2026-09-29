@@ -149,3 +149,39 @@ fn conversational_needs_context_and_a_short_request() {
         QueryKind::Request
     );
 }
+
+/// The Rust classifier agrees with the Python reference (`harness_router.querykind.classify`,
+/// which labelled the calibration eval) on public benchmark queries.
+#[test]
+fn classifier_matches_the_python_reference() {
+    #[derive(serde::Deserialize)]
+    struct Case {
+        query: String,
+        context: String,
+        kind: QueryKind,
+    }
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/data/querykind_cases.json"
+    );
+    let cases: Vec<Case> = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let wrong: Vec<String> = cases
+        .iter()
+        .filter(|c| QueryKind::classify(&c.query, &c.context) != c.kind)
+        .map(|c| format!("{:?}: {:.80}", c.kind, c.query.replace('\n', " ")))
+        .collect();
+    assert!(wrong.is_empty(), "{} mismatches: {wrong:#?}", wrong.len());
+}
+
+#[test]
+fn v2b_has_fitted_error_thresholds_and_keeps_issue_starts_open() {
+    let c = Calibration::v2b();
+    assert!(c.thresholds(QueryKind::Error, false, false).is_some());
+    assert!(c.thresholds(QueryKind::Error, true, true).is_some());
+    assert_eq!(c.thresholds(QueryKind::Issue, false, false), None);
+    // Requests and conversational follow-ups keep the reference default.
+    assert_eq!(
+        c.thresholds(QueryKind::Conversational, false, false),
+        c.thresholds(QueryKind::Request, false, false)
+    );
+}
