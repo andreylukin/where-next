@@ -10,12 +10,13 @@ under their own license (see `NOTICE`).
 
 | File | Contents |
 |---|---|
-| `wn-model.json` | Model spec: `name`, `family` (`qwen` / `gemma`), `pooling`, `dim`, `max_seq`, `query_prefix`, `document_prefix`, `matryoshka` |
+| `wn-model.json` | Model spec: `name`, `family` (`qwen` / `gemma`), `pooling`, `dim`, `max_seq`, `query_format` (`v1` default, or `v2`), `query_prefix`, `document_prefix`, `matryoshka` |
 | `tokenizer.json` | Hugging Face tokenizer |
 | `model.onnx` (+ `model.onnx.data`) | fp32 graph: inputs `input_ids`, `attention_mask` (int64, `[batch, seq]`, right padding); output `embeddings` (float32, `[batch, dim]`, L2-normalised). Pooling, projection layers and normalisation are inside the graph. |
 | `model.q8.onnx` (optional) | weight-only int8 graph (`MatMulNBits`, 8 bits) with the same interface: half the download, ~3x slower per query on Apple CPUs; used when no fp32 graph is present. Dynamic activation int8 and 4-bit graphs fail parity for these models. |
 | `wn-manifest.json` | SHA-256 of every file above. The model is only used after all checksums match. |
 | `fixture.json` (optional) | texts with reference embeddings from the Python export, for parity tests |
+| `calibration.json` (optional) | abstain thresholds (`wn_core::rank::Calibration`): per query kind (`request`, `issue`, `error`, `conversational`, or `default` for unlisted kinds; `null` never abstains), with and without the personal adapter, default and strict. Without it a model never abstains, except `v2b`, which has a built-in calibration. |
 
 Write the manifest with `cargo run -p wn-embed --example manifest -- <model-dir>`.
 
@@ -23,9 +24,16 @@ Write the manifest with `cargo run -p wn-embed --example manifest -- <model-dir>
 
 Documents are `wn-sources` doc texts (`file: <skeleton>` or `function: <path>::<name>`) with the
 family's `document_prefix` in front (empty for Qwen, `title: none | text: ` for Gemma). Queries are
-built by `wn_core::text::query_text` (instruction, task, tail of recent context); Gemma swaps the
-instruction for its `query_prefix`. This must match training byte for byte, which the parity test
-checks.
+built by `wn_core::text` in the model's `query_format`:
+
+- `v1` (`query_text`): instruction, task, then the tail of the recent context. When the text is
+  longer than `max_seq` tokens, the oldest context is dropped until it fits, so the newest tool
+  output is never truncated away.
+- `v2` (`query_text_v2`): the request (900 characters), then the tail of the last tool output,
+  then the newest earlier context, so truncation cuts the least useful part.
+
+Gemma swaps the instruction for its `query_prefix`. This must match training byte for byte, which
+the golden and parity tests check.
 
 ## Lifecycle
 
