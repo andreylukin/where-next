@@ -4,7 +4,7 @@
 //! [`Encoder`] is the seam between the engine and the model: production uses ONNX (see
 //! [`crate::onnx`]), tests use a deterministic fake so the whole pipeline runs without weights.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
@@ -133,6 +133,46 @@ pub fn reason(query: &str, doc: &str) -> String {
     }
 }
 
+/// Files to (re-)embed and the set of files that currently exist; computed without touching the
+/// index so it can run outside any lock.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Plan {
+    pub current: HashSet<String>,
+    pub todo: Vec<(String, FileKey)>,
+    pub deleted: usize,
+}
+
+impl Plan {
+    pub fn is_empty(&self) -> bool {
+        self.todo.is_empty() && self.deleted == 0
+    }
+}
+
+/// Lists indexable files and compares their change keys with what is indexed.
+pub fn plan_changes(root: &Path, known: &HashMap<String, FileKey>) -> Result<Plan, EngineError> {
+    let current: HashSet<String> = list_files(root)?
+        .into_iter()
+        .filter(|f| indexable(f))
+        .collect();
+    let mut todo: Vec<(String, FileKey)> = Vec::new();
+    let mut sorted: Vec<&String> = current.iter().collect();
+    sorted.sort();
+    for f in sorted {
+        let Ok(key) = FileKey::of(&root.join(f)) else {
+            continue;
+        };
+        if known.get(f.as_str()) != Some(&key) {
+            todo.push((f.clone(), key));
+        }
+    }
+    let deleted = known.keys().filter(|k| !current.contains(*k)).count();
+    Ok(Plan {
+        current,
+        todo,
+        deleted,
+    })
+}
+
 /// The engine for one repository.
 pub struct Engine<E: Encoder> {
     root: PathBuf,
@@ -210,6 +250,40 @@ impl<E: Encoder> Engine<E> {
 
     /// Re-embeds changed and new files and drops deleted ones. Serves the old snapshot meanwhile.
     pub fn refresh(&mut self) -> Result<RefreshStats, EngineError> {
+        let plan = plan_changes(&self.root, &self.known_keys())?;
+        self.refresh_with(plan)
+    }
+
+    fn sync(&mut self) -> Result<RefreshStats, EngineError> {
+        let plan = plan_changes(&self.root, &self.known_keys())?;
+        self.apply(plan)
+    }
+
+    /// Owned copy of the indexed files and their change keys, for planning outside a lock.
+    pub fn known_keys(&self) -> HashMap<String, FileKey> {
+        self.index
+            .keys()
+            .into_iter()
+            .map(|(p, k)| (p.to_string(), k))
+            .collect()
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Applies a refresh plan computed by [`plan_changes`] (possibly on another thread), walking
+    /// the index lifecycle through Stale → Refreshing → Ready. An empty plan changes nothing.
+    pub fn refresh_with(&mut self, plan: Plan) -> Result<RefreshStats, EngineError> {
+        if plan.is_empty() && self.lifecycle.state() == IndexState::Ready {
+            return Ok(RefreshStats {
+                embedded: 0,
+                removed: 0,
+                documents: self.index.len(),
+                from_snapshot: false,
+                ms: 0,
+            });
+        }
         if matches!(
             self.lifecycle.state(),
             IndexState::Uninitialized | IndexState::Error
@@ -220,7 +294,7 @@ impl<E: Encoder> Engine<E> {
             self.step(IndexEvent::FilesChanged)?;
         }
         self.step(IndexEvent::Refresh)?;
-        match self.sync() {
+        match self.apply(plan) {
             Ok(stats) => {
                 self.step(IndexEvent::RefreshDone)?;
                 Ok(stats)
@@ -232,37 +306,27 @@ impl<E: Encoder> Engine<E> {
         }
     }
 
-    fn sync(&mut self) -> Result<RefreshStats, EngineError> {
+    fn apply(&mut self, plan: Plan) -> Result<RefreshStats, EngineError> {
         let start = Instant::now();
-        let files: Vec<String> = list_files(&self.root)?
-            .into_iter()
-            .filter(|f| indexable(f))
-            .collect();
-        let current: HashSet<&str> = files.iter().map(String::as_str).collect();
-        let known = self.index.keys();
-        let mut todo: Vec<(String, FileKey)> = Vec::new();
-        for f in &files {
-            let Ok(key) = FileKey::of(&self.root.join(f)) else {
-                continue;
-            };
-            if known.get(f.as_str()) != Some(&key) {
-                todo.push((f.clone(), key));
-            }
-        }
-        let changed: HashSet<String> = todo.iter().map(|(f, _)| f.clone()).collect();
+        let changed: HashSet<&str> = plan.todo.iter().map(|(f, _)| f.as_str()).collect();
         let before = self.index.len();
-        self.index
-            .retain_paths(&|e| current.contains(e.path.as_str()) && !changed.contains(&e.path));
+        self.index.retain_paths(&|e| {
+            plan.current.contains(e.path.as_str()) && !changed.contains(e.path.as_str())
+        });
         let removed = before - self.index.len();
-        let mut docs = Vec::with_capacity(todo.len());
-        let mut entries = Vec::with_capacity(todo.len());
-        for (path, key) in todo {
-            let Ok(text) = wn_sources::read_text(&self.root.join(&path), MAX_FILE_BYTES) else {
+        let mut docs = Vec::with_capacity(plan.todo.len());
+        let mut entries = Vec::with_capacity(plan.todo.len());
+        for (path, key) in &plan.todo {
+            let Ok(text) = wn_sources::read_text(&self.root.join(path), MAX_FILE_BYTES) else {
                 continue;
             };
-            let doc = wn_sources::file_doc(&path, &text);
+            let doc = wn_sources::file_doc(path, &text);
             docs.push(doc.clone());
-            entries.push(Entry { path, key, doc });
+            entries.push(Entry {
+                path: path.clone(),
+                key: *key,
+                doc,
+            });
         }
         for (chunk_docs, chunk_entries) in docs.chunks(64).zip(entries.chunks(64)) {
             let vectors = self

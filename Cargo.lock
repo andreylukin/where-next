@@ -1411,6 +1411,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "wn-core",
+ "wn-embed",
  "wn-sources",
 ]
 
