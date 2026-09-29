@@ -26,18 +26,16 @@ seen, by people who did not build it.
 
 ## P1: evidence
 
-1. **A demonstrated benefit in real use (launch blocker).** Pilot 1 is done and did not clear the bar.
-   On 50 SWE-bench Pro tasks with a cheap, capable agent, hints got the agent to a correct file about
-   2.6 steps sooner, but success was unchanged and cost per resolved task was 5–12% higher, within
-   noise. The pre-declared bar (at least 15% lower cost per resolved task, no more than 2 points of
-   success harm) was not met, so we make no agent-savings claim. Details:
-   [benchmarks/agent-trial.md](benchmarks/agent-trial.md). The next trials, where search is more likely
-   to be the bottleneck:
+1. **A demonstrated benefit in real use (launch blocker).** Three agent trials with a cheap, capable
+   agent found none: a 50-task pilot, a 50-task large-repository trial, and a pre-declared confirmatory
+   trial on 58 new tasks from repositories with 3,000–13,600 files (cost per resolved task 1.05×,
+   interval 0.82–1.37; 27 vs 30 solved). Hints roughly halved the tokens spent before the agent first read
+   a right file, but not cost or success. So the pitch is **fast local navigation for people, and an
+   opt-in tool for agents**, never "saves agent cost". Details:
+   [benchmarks/agent-trial.md](benchmarks/agent-trial.md). What could still show a benefit:
+   - **People navigating by hand:** time to the first right file on real tasks, since hints did shorten
+     that for the agent.
    - **More expensive agents,** where each saved turn is worth more.
-   - **Very large repositories** (tens of thousands of files), where finding the right place dominates.
-   - **People navigating by hand:** time to the first right file, measured on real tasks, since hints
-     did shorten that for the agent.
-   - **Calibrated abstention,** so hints are shown when they are likely right and withheld otherwise.
 2. **Public, reproducible benchmark.** Pinned repositories and tasks, baselines (ripgrep, BM25,
    zero-shot embeddings, SweRankEmbed), cold and warm timings, and the cases where we lose. See
    [benchmarks/](benchmarks/README.md).

@@ -85,8 +85,8 @@ index warm, so repeated calls are fast; it exits after 15 idle minutes.
 - **"No confident hint" means `wn` abstained**: nothing scored above the calibrated threshold for
   that kind of query, so use your usual search. `--strict` abstains more (fewer, more precise
   answers); `--no-abstain` always answers.
-- **`--start` is for the start of a task in a large repository.** It is skipped below 3,000 source
-  files, where hints didn't help in trials.
+- **`--start` is an opt-in task-start hint for large repositories.** It is skipped below 3,000 source
+  files. In agent trials it didn't lower cost at any size, so it is off unless you ask for it.
 - **`--json`** gives machine-readable output (`state`, `files`, `adapter`), including abstain and
   fail-open states.
 
@@ -164,15 +164,22 @@ history replay, much of its gain can also be had from simple history and file-fr
 
 ## What we have not shown yet
 
-- **That it saves a coding agent cost or time.** In a [controlled pilot](benchmarks/agent-trial.md) on
-  50 SWE-bench Pro tasks with a cheap, capable agent, success was unchanged (32/50 without hints,
-  31–32/50 with) and cost per resolved task was 5–12% *higher*, within noise. The agent called the tool
-  on its own in only 6–11 of 50 tasks, and the per-repo adapter showed no benefit there. The
-  pre-declared bar (at least 15% cheaper, at most 2 points of success harm) was not met. A follow-up on
-  large repositories (median about 5,400 files) was suggestive, with cost per resolved task at 0.89 of
-  the no-hint baseline, but its interval (0.67–1.19) includes no change; a confirmatory trial on
-  repositories with 3,000+ files is running. We do not claim agent savings.
-- **Whether it helps people navigating by hand, or more expensive agents.** Not yet measured.
+- **That it saves a coding agent cost or time.** Three [controlled trials](benchmarks/agent-trial.md)
+  with a cheap, capable agent found no benefit from automatic start hints, at any repository size tested:
+  - a 50-task pilot on SWE-bench Pro: success unchanged, cost per resolved task 5–12% *higher* (within
+    noise);
+  - 50 tasks on large repositories (median about 5,400 files): cost ratio 0.89, interval 0.67–1.19;
+  - a **pre-declared confirmatory trial** on 58 new tasks from 17 repositories with 3,038–13,649 files:
+    cost per resolved task 1.05× the no-hint baseline (0.82–1.37; 0.82–1.50 by repository), 27 vs 30
+    solved (−5.2 points, −13.8 to +3.4). The hint roughly halved the tokens spent before the agent first
+    read a right file (10.2k vs 18.6k median), but that didn't turn into lower cost or more solves, and
+    the size trend suggested by the second trial did not replicate.
+
+  So we don't claim agent savings. `wn` is positioned as fast local navigation for people and an
+  **opt-in** tool for agents: the start hint (`wn ask --start`, or the optional Claude Code hook) is off
+  by default.
+- **Whether it helps people navigating by hand, or more expensive agents.** Not yet measured; these are
+  the open questions.
 - **Conversational follow-ups** ("now do the same for the other handler") score about .31 hit@3. They
   are not a target: callers are asked to send self-contained queries instead.
 - **Well-calibrated abstention for every kind of query.** Thresholds are per model and per query kind:
