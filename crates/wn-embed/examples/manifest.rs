@@ -11,7 +11,7 @@ const CANDIDATES: [&str; 6] = [
     "tokenizer.json",
     "model.onnx",
     "model.onnx.data",
-    "model.int8.onnx",
+    "model.q8.onnx",
     "fixture.json",
 ];
 

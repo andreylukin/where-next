@@ -44,7 +44,7 @@ pub fn query_for(spec: &ModelSpec, item: &QueryInput) -> String {
 
 impl OnnxEncoder {
     /// Verifies `dir` against its manifest, then loads it (`graph`: `model.onnx` or
-    /// `model.int8.onnx`; default int8 when present).
+    /// `model.q8.onnx`; default fp32 when present).
     pub fn open(dir: &Path, graph: Option<&str>) -> Result<Self, String> {
         let mut store = ModelStore::new(dir, ModelSource::LocalDir(dir.to_path_buf()));
         store.ensure().map_err(|e| e.to_string())?;
