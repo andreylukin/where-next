@@ -9,6 +9,10 @@ A stranger installs `wn`, runs it on **their own repository**, and gets a surpri
 under 60 seconds. Everything below either makes that moment happen or amplifies it. If strangers
 cannot reproduce a good answer without help, we postpone publicity and fix the first run.
 
+**The pitch:** fast, local, private navigation for people and agents. It finds the file you mean in
+milliseconds, and learns your repository's history. We don't pitch it as an agent cost saver: our first
+controlled trial did not show one (see below).
+
 ## P0: first answer in 60 seconds
 
 - `wn init` indexes the repository and fits the per-repo adapter from its git history.
@@ -22,30 +26,38 @@ seen, by people who did not build it.
 
 ## P1: evidence
 
-1. **Agent trial (launch blocker).** A controlled trial of the same agent with and without `wn`
-   hints, on tasks from repositories held out from training. We report success rate, billed tokens,
-   cost per resolved task, wall time, search and read calls, and wrong-hint detours, including
-   failures and timeouts. The pre-declared bar: at least 15% lower cost per resolved task, with no
-   more than 2 points of success-rate harm. If the trial does not clear it, we do not claim agent
-   savings.
+1. **A demonstrated benefit in real use (launch blocker).** Pilot 1 is done and did not clear the bar.
+   On 50 SWE-bench Pro tasks with a cheap, capable agent, hints got the agent to a correct file about
+   2.6 steps sooner, but success was unchanged and cost per resolved task was 5–12% higher, within
+   noise. The pre-declared bar (at least 15% lower cost per resolved task, no more than 2 points of
+   success harm) was not met, so we make no agent-savings claim. Details:
+   [benchmarks/agent-trial.md](benchmarks/agent-trial.md). The next trials, where search is more likely
+   to be the bottleneck:
+   - **More expensive agents,** where each saved turn is worth more.
+   - **Very large repositories** (tens of thousands of files), where finding the right place dominates.
+   - **People navigating by hand:** time to the first right file, measured on real tasks, since hints
+     did shorten that for the agent.
+   - **Calibrated abstention,** so hints are shown when they are likely right and withheld otherwise.
 2. **Public, reproducible benchmark.** Pinned repositories and tasks, baselines (ripgrep, BM25,
    zero-shot embeddings, SweRankEmbed), cold and warm timings, and the cases where we lose. See
    [benchmarks/](benchmarks/README.md).
-3. **Honest limitations** in the README: short conversational follow-ups are weak; exact strings and
-   symbols are often better served by `rg`.
+3. **Honest limitations** in the README: no demonstrated agent savings yet; short conversational
+   follow-ups are weak; exact strings and symbols are often better served by `rg`.
 
 Preliminary numbers we can already stand behind (hit@k = at least one file the real fix changed is
 in the top k):
 
 | Benchmark | Zero-shot | Fine-tuned | + per-repo adapter |
 |---|---|---|---|
-| ContextBench, 994 tasks in repositories held out from fine-tuning (hit@3) | .54 | .72 | .78 |
+| ContextBench, 999 tasks in repositories with no training data (hit@3) | .52 | .72 | .78 |
 | ContextBench, all 1,136 tasks (hit@3) | .54 | .74 | .79 |
 | History replay, one private repository, matched 1,510 commits (hit@3) | .32 | .65 | .80 |
 
-These come from the Python research prototype (Qwen3-Embedding-0.6B fine-tune). The 300M-parameter
-EmbeddingGemma fine-tune scores .70, or .76 with the adapter, on all 1,136 ContextBench tasks, up
-from .49 zero-shot. SweRankEmbed-Small, the closest published retriever, scores .62 zero-shot.
+These come from the Python research prototype (Qwen3-Embedding-0.6B fine-tune). On the clean
+ContextBench tasks, symbol-aware lexical search scores .53, 20 points below the fine-tuned model. The
+300M-parameter EmbeddingGemma, fine-tuned on more data with mined hard negatives, scores .73, or .79
+with the adapter, on all 1,136 tasks. SweRankEmbed-Small, the closest published retriever, scores .62
+zero-shot.
 
 ## P2: zero-friction install
 
@@ -74,7 +86,7 @@ self-promotion rules.
 
 1. **Launch:** Show HN (the working tool, the pain, one honest before/after, the benchmark with
    losses); r/rust (how it's built: single binary, ONNX inference, state machines); r/ClaudeAI (a
-   copy-paste Claude Code setup and the measured token savings); r/LocalLLaMA (local model, CPU
+   copy-paste Claude Code setup, and what the agent trials did and did not show); r/LocalLLaMA (local model, CPU
    speed, model license).
 2. **Integration news:** MCP registry listing, Cursor and VS Code guides, editor plugins.
 3. **Training write-up:** how the model was trained from outcome labels, plus the dataset and model
