@@ -31,12 +31,14 @@ Metrics are defined once, in [metrics.md](metrics.md).
 
 hit@3 = at least one file the real change touched is in the top 3.
 
-| Benchmark | BM25 | Zero-shot | SweRankEmbed-Small | Fine-tuned | + adapter |
-|---|---|---|---|---|---|
-| ContextBench, all 1,136 tasks | .37 | .54 | .62 | .74 | .79 |
-| ContextBench, 994 tasks in repositories held out from fine-tuning | | .54 | | .72 | .78 |
-| History replay, one private repository, matched 1,510 commits | | .32 | | .65 | .80 |
+| Benchmark | Zero-shot | Qwen3-Emb-0.6B fine-tuned (+ adapter) | **EmbeddingGemma-300M fine-tuned, the default** (+ adapter) |
+|---|---|---|---|
+| ContextBench, official 500-task subset | .49 | .73 (.80) | **.76 (.81)** |
+| ContextBench, 994 tasks in repositories held out from fine-tuning | .52 | .72 (.78) | **.76 (.80)** |
+| History replay, one private multi-language repository with 8 architecture rewrites (1,510 matched commits) | .32 | .65 (.80) | **.70 (.83)** |
 
-Fine-tuned = Qwen3-Embedding-0.6B trained on outcome labels. The EmbeddingGemma-300M fine-tune scores
-.70 on all 1,136 ContextBench tasks (.76 with the adapter). Warm MCP query latency in the prototype is
-82 to 198 ms at p95 on repositories of 1,000 to 20,000 files.
+The default model is the EmbeddingGemma-300M fine-tune (`gemma-xl1`, about 1.1M training examples,
+mined hard negatives, v2 query layout); file-level top 5: Multi-SWE-bench .66, SWE-PolyBench .70. On
+all 1,136 ContextBench tasks: BM25 .37, SweRankEmbed-Small .62 zero-shot, Qwen fine-tune .74 (.79 with
+the adapter). The Rust `wn` answers warm MCP queries in about 21 ms at p95 on kubernetes (31,000 files);
+see [docs/building.md](../docs/building.md).

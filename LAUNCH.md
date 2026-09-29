@@ -47,17 +47,15 @@ seen, by people who did not build it.
 Preliminary numbers we can already stand behind (hit@k = at least one file the real fix changed is
 in the top k):
 
-| Benchmark | Zero-shot | Fine-tuned | + per-repo adapter |
+| Benchmark | Zero-shot | Qwen3-Emb-0.6B fine-tuned (+ adapter) | **EmbeddingGemma-300M fine-tuned, the default** (+ adapter) |
 |---|---|---|---|
-| ContextBench, 999 tasks in repositories with no training data (hit@3) | .52 | .72 | .78 |
-| ContextBench, all 1,136 tasks (hit@3) | .54 | .74 | .79 |
-| History replay, one private repository, matched 1,510 commits (hit@3) | .32 | .65 | .80 |
+| ContextBench, official 500-task subset | .49 | .73 (.80) | **.76 (.81)** |
+| ContextBench, 994 tasks in repositories held out from fine-tuning | .52 | .72 (.78) | **.76 (.80)** |
+| History replay, one private multi-language repository with 8 architecture rewrites (1,510 matched commits) | .32 | .65 (.80) | **.70 (.83)** |
 
-These come from the Python research prototype (Qwen3-Embedding-0.6B fine-tune). On the clean
-ContextBench tasks, symbol-aware lexical search scores .53, 20 points below the fine-tuned model. The
-300M-parameter EmbeddingGemma, fine-tuned on more data with mined hard negatives, scores .73, or .79
-with the adapter, on all 1,136 tasks. SweRankEmbed-Small, the closest published retriever, scores .62
-zero-shot.
+All hit@3, preliminary. On the clean ContextBench tasks, symbol-aware lexical search scores .53, 20
+points below the Qwen fine-tune. SweRankEmbed-Small, the closest published retriever, scores .62
+zero-shot on all 1,136 tasks.
 
 ## P2: zero-friction install
 
