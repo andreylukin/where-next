@@ -1,0 +1,120 @@
+# Release binaries for `wn`.
+#
+# - Pull requests that touch release files, and manual runs, are DRY RUNS: they build every
+#   target, package it, write checksums and an SBOM, and upload them as workflow artifacts.
+#   Nothing is published.
+# - Only a pushed `v*` tag publishes: it attests build provenance (Sigstore) for every archive
+#   and creates a draft GitHub release with the archives, checksums and SBOMs attached.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "packaging/**"
+      - "install.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # No x86_64 macOS: ONNX Runtime ships no prebuilt binaries for it. Linux builds use
+        # Ubuntu 24.04 because the prebuilt ONNX Runtime needs its newer libstdc++ (glibc 2.39+).
+        include:
+          - { target: aarch64-apple-darwin, os: macos-14 }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-24.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked -p where-next --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: packaging/package.sh "${{ matrix.target }}" "${GITHUB_REF_NAME}"
+      - name: SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: target/${{ matrix.target }}/release
+          format: spdx-json
+          output-file: dist/wn-${{ matrix.target }}.spdx.json
+          upload-artifact: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wn-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  crates:
+    name: crates.io dry run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo publish --workspace --dry-run (never uploads)
+        run: cargo publish --workspace --dry-run --locked
+
+  checksums:
+    name: checksums
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS
+        run: |
+          cd dist
+          sha256sum wn-* > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-run
+          path: dist/*
+
+  publish:
+    name: publish (tags only)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: checksums
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dry-run
+          path: dist
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/wn-*.tar.gz, dist/wn-*.zip"
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" --draft --verify-tag \
+            --title "${GITHUB_REF_NAME}" --notes "See CHANGELOG.md."

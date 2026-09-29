@@ -11,5 +11,6 @@
 | [FAQ](faq.md) | Why not grep, why not an editor index, and other common questions |
 
 Status: the Rust tool is being built (milestone M1 in [PLAN.md](../PLAN.md)). The core, git mining,
-source extraction, ONNX inference and the MCP server exist; the `wn` command does not yet. Pages describe
+source extraction, ONNX inference, the MCP server and the `wn` command exist (build from source; no releases yet). Pages describe
 the intended behaviour and are marked where a feature does not exist yet.
+- [install.md](install.md): installing `wn`, verifying releases, and pulling models.

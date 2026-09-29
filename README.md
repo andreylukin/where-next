@@ -28,6 +28,20 @@ wn ask "retry the upload when S3 times out"
 claude mcp add where-next -- wn mcp      # expose it to Claude Code
 ```
 
+## Install
+
+> **Coming soon.** Release binaries, Homebrew and crates.io are set up but not published yet.
+> Today, build from source: [docs/building.md](docs/building.md).
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh   # verifies SHA-256
+brew install andreylukin/tap/where-next
+cargo install where-next
+```
+
+Models are downloaded separately (`wn model pull`) and have their own license. Details and how to
+verify a release: [docs/install.md](docs/install.md).
+
 ## Preliminary results
 
 From the research prototype. Numbers are **hit@3**: the share of tasks where *at least one* of the
