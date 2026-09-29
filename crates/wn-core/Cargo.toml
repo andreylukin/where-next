@@ -11,13 +11,14 @@ rust-version.workspace = true
 half = "2.7"
 ndarray = "0.17"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 sha1_smol = "1"
 wn-sources = { path = "../wn-sources" }
 
 [dev-dependencies]
 proptest.workspace = true
 proptest-state-machine.workspace = true
-serde_json = "1"
+tempfile = "3"
 
 [lints]
 workspace = true

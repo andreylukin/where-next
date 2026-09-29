@@ -61,9 +61,9 @@ pub fn query_text(query: &str, context: &str, granularity: Granularity) -> Strin
     format!("{}{text}", granularity.instruction())
 }
 
-/// The query built from a past commit when fitting the personal adapter: the subject plus the
+/// The task text for a past commit when fitting the personal adapter: the subject plus the
 /// first body line when it is short, as evaluated on real repository histories.
-pub fn history_query(subject: &str, body: &str) -> String {
+pub fn history_body(subject: &str, body: &str) -> String {
     let first = split_lines(body)
         .into_iter()
         .map(py_strip)
@@ -74,7 +74,16 @@ pub fn history_query(subject: &str, body: &str) -> String {
         query.push('\n');
         query.push_str(first);
     }
-    format!("{INSTRUCT_FILE}{}", take_chars(&query, QUERY_LIMIT))
+    query
+}
+
+/// The full query text for a past commit (instruction + [`history_body`]); equal to
+/// `query_text(history_body(..), "", File)`.
+pub fn history_query(subject: &str, body: &str) -> String {
+    format!(
+        "{INSTRUCT_FILE}{}",
+        take_chars(&history_body(subject, body), QUERY_LIMIT)
+    )
 }
 
 /// Counts model tokens for a text (the embedding backend's tokenizer).

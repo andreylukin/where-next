@@ -173,3 +173,14 @@ fn rrf_matches_reference() {
         assert_eq!(rrf(&orders, 60), c.fused);
     }
 }
+
+#[test]
+fn history_query_is_query_text_of_history_body() {
+    use wn_core::text::history_body;
+    for c in golden().history {
+        assert_eq!(
+            query_text(&history_body(&c.subject, &c.body), "", Granularity::File),
+            c.text
+        );
+    }
+}

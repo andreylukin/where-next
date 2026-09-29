@@ -9,8 +9,11 @@
 
 pub mod adapter;
 pub mod adapter_lifecycle;
+pub mod encoder;
+pub mod index;
 pub mod index_lifecycle;
 pub mod machine;
 pub mod query_lifecycle;
 pub mod rank;
+pub mod runtime;
 pub mod text;
