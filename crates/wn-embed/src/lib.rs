@@ -6,11 +6,14 @@
 //! - [`store`]: fetches model files into the cache and drives the lifecycle.
 //! - [`spec`]: `wn-model.json` and the exact query/document text each model family expects.
 //! - `embedder` (feature `onnx`, on by default): ONNX Runtime inference.
+//! - `core_encoder` (feature `onnx`): the model as a `wn_core::encoder::Encoder`.
 
 pub mod lifecycle;
 pub mod spec;
 pub mod store;
 pub mod verify;
 
+#[cfg(feature = "onnx")]
+pub mod core_encoder;
 #[cfg(feature = "onnx")]
 pub mod embedder;

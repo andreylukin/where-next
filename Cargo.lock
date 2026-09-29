@@ -1893,7 +1893,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "wn-core",
- "wn-embed",
+ "wn-git",
  "wn-sources",
 ]
 
@@ -1932,6 +1932,7 @@ dependencies = [
  "tokio",
  "wn-core",
  "wn-daemon",
+ "wn-embed",
 ]
 
 [[package]]
