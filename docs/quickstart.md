@@ -1,7 +1,9 @@
 # Quickstart
 
 > **Early.** `wn` builds and runs from source today; there are no release binaries or public model
-> weights yet. Without a model, `wn` uses a lexical fallback and says so.
+> weights yet. Without a model, `wn` uses a much weaker lexical fallback and says so (`wn status`
+> shows `lexical fallback: no model installed`). If you have a model directory, install it with
+> `wn model pull <name> --source <dir|https-url|hf:owner/repo>`.
 
 ## Install
 
@@ -18,18 +20,31 @@ This builds `wn` from the latest `main` (a few minutes the first time) and insta
 ```sh
 cd your-repo
 wn init
-wn ask "retry the upload when S3 times out"
+wn status
+wn ask "where are gitignore rules matched against paths"
 ```
 
-`wn init` does three things, once per repository:
+`wn init` does two things, once per repository:
 
-1. Downloads the model on first use (and shows its license notice), then verifies its checksum.
-2. Indexes the repository: one vector per file and function skeleton. Untracked files are included;
-   files ignored by git are not.
-3. Fits the per-repo adapter from the repository's recent commit history, in seconds on CPU.
+1. Indexes the repository with the best installed model (`gemma-xl1`, else `gemma-g2r`, else `v2b`,
+   else the lexical fallback): one vector per file and function skeleton, plus config files.
+   Untracked files are included; files ignored by git are not.
+2. Fits the per-repo adapter from the repository's recent commit history, in seconds on CPU.
 
-`wn ask` returns at most 3 results, each with a similarity score and a short reason, or abstains
-when nothing is confidently relevant. Scores are similarities, not probabilities.
+`wn status` shows which model answers. `wn ask` returns at most 3 files with their similarity
+scores, or abstains ("no confident hint … use normal search") when nothing scores above the
+calibrated threshold. Scores are cosine similarities, not probabilities. On a clone of ripgrep:
+
+```text
+$ wn ask "where are gitignore rules matched against paths"
+where-next hints (cosine similarity; adapter on):
+0.50  crates/ignore/src/gitignore.rs
+0.42  crates/ignore/src/dir.rs
+0.42  crates/ignore/src/overrides.rs
+```
+
+Query tips (self-contained queries, grep for exact strings, `--start`, `--json`) are in the
+[README](../README.md#writing-good-queries).
 
 ## Try it on your repository in 60 seconds
 
@@ -40,8 +55,16 @@ wn bench
 replays your repository's recent commits as if each were a new task (candidates are the files as
 they were just before the commit) and shows how often the files that commit changed were in the top
 1, 3 and 10 suggestions, for plain lexical search, the model, and the model with your repository's
-adapter. It is read-only. See [history replay](../benchmarks/history-replay.md) for the protocol and
-flags.
+adapter. It is read-only. On the ripgrep clone (about 45 s):
+
+```text
+                      hit@1  hit@3 hit@10    MRR      n
+  lexical (BM25)      0.267  0.487  0.743  0.420    300
+  model               0.387  0.737  0.923  0.586    300
+  model + adapter     0.647  0.810  0.940  0.747    300
+```
+
+See [history replay](../benchmarks/history-replay.md) for the protocol and flags.
 
 ## Use it from an agent
 
@@ -75,4 +98,9 @@ Clients without skills can use the MCP adapter instead: `claude mcp add where-ne
   `wn status` shows progress.
 - **"empty_index" or "unsupported_scope"**: nothing indexable was found for the request. Use your
   usual search; `wn` never reports "nothing relevant" when it simply can't see the files.
-- **Model checksum mismatch**: delete the cached model and run `wn init` again.
+- **Answers look like keyword matches**: `wn status` probably says `lexical fallback: no model
+  installed`; see the note at the top.
+- **Model checksum mismatch**: `wn model remove <name>`, then `wn model pull` it again.
+- **Daemon trouble**: `wn daemon status`, `wn daemon stop` (it restarts on the next call), or answer
+  in-process with `--no-daemon` / `WN_NO_DAEMON=1`. Log: `~/.cache/where-next/daemon.log`.
+- **Don't log queries**: `wn ask --no-log` or `WN_NO_LOG=1` (query text is never stored either way).

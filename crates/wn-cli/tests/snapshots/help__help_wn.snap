@@ -1,0 +1,52 @@
+---
+source: crates/wn-cli/tests/help.rs
+expression: help(path)
+---
+Fast local "where next" hints for coding agents and developers
+
+Usage: wn [OPTIONS] <COMMAND>
+
+Commands:
+  init      Index the repository and fit its personal adapter from git history
+  ask       Rank the files (and optionally functions) to open next for a task
+  status    Show the index, coverage and adapter state
+  train     Refit the personal adapter now
+  rollback  Restore the previous adapter (or remove the only one)
+  mcp       Serve hints over MCP (stdio)
+  bench     Measure hit@k on this repository's own history (default) or on ContextBench
+  update    Rebuild wn from the tip of main (or --ref) of its source repository
+  report    Show an anonymous usage report (numbers and buckets only) and, if you confirm, post it as a GitHub issue to help improve wn. Nothing is sent without your confirmation
+  daemon    Start, stop or inspect the background daemon that keeps models and indexes warm
+  skill     Install or update the where-next skill for Claude Code, Codex and Cursor
+  model     Install, list or remove models
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+      --path <PATH>
+          Repository (or any directory inside it)
+          
+          [default: .]
+
+      --json
+          Print JSON instead of text
+
+      --model <MODEL>
+          Model directory (default: `$WN_MODEL_DIR`, else the best installed model)
+
+      --no-daemon
+          Answer in this process instead of the background daemon (also `WN_NO_DAEMON=1`)
+
+  -h, --help
+          Print help
+
+  -V, --version
+          Print version
+
+Examples:
+  wn init                                  index this repository, fit its adapter from git history
+  wn status                                which model answers ("lexical fallback" = no model installed)
+  wn ask "where is the retry logic for S3 upload timeouts"
+  wn bench                                 replay this repository's history: hit@1/3/10
+  wn skill sync                            let Claude Code / Codex / Cursor call wn
+
+Docs: https://github.com/andreylukin/where-next#quick-start

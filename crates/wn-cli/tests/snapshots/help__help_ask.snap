@@ -1,0 +1,72 @@
+---
+source: crates/wn-cli/tests/help.rs
+expression: help(path)
+---
+Rank the files (and optionally functions) to open next for a task
+
+Usage: wn ask [OPTIONS] <QUERY>
+
+Arguments:
+  <QUERY>
+          The task or request
+
+Options:
+      --context-file <CONTEXT_FILE>
+          File with recent context (conversation, last tool output); `-` reads stdin
+
+      --path <PATH>
+          Repository (or any directory inside it)
+          
+          [default: .]
+
+      --functions
+          Also rank functions
+
+      --json
+          Print JSON instead of text
+
+  -k <K>
+          Maximum file hints
+          
+          [default: 3]
+
+      --model <MODEL>
+          Model directory (default: `$WN_MODEL_DIR`, else the best installed model)
+
+      --no-adapter
+          Do not apply the personal adapter
+
+      --no-daemon
+          Answer in this process instead of the background daemon (also `WN_NO_DAEMON=1`)
+
+      --strict
+          Use the strict abstain thresholds (fewer, more precise answers)
+
+      --no-abstain
+          Never abstain
+
+      --start
+          A task-start hint: skipped in repositories with fewer than --start-min-files files
+
+      --start-min-files <START_MIN_FILES>
+          Minimum source files for --start hints
+          
+          [default: 3000]
+
+      --no-log
+          Do not record this query in the local usage log (see `wn report`)
+
+  -h, --help
+          Print help
+
+Good queries are self-contained: say what you are looking for, plus any error text.
+Use rg/grep for exact strings and identifiers. Results are hints: open the files and check.
+"no confident hint" means wn abstained (nothing above the calibrated threshold): use normal search.
+
+Examples:
+  wn ask "where are gitignore rules matched against paths"          good: says what to find
+  wn ask "the other one"                                            bad: nothing to match
+  wn ask "why does the upload fail" --context-file error.txt        add the error or last tool output
+  cargo test 2>&1 | wn ask "fix the failing test" --context-file -
+  wn ask --json "where is the config loaded"                        state, files, adapter
+  wn ask --start "add rate limiting to the API"                     task start; skipped below 3,000 files

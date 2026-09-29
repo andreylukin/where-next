@@ -1,0 +1,36 @@
+---
+source: crates/wn-cli/tests/help.rs
+expression: help(path)
+---
+Show an anonymous usage report (numbers and buckets only) and, if you confirm, post it as a GitHub issue to help improve wn. Nothing is sent without your confirmation
+
+Usage: wn report [OPTIONS]
+
+Options:
+      --dry-run
+          Show the report and the issue link without posting
+
+      --path <PATH>
+          Repository (or any directory inside it)
+          
+          [default: .]
+
+      --json
+          Print JSON instead of text
+
+      --model <MODEL>
+          Model directory (default: `$WN_MODEL_DIR`, else the best installed model)
+
+      --no-daemon
+          Answer in this process instead of the background daemon (also `WN_NO_DAEMON=1`)
+
+  -h, --help
+          Print help
+
+The report holds only numbers, fixed labels and buckets: no repository names, paths, file names,
+commit messages or query text. You see all of it before anything is sent.
+
+Examples:
+  wn report --dry-run                      show the report and the issue link, post nothing
+  wn report                                show it, then post it as a GitHub issue if you answer y
+  wn --json report --dry-run               the report as JSON

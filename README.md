@@ -1,36 +1,94 @@
 # where-next
 
 A fast, local "where next" model for coding agents and developers. Given what you are working on,
-`wn` ranks the files, functions, configs and docs you are most likely to need next, and it learns
+`wn` ranks the files, functions and configs you are most likely to need next, and it learns
 your repositories from their git history, on your machine.
 
-> **Status: early.** This repository is the new home of a research prototype. `wn init`, `wn ask`
-> and `wn mcp` work end to end when built from source (the one-line installer below does that) with
-> a model directory installed locally; there are no release binaries or published model weights yet. See [PLAN.md](PLAN.md) and
+> **Status: early.** This repository is the new home of a research prototype. `wn` works end to end
+> when built from source (the one-line installer below does that). There are no release binaries or
+> published model weights yet, so unless you have a model directory, `wn` answers with a weaker
+> lexical fallback (see [About models](#quick-start)). See [PLAN.md](PLAN.md) and
 > [docs/building.md](docs/building.md).
 
-## What it will do
+## What it does
 
-- **Hint, don't drive.** You, or an agent such as Claude Code or Codex, ask `wn` where to look; it answers with
-  at most 3 paths (under 250 tokens) or abstains when it isn't confident. The agent stays in control.
+- **Hints, doesn't drive.** You, or an agent such as Claude Code or Codex, ask `wn` where to look; it
+  answers with at most 3 paths (under 250 tokens) or abstains when it isn't confident. The agent stays
+  in control.
 - **Local-first.** A small embedding model (about 300M parameters) runs on your laptop. Code, logs and
   usage stay on your machine. No telemetry.
 - **Learns your repos.** A tiny per-repository adapter is fitted from your commit history in about a
   second on CPU, without re-indexing, and keeps up as the codebase changes.
-- **Beyond code.** Configs, logs, docs and CLI help sections are planned resource types.
+- **Code and configs today.** Source files (and, with `--functions`, functions) and config files are
+  indexed; docs, logs and CLI help sections are planned resource types.
 
-Quick start:
+## Quick start
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh
+cd your-repo
 wn init                                  # index the repo, fit the adapter from git history
+wn status                                # which model answers (see "About models" below)
+wn ask "where are gitignore rules matched against paths"
+wn bench                                 # try it on your repo: replay its history, measure hit@k
 wn skill sync                            # teach Claude Code / Codex / Cursor when to call `wn`
-wn ask "retry the upload when S3 times out"
+```
+
+**About models.** There are no public model weights yet. Without a model, `wn` answers with a
+**lexical fallback** (keyword matching), which is much weaker than the model; `wn status` and
+`wn init` say which one is in use:
+
+```text
+model: gemma-xl1 (gemma-xl1-30ae960f08a8d9e8-model-wn-sources-v1)      # a model is installed
+model: hash-bow2-1024 (lexical fallback: no model installed)           # no model
+```
+
+If you have a model directory (or, later, a published one), install it with
+`wn model pull <name> --source <dir|https-url|hf:owner/repo>`; `wn` then uses it automatically.
+
+A real answer, on a clone of [ripgrep](https://github.com/BurntSushi/ripgrep) with the default model:
+
+```text
+$ wn ask "where are gitignore rules matched against paths"
+where-next hints (cosine similarity; adapter on):
+0.50  crates/ignore/src/gitignore.rs
+0.42  crates/ignore/src/dir.rs
+0.42  crates/ignore/src/overrides.rs
+```
+
+**Try it on your own repository.** `wn bench` replays your recent commits as if each were a new task
+(candidates are the files as they were just before the commit; the adapter only learns from earlier
+commits) and reports how often a file the commit changed was in the top 1, 3 and 10. It is read-only.
+On the same ripgrep clone (about 45 s):
+
+```text
+with the personal adapter (same 300 tasks)
+                      hit@1  hit@3 hit@10    MRR      n
+  lexical (BM25)      0.267  0.487  0.743  0.420    300
+  model               0.387  0.737  0.923  0.586    300
+  model + adapter     0.647  0.810  0.940  0.747    300
 ```
 
 Agents use `wn` through its CLI and a short [skill](skills/where-next/SKILL.md) (see
 [docs/skill.md](docs/skill.md)). A background daemon starts on first use and keeps the model and
 index warm, so repeated calls are fast; it exits after 15 idle minutes.
+
+### Writing good queries
+
+- **Say what you are looking for, in one self-contained sentence**, plus any error text you have:
+  `wn ask "where is the retry logic for S3 upload timeouts"`, or pass the error with
+  `wn ask "why does the upload fail" --context-file error.txt`. Terse follow-ups such as
+  "now the other one" have nothing to match; agents should rephrase them.
+- **Use `rg`/grep for exact strings and identifiers.** `wn` ranks by meaning; if you already know the
+  symbol name, search for it.
+- **Results are hints.** Open the files and check; scores are cosine similarities, not probabilities.
+- **"No confident hint" means `wn` abstained**: nothing scored above the calibrated threshold for
+  that kind of query, so use your usual search. `--strict` abstains more (fewer, more precise
+  answers); `--no-abstain` always answers.
+- **`--start` is for the start of a task in a large repository.** It is skipped below 3,000 source
+  files, where hints didn't help in trials.
+- **`--json`** gives machine-readable output (`state`, `files`, `adapter`), including abstain and
+  fail-open states.
 
 ### Other clients (MCP)
 
@@ -64,6 +122,19 @@ weights yet, so without a model `wn` uses a lexical fallback; install one with
 binaries, Homebrew and crates.io are set up but not published yet. Details:
 [docs/install.md](docs/install.md).
 
+## Troubleshooting
+
+| Symptom | What to do |
+|---|---|
+| Answers look like keyword matches | `wn status`: `lexical fallback: no model installed` means no model is in use (see "About models" above). |
+| Files you just added or changed are missing | Normally picked up in the background; `wn status` shows the index state, and `wn init` re-indexes now. |
+| Something about the daemon seems off | `wn daemon status`; `wn daemon stop` (it restarts on the next call); `--no-daemon` or `WN_NO_DAEMON=1` answers in-process. Log: `~/.cache/where-next/daemon.log`. |
+| You don't want queries logged locally | `wn ask --no-log`, or set `WN_NO_LOG=1` (the log feeds `wn report`; query text is never stored). |
+| Update, reinstall or remove | `wn update` (or re-run the installer); uninstall with `curl -fsSL …/install.sh \| sh -s -- --uninstall`. |
+| Model checksum mismatch | `wn model remove <name>`, then `wn model pull` it again. |
+
+More in [docs/quickstart.md](docs/quickstart.md#if-something-is-wrong) and the [FAQ](docs/faq.md).
+
 ## Preliminary results
 
 From the research prototype. Numbers are **hit@3**: the share of tasks where *at least one* of the
@@ -92,18 +163,20 @@ history replay, much of its gain can also be had from simple history and file-fr
 ## What we have not shown yet
 
 - **That it saves a coding agent cost or time.** In a [controlled pilot](benchmarks/agent-trial.md) on
-  50 SWE-bench Pro tasks with a cheap, capable agent, hints got the agent to a correct file about 2.6
-  steps sooner, but success was unchanged (32/50 without hints, 31–32/50 with) and cost per resolved
-  task was 5–12% *higher*, within noise. The agent called the tool on its own in only 6–11 of 50 tasks,
-  and the per-repo adapter showed no benefit there. The pre-declared bar (at least 15% cheaper, at most
-  2 points of success harm) was not met. We do not claim agent savings.
-- **Whether it helps where search is the bottleneck:** more expensive agents, very large repositories,
-  and people navigating by hand. These are the next trials.
-- **Conversational follow-ups** ("now do the same for the other handler"): still weak, about .31 hit@3
-  with the default model.
-- **Well-calibrated abstention for every kind of query.** Thresholds are now per model and per query
-  kind, and issue-style task starts never abstain, but error and conversational queries still use the
-  thresholds fitted on commit-message queries from one repository.
+  50 SWE-bench Pro tasks with a cheap, capable agent, success was unchanged (32/50 without hints,
+  31–32/50 with) and cost per resolved task was 5–12% *higher*, within noise. The agent called the tool
+  on its own in only 6–11 of 50 tasks, and the per-repo adapter showed no benefit there. The
+  pre-declared bar (at least 15% cheaper, at most 2 points of success harm) was not met. A follow-up on
+  large repositories (median about 5,400 files) was suggestive, with cost per resolved task at 0.89 of
+  the no-hint baseline, but its interval (0.67–1.19) includes no change; a confirmatory trial on
+  repositories with 3,000+ files is running. We do not claim agent savings.
+- **Whether it helps people navigating by hand, or more expensive agents.** Not yet measured.
+- **Conversational follow-ups** ("now do the same for the other handler") score about .31 hit@3. They
+  are not a target: callers are asked to send self-contained queries instead.
+- **Well-calibrated abstention for every kind of query.** Thresholds are per model and per query kind:
+  issue-style task starts never abstain, error queries have their own thresholds (fitted on about 1.2k
+  held-out error queries; some strict thresholds miss their precision target on the small test split),
+  and conversational queries use the defaults.
 - **Breadth.** The history replay covers a single project. For exact strings and identifiers, `rg` is
   usually the better tool; see the [FAQ](docs/faq.md).
 

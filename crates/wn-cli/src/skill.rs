@@ -36,6 +36,7 @@ pub const HOOK_COMMAND: &str = "wn hook claude-prompt";
 #[derive(Debug, Clone, Subcommand)]
 pub enum SkillAction {
     /// Install or update the where-next skill for coding agents.
+    #[command(after_help = SYNC_EXAMPLES)]
     Sync {
         /// Agents to sync (default: those detected in your home directory).
         #[arg(long = "agent", value_enum)]
@@ -64,6 +65,18 @@ pub enum SkillAction {
     /// Print the skill.
     Show,
 }
+
+const SYNC_EXAMPLES: &str = "\
+Shows what it will write and asks first. Only a marked where-next block is ever edited, and
+`wn update` re-syncs installed skills.
+
+Examples:
+  wn skill sync --dry-run                  show what would change, write nothing
+  wn skill sync                            agents detected in your home directory
+  wn skill sync --agent claude --yes
+  wn skill sync --project                  this repository's .claude/.agents/.cursor skills
+  wn skill sync --with-hook                also the Claude Code start-hint hook (large repos only)
+  wn skill sync --uninstall";
 
 /// `--agent` values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
