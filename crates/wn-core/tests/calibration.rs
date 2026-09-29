@@ -104,3 +104,48 @@ fn a_calibration_without_default_never_abstains_for_unlisted_kinds() {
     let c: Calibration = serde_json::from_str(r#"{"model": "m", "kinds": {}}"#).unwrap();
     assert_eq!(c.thresholds(QueryKind::Request, false, false), None);
 }
+
+#[test]
+fn error_kind_needs_a_real_error_not_the_word() {
+    use wn_core::rank::has_error;
+    for text in [
+        "TypeError: cannot read properties of undefined\n    at render (app.js:10:5)",
+        "src/main.go:12:3: error: undefined: foo",
+        "thread 'main' panicked at src/lib.rs:4:5",
+        "FAILED tests/test_api.py::test_login - AssertionError",
+        "npm ERR! code ELIFECYCLE",
+        "error[E0382]: borrow of moved value: `x`",
+    ] {
+        assert!(has_error(text), "{text}");
+    }
+    for text in [
+        "Rename ErrorBoundary to FallbackBoundary",
+        "Add an error message to the login form",
+        "Handle errors in the parser",
+        "Make the retry exception configurable",
+    ] {
+        assert!(!has_error(text), "{text}");
+        assert_eq!(QueryKind::classify(text, ""), QueryKind::Request, "{text}");
+    }
+    assert_eq!(
+        QueryKind::classify(
+            "the build fails with an error:\n`cargo test` exits early",
+            ""
+        ),
+        QueryKind::Error
+    );
+}
+
+#[test]
+fn conversational_needs_context_and_a_short_request() {
+    let ctx = "Assistant: I updated the settings page.\nEarlier change: add dark mode";
+    assert_eq!(
+        QueryKind::classify("now do the same for the profile page", ctx),
+        QueryKind::Conversational
+    );
+    assert_eq!(QueryKind::classify(&"x".repeat(400), ctx), QueryKind::Issue);
+    assert_eq!(
+        QueryKind::classify("now do the same for the profile page", ""),
+        QueryKind::Request
+    );
+}

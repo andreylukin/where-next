@@ -63,35 +63,79 @@ pub enum QueryKind {
     Conversational,
 }
 
-/// Words that mark an error or failing test (case-sensitive, as tools print them).
-const ERROR_MARKERS: &[&str] = &[
-    "Traceback",
-    "Error",
-    "error:",
-    "error[",
-    "Exception",
-    "exception",
-    "panic",
-    "FAILED",
-    "FAIL:",
-    "fatal:",
-    "Segmentation fault",
-    "stack trace",
-    "undefined reference",
+/// Patterns that only appear when a tool or runtime printed an error: stack frames, error lines,
+/// failing tests, crashes. One match is enough.
+const STRONG_ERROR: &[&str] = &[
+    r"Traceback \(most recent call last\)",
+    r#"(?m)^\s*File "[^"]+", line \d+"#,
+    r"(?m)^\s+at [\w$.<>\[\]/]+ ?\(.*:\d+(:\d+)?\)",
+    r"(?m)^\s+at .+:\d+:\d+\s*$",
+    r"(?m)^\s*(\w+\.)*[A-Z]\w*(Error|Exception)(: |:$|\()",
+    r"(?m)^\s*(error|Error|ERROR)(\[E\d+\])?: ",
+    r"(?m)^[^\s:]+:\d+(:\d+)?: (fatal )?error: ",
+    r"(?m)^\s*(thread '.+' )?panicked at ",
+    r"(?m)^panic: |\bpanic(ked|s)?\b",
+    r"(?m)^(FAILED|FAIL)[: ]|\bFAILED\b",
+    r"(?m)^E\s{3,}\S",
+    r"\bAssertionError\b",
+    r"Segmentation fault|core dumped|SIGSEGV",
+    r"undefined reference to",
+    r"(?m)^npm ERR!",
+    r"(?m)^fatal: ",
+    r"exit (code|status) [1-9]\d*\b",
+    r"\bUncaught \w+",
+    r"(?i)\bstack ?trace\b",
 ];
+/// Words that suggest an error in prose; they count only in pairs, in code-looking text.
+const WEAK_ERROR: &str =
+    r"(?i)\b(error|errors|exception|crash(es|ed)?|fails?|failing|failed|broken|raises?)\b";
+
+fn error_patterns() -> &'static (Vec<regex::Regex>, regex::Regex) {
+    static PATTERNS: std::sync::OnceLock<(Vec<regex::Regex>, regex::Regex)> =
+        std::sync::OnceLock::new();
+    PATTERNS.get_or_init(|| {
+        (
+            STRONG_ERROR
+                .iter()
+                .map(|p| regex::Regex::new(p).expect("valid error pattern"))
+                .collect(),
+            regex::Regex::new(WEAK_ERROR).expect("valid weak error pattern"),
+        )
+    })
+}
+
+/// Whether text carries a real error (a stack trace, an error line, a failing test, a crash).
+/// A class name like `ErrorBoundary` or a single "error" in prose is not enough.
+pub fn has_error(text: &str) -> bool {
+    if text.is_empty() {
+        return false;
+    }
+    let (strong, weak) = error_patterns();
+    if strong.iter().any(|p| p.is_match(text)) {
+        return true;
+    }
+    weak.find_iter(text).count() >= 2 && (text.trim().contains('\n') || text.contains('`'))
+}
+
+/// Longest request (in characters) still treated as a conversational follow-up.
+pub const FOLLOW_UP_MAX_CHARS: usize = 300;
+/// Most lines in a request still treated as a conversational follow-up.
+pub const FOLLOW_UP_MAX_LINES: usize = 3;
 
 impl QueryKind {
-    /// Classifies a query from its request and context text.
+    /// Classifies a query from its request and context text (the Python reference is
+    /// `harness_router.querykind.classify`, which the calibration eval used).
     pub fn classify(query: &str, context: &str) -> QueryKind {
-        let has_error = |t: &str| ERROR_MARKERS.iter().any(|m| t.contains(m));
+        let (query, context) = (query.trim(), context.trim());
         if has_error(query) || has_error(context) {
             return QueryKind::Error;
         }
-        if !context.trim().is_empty() {
+        let lines = query.lines().count().max(1);
+        let chars = query.chars().count();
+        if !context.is_empty() && chars <= FOLLOW_UP_MAX_CHARS && lines <= FOLLOW_UP_MAX_LINES {
             return QueryKind::Conversational;
         }
-        let q = query.trim();
-        if q.contains('\n') || q.chars().count() >= 200 {
+        if lines > 1 || chars >= 200 {
             QueryKind::Issue
         } else {
             QueryKind::Request

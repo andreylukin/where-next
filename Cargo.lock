@@ -2681,6 +2681,7 @@ dependencies = [
  "ndarray",
  "proptest",
  "proptest-state-machine",
+ "regex",
  "serde",
  "serde_json",
  "sha1_smol",
