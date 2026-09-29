@@ -2140,6 +2140,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "where-next"
+version = "0.0.1"
+dependencies = [
+ "clap",
+ "insta",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "wn-core",
+ "wn-daemon",
+ "wn-embed",
+ "wn-git",
+ "wn-mcp",
+ "wn-sources",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2294,24 +2312,6 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
-
-[[package]]
-name = "wn-cli"
-version = "0.0.1"
-dependencies = [
- "clap",
- "insta",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "wn-core",
- "wn-daemon",
- "wn-embed",
- "wn-git",
- "wn-mcp",
- "wn-sources",
-]
 
 [[package]]
 name = "wn-core"

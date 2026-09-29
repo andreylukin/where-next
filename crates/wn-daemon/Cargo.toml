@@ -9,8 +9,8 @@ rust-version.workspace = true
 
 [dependencies]
 wn-core.workspace = true
-wn-git = { path = "../wn-git" }
-wn-sources = { path = "../wn-sources" }
+wn-git = { version = "0.0.1", path = "../wn-git" }
+wn-sources = { version = "0.0.1", path = "../wn-sources" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

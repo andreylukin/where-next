@@ -5,3 +5,4 @@
 *.safetensors
 /models/
 /.cache/
+/dist

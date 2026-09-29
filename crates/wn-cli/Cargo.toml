@@ -1,11 +1,15 @@
 [package]
-name = "wn-cli"
-description = "The `wn` command"
+name = "where-next"
+description = "Fast local \"where next\" hints for coding agents and developers: ranks the files to open next and learns your repos from git history"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+homepage = "https://github.com/andreylukin/where-next"
+readme = "../../README.md"
+keywords = ["code-search", "embeddings", "mcp", "coding-agent", "cli"]
+categories = ["command-line-utilities", "development-tools"]
 
 [lib]
 name = "wn_cli"
@@ -24,11 +28,11 @@ clap = { version = "4.6", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 wn-core.workspace = true
-wn-git = { path = "../wn-git" }
-wn-sources = { path = "../wn-sources" }
-wn-daemon = { path = "../wn-daemon" }
-wn-embed = { path = "../wn-embed", optional = true }
-wn-mcp = { path = "../wn-mcp", default-features = false }
+wn-git = { version = "0.0.1", path = "../wn-git" }
+wn-sources = { version = "0.0.1", path = "../wn-sources" }
+wn-daemon = { version = "0.0.1", path = "../wn-daemon" }
+wn-embed = { version = "0.0.1", path = "../wn-embed", optional = true }
+wn-mcp = { version = "0.0.1", path = "../wn-mcp", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [dev-dependencies]
