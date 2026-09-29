@@ -220,6 +220,8 @@ pub struct SuggestOptions {
     pub no_abstain: bool,
     /// The repository has files, but none of an indexable kind.
     pub unsupported_only: bool,
+    /// A task-start hint: skip (abstain) when the index has fewer source files than this.
+    pub start_min_files: Option<usize>,
 }
 
 impl Default for SuggestOptions {
@@ -231,6 +233,7 @@ impl Default for SuggestOptions {
             strict_abstain: false,
             no_abstain: false,
             unsupported_only: false,
+            start_min_files: None,
         }
     }
 }
@@ -323,7 +326,13 @@ pub fn suggest(
         Vec::new()
     };
     step(&mut life, QueryEvent::Ranked);
-    let reason = if opts.no_abstain {
+    let n_files = index.count(EntryKind::File);
+    let small = opts.start_min_files.filter(|&min| n_files < min);
+    let reason = if let Some(min) = small {
+        Some(format!(
+            "start: {n_files} files < {min}; start hints help in large repositories"
+        ))
+    } else if opts.no_abstain {
         None
     } else {
         let kind = QueryKind::classify(query, context);

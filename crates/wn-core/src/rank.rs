@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum paths returned per answer (files, functions and configs together).
 pub const MAX_HINTS: usize = 3;
+/// Default minimum source files for automatic task-start hints: in the agent trials the start
+/// hint paid off only in large repositories.
+pub const START_HINT_MIN_FILES: usize = 3000;
 /// Approximate token budget for the hint text.
 pub const TOKEN_BUDGET: usize = 250;
 

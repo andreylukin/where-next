@@ -70,6 +70,12 @@ pub enum Command {
         /// Never abstain.
         #[arg(long)]
         no_abstain: bool,
+        /// A task-start hint: skipped in repositories with fewer than --start-min-files files.
+        #[arg(long)]
+        start: bool,
+        /// Minimum source files for --start hints.
+        #[arg(long, default_value_t = wn_core::rank::START_HINT_MIN_FILES)]
+        start_min_files: usize,
     },
     /// Show the index, coverage and adapter state.
     Status,
@@ -466,6 +472,8 @@ pub fn run(cli: Cli) -> (String, i32) {
             no_adapter,
             strict,
             no_abstain,
+            start,
+            start_min_files,
         } => {
             let context = read_context(&context_file);
             let refresh = ws.refresh(functions);
@@ -483,6 +491,7 @@ pub fn run(cli: Cli) -> (String, i32) {
                 strict_abstain: strict,
                 no_abstain,
                 unsupported_only: ws.coverage.unsupported > 0,
+                start_min_files: start.then_some(start_min_files),
             };
             let adapter = if ws.adapter_life.state().applies() {
                 ws.adapter.as_ref()

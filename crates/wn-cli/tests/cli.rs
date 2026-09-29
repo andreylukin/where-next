@@ -150,6 +150,28 @@ fn init_status_ask_train_rollback() {
     );
     assert!(plain.contains("adapter off"));
 
+    let (skip, _) = wn(
+        r,
+        home.path(),
+        &["ask", "the login session expires", "--start"],
+    );
+    assert!(
+        skip.contains("start hints help in large repositories"),
+        "{skip}"
+    );
+    let (small, _) = wn(
+        r,
+        home.path(),
+        &[
+            "ask",
+            "the login session expires",
+            "--start",
+            "--start-min-files",
+            "1",
+        ],
+    );
+    assert!(small.contains("src/auth.py"), "{small}");
+
     let (train, _) = wn(r, home.path(), &["train"]);
     assert!(train.contains("adapter: active"), "{train}");
     let (rb, _) = wn(r, home.path(), &["rollback"]);
@@ -210,6 +232,16 @@ fn mcp_serves_tools_over_stdio() {
     let body: serde_json::Value =
         serde_json::from_str(call["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert!(body["state"].is_string(), "{body}");
+    send(
+        serde_json::json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
+        "name": "where_next", "arguments": {"query": "storage upload timeout", "start": true}}}),
+    );
+    let start = read_id(4);
+    let text = start["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("start hints help in large repositories") || text.contains("not serving"),
+        "{text}"
+    );
     drop(stdin);
     assert!(child.wait().unwrap().success());
 }
