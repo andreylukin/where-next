@@ -86,13 +86,15 @@ On kubernetes (31,425 tracked files; 13,534 source and 6,620 config files indexe
 
 | | gemma-xl1 (default) | gemma-g2r |
 |---|---|---|
-| First `wn init` (index + adapter fit) | 360 s, 2.5 GB peak memory | 372 s, 1.4 GB (v2b took about 31 min) |
+| First `wn init` (index + adapter fit) | about 390 s, 1.6 GB peak memory (2.5 GB before token-budget batching) | 372 s, 1.4 GB (v2b took about 31 min) |
 | Of which scan, read and skeletons | about 5 s; embedding is the rest | same |
 | Warm `where_next` query (resident MCP server) | p50 19 ms, p95 21 ms | p50 19 ms, p95 21 ms |
 | Reopen a stored index | 0.7 s; no-op refresh 0.6 s | 1.1 s; no-op refresh 0.6 s |
 | Cold `wn ask` (loads the model each time) | about 5 s, most of it model load: agents should use `wn mcp` | 5.7 s |
 
 Document throughput for gemma-g2r: 75 docs/s at batch 16 (60 at 4, 70 at 8, 73 at 32, 61 at 64).
+Batches hold at most 16 documents and 8,192 padded tokens (`TOKEN_BUDGET`), so long documents
+(up to gemma-xl1's 1,024 tokens) run 8 at a time instead of 16.
 
 An interrupted first index keeps its checkpoints (every 1,024 documents) and resumes. The CoreML
 execution provider cannot compile these graphs today, so inference is CPU-only.
