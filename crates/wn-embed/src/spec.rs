@@ -4,6 +4,7 @@
 //! family's prefixes, which must match what the model saw in training byte for byte.
 
 use serde::{Deserialize, Serialize};
+pub use wn_core::text::QueryFormat;
 
 /// Model family: decides pooling expectations and Matryoshka support.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +31,9 @@ pub struct ModelSpec {
     pub pooling: Pooling,
     pub dim: usize,
     pub max_seq: usize,
+    /// Query layout the model was trained on (`v1` when absent).
+    #[serde(default)]
+    pub query_format: QueryFormat,
     pub query_prefix: String,
     pub document_prefix: String,
     #[serde(default)]
@@ -91,6 +95,7 @@ mod tests {
             pooling: Pooling::Lasttoken,
             dim: 1024,
             max_seq: 384,
+            query_format: QueryFormat::V1,
             query_prefix: "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: ".into(),
             document_prefix: String::new(),
             matryoshka: false,
@@ -127,6 +132,15 @@ mod tests {
         assert_eq!(spec.family, Family::Gemma);
         assert_eq!(spec.pooling, Pooling::Mean);
         assert!(spec.matryoshka);
+        assert_eq!(spec.query_format, QueryFormat::V1, "absent means v1");
+        let v2 = json.replace(
+            "\"max_seq\":384",
+            "\"max_seq\":1024,\"query_format\":\"v2\"",
+        );
+        assert_eq!(
+            ModelSpec::from_json(&v2).unwrap().query_format,
+            QueryFormat::V2
+        );
     }
 
     proptest! {

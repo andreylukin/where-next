@@ -1,13 +1,16 @@
 //! A verified ONNX model as a [`wn_core::encoder::Encoder`].
 //!
-//! Query text comes from [`wn_core::text::query_text`] (Qwen layout: instruction + task +
-//! context tail). Families trained with other prompts swap the instruction for their own prefix.
+//! Query text comes from [`wn_core::text::query_text_for`] in the model's `query_format` (v1:
+//! task + context tail; v2: request, last tool output, earlier context), with the Qwen
+//! instruction; families trained with other prompts swap the instruction for their prefix.
 
 use std::path::Path;
 use std::sync::Mutex;
 
 use wn_core::encoder::{EncodeError, Encoder, QueryInput};
-use wn_core::text::{query_text, INSTRUCT_FILE, INSTRUCT_FUNCTION};
+use wn_core::text::{
+    fit_query, query_text_for, QueryFormat, TokenCounter, INSTRUCT_FILE, INSTRUCT_FUNCTION,
+};
 
 use crate::embedder::Embedder;
 use crate::spec::{Family, ModelSpec};
@@ -27,9 +30,19 @@ pub struct OnnxEncoder {
     batch: usize,
 }
 
-/// The text a model of `spec`'s family embeds for `item`.
+/// The text a model of `spec`'s family embeds for `item` (no token budget applied).
 pub fn query_for(spec: &ModelSpec, item: &QueryInput) -> String {
-    let full = query_text(&item.query, &item.context, item.granularity);
+    let full = query_text_for(
+        spec.query_format,
+        &item.query,
+        &item.context,
+        item.granularity,
+    );
+    with_family_prefix(spec, full)
+}
+
+/// Swaps the Qwen instruction for the family's own query prefix.
+fn with_family_prefix(spec: &ModelSpec, full: String) -> String {
     match spec.family {
         Family::Qwen => full,
         Family::Gemma => {
@@ -71,6 +84,26 @@ impl OnnxEncoder {
         &self.spec
     }
 
+    /// The query text within the model's token window. v2 queries already put the least useful
+    /// part last, so truncation is safe; v1 queries end with the newest context, so the oldest
+    /// context is dropped until the text fits instead of letting the tokenizer cut the newest.
+    pub fn query_text(&self, item: &QueryInput) -> String {
+        if self.spec.query_format != QueryFormat::V1 || item.context.is_empty() {
+            return query_for(&self.spec, item);
+        }
+        let Ok(embedder) = self.embedder.lock() else {
+            return query_for(&self.spec, item);
+        };
+        let (text, _) = fit_query(
+            Some(&Counter(&embedder)),
+            &item.query,
+            &item.context,
+            item.granularity,
+            self.spec.max_seq,
+        );
+        with_family_prefix(&self.spec, text)
+    }
+
     fn run(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EncodeError> {
         let mut embedder = self
             .embedder
@@ -97,8 +130,16 @@ impl Encoder for OnnxEncoder {
     }
 
     fn queries(&self, items: &[QueryInput]) -> Result<Vec<Vec<f32>>, EncodeError> {
-        let texts: Vec<String> = items.iter().map(|i| query_for(&self.spec, i)).collect();
+        let texts: Vec<String> = items.iter().map(|i| self.query_text(i)).collect();
         self.run(&texts)
+    }
+}
+
+struct Counter<'a>(&'a Embedder);
+
+impl TokenCounter for Counter<'_> {
+    fn count_tokens(&self, text: &str) -> usize {
+        self.0.count_tokens(text)
     }
 }
 
@@ -115,6 +156,7 @@ mod tests {
             pooling: Pooling::Mean,
             dim: 8,
             max_seq: 384,
+            query_format: Default::default(),
             query_prefix: prefix.into(),
             document_prefix: String::new(),
             matryoshka: false,
@@ -131,6 +173,21 @@ mod tests {
             ..q
         };
         assert_eq!(query_for(&s, &f), format!("{INSTRUCT_FUNCTION}fix retry"));
+    }
+
+    #[test]
+    fn v2_models_get_the_v2_layout() {
+        let mut s = spec(Family::Gemma, "task: code retrieval | query: ");
+        s.query_format = crate::spec::QueryFormat::V2;
+        let q = QueryInput {
+            query: "fix retry".into(),
+            context: "opened a.py\nLast tool output:\nTraceback".into(),
+            granularity: Granularity::File,
+        };
+        assert_eq!(
+            query_for(&s, &q),
+            "task: code retrieval | query: fix retry\nLast tool output:\nTraceback\nEarlier context:\nopened a.py"
+        );
     }
 
     #[test]
