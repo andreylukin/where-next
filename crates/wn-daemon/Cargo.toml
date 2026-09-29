@@ -7,7 +7,12 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["onnx"]
+onnx = ["dep:wn-embed"]
+
 [dependencies]
+wn-embed = { path = "../wn-embed", optional = true }
 wn-core.workspace = true
 wn-sources = { path = "../wn-sources" }
 serde = { version = "1", features = ["derive"] }
