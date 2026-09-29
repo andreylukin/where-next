@@ -29,6 +29,7 @@ use wn_sources::{read_text, Kind, MAX_CONFIG_BYTES, MAX_SOURCE_BYTES};
 
 #[cfg(feature = "onnx")]
 pub mod models;
+pub mod skill;
 
 /// `wn --version`: the crate version plus the commit it was built from, e.g. `0.0.1 (abc1234 2026-09-29)`.
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("WN_VERSION_SUFFIX"));
@@ -160,12 +161,30 @@ pub enum Command {
         #[command(subcommand)]
         action: daemon::DaemonAction,
     },
+    /// Install or update the where-next skill for Claude Code, Codex and Cursor.
+    Skill {
+        #[command(subcommand)]
+        action: skill::SkillAction,
+    },
+    /// Agent hook entry points (run by the agents, not by hand).
+    #[command(hide = true)]
+    Hook {
+        #[command(subcommand)]
+        action: HookAction,
+    },
     /// Install, list or remove models.
     #[cfg(feature = "onnx")]
     Model {
         #[command(subcommand)]
         action: models::ModelAction,
     },
+}
+
+/// `wn hook …`
+#[derive(Debug, Clone, Subcommand)]
+pub enum HookAction {
+    /// Claude Code `UserPromptSubmit`: reads the event on stdin, prints hints for the context.
+    ClaudePrompt,
 }
 
 /// Cache root: `$WHERE_NEXT_HOME`, else `~/.cache/where-next`.
@@ -629,6 +648,17 @@ pub fn run(cli: Cli) -> (String, i32) {
     if let Command::Daemon { action } = &cli.command {
         return daemon::run_action(action, &cli);
     }
+    if let Command::Skill { action } = &cli.command {
+        return skill::run(action, &cli);
+    }
+    if let Command::Hook {
+        action: HookAction::ClaudePrompt,
+    } = &cli.command
+    {
+        let mut input = String::new();
+        let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut input);
+        return (skill::claude_prompt_hook(&input), 0);
+    }
     let json = cli.json;
     // `ask` and `status` go through the background daemon (warm model and index) when it is
     // available; any failure falls back to answering in this process with identical output.
@@ -695,7 +725,9 @@ pub fn run(cli: Cli) -> (String, i32) {
         | Command::Bench { .. }
         | Command::Update { .. }
         | Command::Report { .. }
-        | Command::Daemon { .. } => {
+        | Command::Daemon { .. }
+        | Command::Skill { .. }
+        | Command::Hook { .. } => {
             unreachable!("handled above")
         }
         #[cfg(feature = "onnx")]
