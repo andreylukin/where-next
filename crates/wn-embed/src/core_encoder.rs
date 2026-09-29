@@ -32,8 +32,25 @@ pub struct OnnxEncoder {
     calibration: Option<Calibration>,
 }
 
+/// Calibrations shipped with the binary, by model name (fitted with the research harness).
+const BUILTIN_CALIBRATIONS: &[(&str, &str)] = &[
+    ("gemma-g2r", include_str!("../calibrations/gemma-g2r.json")),
+    ("gemma-xl1", include_str!("../calibrations/gemma-xl1.json")),
+];
+
+/// The built-in calibration for a model name, if one ships with the binary.
+pub fn builtin_calibration(name: &str) -> Option<Calibration> {
+    if name == "v2b" {
+        return Some(Calibration::v2b());
+    }
+    BUILTIN_CALIBRATIONS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .and_then(|(_, json)| serde_json::from_str(json).ok())
+}
+
 /// The calibration for the model in `dir`: its `calibration.json`, else the built-in one for
-/// the reference model `v2b`, else none (the model never abstains).
+/// its name, else none (the model never abstains).
 pub fn load_calibration(dir: &Path, spec: &ModelSpec) -> Result<Option<Calibration>, String> {
     let path = dir.join(CALIBRATION_FILE);
     if path.is_file() {
@@ -42,7 +59,7 @@ pub fn load_calibration(dir: &Path, spec: &ModelSpec) -> Result<Option<Calibrati
             serde_json::from_str(&text).map_err(|e| format!("{CALIBRATION_FILE}: {e}"))?;
         return Ok(Some(c));
     }
-    Ok((spec.name == "v2b").then(Calibration::v2b))
+    Ok(builtin_calibration(&spec.name))
 }
 
 /// The text a model of `spec`'s family embeds for `item` (no token budget applied).
@@ -190,6 +207,21 @@ mod tests {
             ..q
         };
         assert_eq!(query_for(&s, &f), format!("{INSTRUCT_FUNCTION}fix retry"));
+    }
+
+    #[test]
+    fn shipped_calibrations_parse_and_match_their_model() {
+        for (name, _) in BUILTIN_CALIBRATIONS {
+            let c = builtin_calibration(name).expect("parses");
+            assert_eq!(&c.model, name);
+            assert!(c.kinds.contains_key("default"));
+            assert_eq!(
+                c.kinds.get("issue"),
+                Some(&None),
+                "issue starts never abstain"
+            );
+        }
+        assert_eq!(builtin_calibration("unknown-model"), None);
     }
 
     #[test]
