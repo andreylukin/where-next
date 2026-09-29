@@ -1,10 +1,13 @@
 //! `wn`: a fast local "where next" hint for coding agents and developers.
-//!
-//! Early skeleton. Commands (`init`, `ask`, `status`, `mcp`) arrive in milestone M1; see PLAN.md.
+
+use clap::Parser;
 
 fn main() {
-    println!(
-        "wn {}: not implemented yet, see PLAN.md",
-        env!("CARGO_PKG_VERSION")
-    );
+    let (text, code) = wn_cli::run(wn_cli::Cli::parse());
+    if code == 0 {
+        println!("{text}");
+    } else {
+        eprintln!("{text}");
+    }
+    std::process::exit(code);
 }

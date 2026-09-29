@@ -1,0 +1,8 @@
+---
+source: crates/wn-cli/tests/cli.rs
+expression: "redact(&status, r)"
+---
+where-next: 3 source files, 1 config files indexed in [repo] (ready)
+not indexed: 1 files (.md 1)
+adapter: active, fitted on 25 commits (revision [rev])
+model: hash-bow2-1024 (lexical fallback: no model installed)

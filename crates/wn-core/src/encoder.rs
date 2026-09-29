@@ -67,8 +67,30 @@ pub struct HashEncoder {
 
 impl Default for HashEncoder {
     fn default() -> Self {
-        Self { dim: 256 }
+        Self { dim: 1024 }
     }
+}
+
+/// Very common English and code words that carry no signal for locating files.
+const STOPWORDS: &[&str] = &[
+    "the", "and", "for", "with", "that", "this", "from", "into", "too", "not", "but", "are", "was",
+    "were", "has", "have", "had", "its", "our", "you", "your", "can", "will", "should", "when",
+    "then", "than", "there", "here", "what", "which", "who", "why", "how", "all", "any", "some",
+    "now", "just", "also", "very", "more", "most", "early", "late", "file", "src", "lib", "fix",
+];
+
+/// A light suffix stemmer: `sessions` → `session`, `retries` → `retry`, `timed` → `tim`.
+pub fn stem(word: &str) -> &str {
+    let n = word.len();
+    if n > 5 && word.ends_with("ies") {
+        return &word[..n - 3];
+    }
+    for suffix in ["ing", "ed", "es", "s"] {
+        if n > suffix.len() + 3 && word.ends_with(suffix) {
+            return &word[..n - suffix.len()];
+        }
+    }
+    word
 }
 
 /// Lowercased word pieces of `text`, split on non-alphanumerics and camelCase boundaries.
@@ -109,10 +131,10 @@ impl HashEncoder {
     fn embed(&self, text: &str) -> Vec<f32> {
         let mut v = vec![0f32; self.dim];
         for w in word_pieces(text) {
-            if w.len() < 2 {
+            if w.len() < 2 || STOPWORDS.contains(&w.as_str()) {
                 continue;
             }
-            let h = fnv1a(&w);
+            let h = fnv1a(stem(&w));
             let sign = if h >> 63 == 0 { 1.0 } else { -1.0 };
             v[(h % self.dim as u64) as usize] += sign;
         }
@@ -126,7 +148,7 @@ impl HashEncoder {
 
 impl Encoder for HashEncoder {
     fn fingerprint(&self) -> String {
-        format!("hash-bow-{}", self.dim)
+        format!("hash-bow2-{}", self.dim)
     }
 
     fn documents(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EncodeError> {
@@ -157,6 +179,15 @@ mod tests {
             word_pieces("handleLogin in auth_store.py"),
             vec!["handle", "login", "in", "auth", "store", "py"]
         );
+    }
+
+    #[test]
+    fn stemming_merges_plural_and_tense() {
+        assert_eq!(stem("sessions"), "session");
+        assert_eq!(stem("session"), "session");
+        assert_eq!(stem("retries"), "retr");
+        assert_eq!(stem("uploads"), "upload");
+        assert_eq!(stem("go"), "go");
     }
 
     #[test]
