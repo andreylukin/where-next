@@ -92,9 +92,10 @@ impl ModelSpec {
         format!("{}{}", self.query_prefix, query_body(query, context))
     }
 
-    /// Full document text for a file skeleton (path, first doc line, symbol names).
-    pub fn format_document(&self, skeleton: &str) -> String {
-        format!("{}{}", self.document_prefix, skeleton)
+    /// Full document text for a candidate document as built by `wn-sources`
+    /// (`file: <skeleton>` or `function: <path>::<name>`): the family prefix plus that text.
+    pub fn format_document(&self, doc_text: &str) -> String {
+        format!("{}{}", self.document_prefix, doc_text)
     }
 
     /// Output dimensions this model may be truncated to.
@@ -138,7 +139,7 @@ mod tests {
             dim: 1024,
             max_seq: 384,
             query_prefix: "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: ".into(),
-            document_prefix: "file: ".into(),
+            document_prefix: String::new(),
             matryoshka: false,
         }
     }
@@ -174,9 +175,9 @@ mod tests {
     #[test]
     fn document_uses_family_prefix() {
         let mut gemma = qwen();
-        gemma.document_prefix = "title: none | text: file: ".into();
+        gemma.document_prefix = "title: none | text: ".into();
         assert_eq!(
-            gemma.format_document("src/a.rs\nfn main"),
+            gemma.format_document("file: src/a.rs\nfn main"),
             "title: none | text: file: src/a.rs\nfn main"
         );
     }
@@ -195,7 +196,7 @@ mod tests {
     fn spec_parses_exported_json() {
         let json = r#"{"name":"gemma-g1","family":"gemma","pooling":"mean","dim":768,"max_seq":384,
             "padding":"right","query_prefix":"task: code retrieval | query: ",
-            "document_prefix":"title: none | text: file: ","inputs":["input_ids","attention_mask"],
+            "document_prefix":"title: none | text: ","inputs":["input_ids","attention_mask"],
             "output":"embeddings","normalized":true,"matryoshka":true}"#;
         let spec = ModelSpec::from_json(json).unwrap();
         assert_eq!(spec.family, Family::Gemma);
