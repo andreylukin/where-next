@@ -270,15 +270,17 @@ fn patterns(lang: &str) -> &'static [Regex] {
 }
 
 /// Whitespace as Python's `str.isspace` defines it (Unicode whitespace plus `\x1c`–`\x1f`).
-fn py_space(c: char) -> bool {
+pub fn py_space(c: char) -> bool {
     c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
 }
 
-fn py_strip(s: &str) -> &str {
+/// `str.strip()` with Python's definition of whitespace.
+pub fn py_strip(s: &str) -> &str {
     s.trim_matches(py_space)
 }
 
-fn take_chars(s: &str, n: usize) -> &str {
+/// The first `n` characters of `s` (Python `s[:n]`).
+pub fn take_chars(s: &str, n: usize) -> &str {
     match s.char_indices().nth(n) {
         Some((i, _)) => &s[..i],
         None => s,

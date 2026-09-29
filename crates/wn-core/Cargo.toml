@@ -8,10 +8,16 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+half = "2.7"
+ndarray = "0.17"
+serde = { version = "1", features = ["derive"] }
+sha1_smol = "1"
+wn-sources = { path = "../wn-sources" }
 
 [dev-dependencies]
 proptest.workspace = true
 proptest-state-machine.workspace = true
+serde_json = "1"
 
 [lints]
 workspace = true
