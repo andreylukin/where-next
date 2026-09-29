@@ -35,3 +35,39 @@ repositories where-next was not trained on.
 hit@1/3/10, recall@5 and precision@5 (the benchmark's official file-level metrics, using the top 5 as
 the prediction), MRR, per language and per repository size, with repository-cluster confidence
 intervals. Include a list of tasks where a baseline beats where-next.
+
+## Running it with `wn`
+
+```sh
+wn bench --contextbench path/to/cb
+```
+
+`path/to/cb/tasks.jsonl` has one task per line:
+
+```json
+{"instance_id": "…", "repo_dir": "repos/owner__name", "base_commit": "…",
+ "problem_statement": "…", "gold_files": ["src/…"]}
+```
+
+`repo_dir` is a local clone (relative to the tasks file, or absolute) that contains `base_commit`;
+gold paths written as `/workspace/<name>/…` are made repository-relative. Tasks whose repository is
+missing are skipped and counted in the report. To build the file from the ContextBench release (a
+parquet file with `instance_id`, `repo_url`, `base_commit`, `problem_statement` and `gold_context`),
+for example with DuckDB (`duckdb < prepare.sql`, run next to `contextbench.parquet` with a `cb/`
+directory present):
+
+```sql
+COPY (
+  SELECT instance_id,
+         'repos/' || replace(regexp_extract(repo_url, 'github\.com/([^/]+/[^/]+?)(\.git)?/?$', 1), '/', '__') AS repo_dir,
+         base_commit,
+         problem_statement,
+         list_distinct(list_transform(from_json(gold_context, '[{"file": "VARCHAR"}]'), g -> g.file)) AS gold_files
+  FROM 'contextbench.parquet'
+) TO 'cb/tasks.jsonl' (FORMAT json);
+```
+
+This yields 1,136 tasks across 67 repositories. Then clone each repository into
+`cb/repos/<owner>__<name>` with full history (the adapter is fitted
+on each repository's commits before the task's base commit). The runner scores lexical BM25, the
+model, and the model with that adapter, with the same metrics as the history replay.

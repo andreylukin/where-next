@@ -12,6 +12,8 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 use wn_sources::{is_skipped, kind_of, Kind};
 
+pub mod replay;
+
 /// Identifies one version of a file, so unchanged files are never re-embedded.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ContentId {

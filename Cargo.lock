@@ -2145,6 +2145,7 @@ version = "0.0.1"
 dependencies = [
  "clap",
  "insta",
+ "proptest",
  "serde",
  "serde_json",
  "tempfile",

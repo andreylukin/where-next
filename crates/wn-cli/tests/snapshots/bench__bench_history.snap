@@ -1,0 +1,27 @@
+---
+source: crates/wn-cli/tests/bench.rs
+expression: text
+---
+where-next history replay: repo
+model: lexical fallback (no model installed)
+commits: 48 scanned, 45 eligible, 45 scored (25 with an adapter); median 14 files per commit
+
+with the personal adapter (same 25 tasks)
+                      hit@1  hit@3 hit@10    MRR      n
+  lexical (BM25)      1.000  1.000  1.000  1.000     25
+  model               1.000  1.000  1.000  1.000     25
+  model + adapter     1.000  1.000  1.000  1.000     25
+
+all scored tasks
+                      hit@1  hit@3 hit@10    MRR      n
+  lexical (BM25)      1.000  1.000  1.000  1.000     45
+  model               1.000  1.000  1.000  1.000     45
+
+by repository size (hit@3)
+                                         n  lexical  model +adapter
+  < 1k files                            45    1.000  1.000    1.000
+
+time: [time]
+note: 20 scored commits had fewer than 20 earlier ancestor commits to fit an adapter on; the adapter rows cover the rest
+note: no model installed: the "model" rows use the lexical fallback encoder
+hit@k: a changed file among the top k suggestions; see benchmarks/history-replay.md

@@ -5,8 +5,8 @@ traces to one of these protocols.
 
 | Kit | Question it answers | Status |
 |---|---|---|
-| [ContextBench](contextbench.md) | Does it find the right files in unfamiliar repositories? | Protocol final; Rust runner planned |
-| [History replay](history-replay.md) | How well does it work on *my* repository, and does the adapter help? | Protocol final; `wn bench --history` planned |
+| [ContextBench](contextbench.md) | Does it find the right files in unfamiliar repositories? | Protocol final; `wn bench --contextbench` |
+| [History replay](history-replay.md) | How well does it work on *my* repository, and does the adapter help? | `wn bench --history` |
 | [Agent trial](agent-trial.md) | Does it save an agent cost and time without hurting success? | In progress in the research prototype |
 | CI gate | Did this pull request make quality or latency worse? | Planned |
 

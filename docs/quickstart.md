@@ -35,6 +35,18 @@ wn ask "retry the upload when S3 times out"
 `wn ask` returns at most 3 results, each with a similarity score and a short reason, or abstains
 when nothing is confidently relevant. Scores are similarities, not probabilities.
 
+## Try it on your repository in 60 seconds
+
+```sh
+wn bench
+```
+
+replays your repository's recent commits as if each were a new task (candidates are the files as
+they were just before the commit) and shows how often the files that commit changed were in the top
+1, 3 and 10 suggestions, for plain lexical search, the model, and the model with your repository's
+adapter. It is read-only. See [history replay](../benchmarks/history-replay.md) for the protocol and
+flags.
+
 ## Use it from an agent
 
 Claude Code:
@@ -55,7 +67,7 @@ and VS Code will be committed to `docs/integrations/` with the M1 release.
 | `wn ask --no-log` | Don't record this query in the local usage log |
 | `wn train` | Refit the adapter now (normally automatic) |
 | `wn rollback` | Return to the previous adapter |
-| `wn bench --history` | Replay this repository's history to measure quality on your own code |
+| `wn bench` | Replay this repository's history to measure quality on your own code (`--contextbench <dir>` runs the public benchmark) |
 
 ## If something is wrong
 
