@@ -4,12 +4,14 @@ A fast, local "where next" model for coding agents and developers. Given what yo
 `wn` ranks the files, functions, configs and docs you are most likely to need next, and it learns
 your repositories from their git history, on your machine.
 
-> **Status: early.** This repository is the new home of a research prototype. The Rust tool is a
-> skeleton; see [PLAN.md](PLAN.md) for the roadmap. Nothing here is ready to install yet.
+> **Status: early.** This repository is the new home of a research prototype. The Rust core, git
+> mining, source extraction, ONNX inference and an MCP server are in place and tested; the `wn`
+> command itself is not wired up yet, and nothing is ready to install. See [PLAN.md](PLAN.md) and
+> [docs/building.md](docs/building.md).
 
 ## What it will do
 
-- **Hint, don't drive.** Agents such as Claude Code or Codex ask `wn` where to look; it answers with
+- **Hint, don't drive.** You, or an agent such as Claude Code or Codex, ask `wn` where to look; it answers with
   at most 3 paths (under 250 tokens) or abstains when it isn't confident. The agent stays in control.
 - **Local-first.** A small embedding model (about 300M parameters) runs on your laptop. Code, logs and
   usage stay on your machine. No telemetry.
@@ -35,24 +37,35 @@ localization. Protocols and metric definitions are in [benchmarks/](benchmarks/R
 | Benchmark | BM25 | Zero-shot | SweRankEmbed-Small | Fine-tuned | + per-repo adapter |
 |---|---|---|---|---|---|
 | [ContextBench](benchmarks/contextbench.md), all 1,136 tasks | .37 | .54 | .62 | .74 | .79 |
-| ContextBench, 994 tasks in repositories held out from fine-tuning | | .54 | | .72 | .78 |
+| ContextBench, 999 tasks in repositories with no training data | .35 | .52 | | .72 | .78 |
 | [History replay](benchmarks/history-replay.md) of one private multi-language repository with 8 architecture rewrites (1,510 matched commits) | | .32 | | .65 | .80 |
 
 Fine-tuned is Qwen3-Embedding-0.6B trained on outcome labels (commit message to changed files, issue
-to the files the fix edited). The smaller EmbeddingGemma-300M fine-tune scores .70, or .76 with the
-adapter, on all 1,136 ContextBench tasks. On the history replay, ranking by recency alone scores .37,
-so the adapter learns more than "what changed recently". Warm MCP queries took 82 to 198 ms at p95 on
-repositories of 1,000 to 20,000 files.
+to the files the fix edited). The smaller EmbeddingGemma-300M, fine-tuned on more data with mined hard
+negatives, scores .73, or .79 with the adapter, on all 1,136 ContextBench tasks. On the 999 ContextBench
+tasks from repositories with no training data at all, the fine-tuned model beats symbol-aware lexical
+search by 20 points of hit@3 (.72 vs .53, confidence interval computed over repositories). Warm MCP
+queries took 82 to 198 ms at p95 on repositories of 1,000 to 20,000 files.
 
-Caveats we are still working through:
+About the adapter: on ContextBench it adds about 5 points, and a control with shuffled training pairs
+shows that gain comes from learning which descriptions map to which files. On the single-repository
+history replay, much of its gain can also be had from simple history and file-frequency signals.
 
-- **Not yet proven in live agent trials.** A [controlled trial](benchmarks/agent-trial.md) measuring
-  whether hints save agents time, tokens and cost without hurting success is the gate before we claim
-  savings.
-- The history replay covers a single project; more repositories are needed.
-- Short conversational follow-up requests ("now do the same for the other handler") are much harder
-  than issue-style descriptions, and results there are weak so far.
-- For exact strings and identifiers, `rg` is usually the better tool. See the [FAQ](docs/faq.md).
+## What we have not shown yet
+
+- **That it saves a coding agent cost or time.** In a [controlled pilot](benchmarks/agent-trial.md) on
+  50 SWE-bench Pro tasks with a cheap, capable agent, hints got the agent to a correct file about 2.6
+  steps sooner, but success was unchanged (32/50 without hints, 31–32/50 with) and cost per resolved
+  task was 5–12% *higher*, within noise. The agent called the tool on its own in only 6–11 of 50 tasks,
+  and the per-repo adapter showed no benefit there. The pre-declared bar (at least 15% cheaper, at most
+  2 points of success harm) was not met. We do not claim agent savings.
+- **Whether it helps where search is the bottleneck:** more expensive agents, very large repositories,
+  and people navigating by hand. These are the next trials.
+- **Conversational follow-ups** ("now do the same for the other handler"): still weak, about .25 hit@3.
+- **Well-calibrated abstention.** The pilot showed the current thresholds withhold too many good hints on
+  issue-style questions; per-model and per-query-type calibration is in progress.
+- **Breadth.** The history replay covers a single project. For exact strings and identifiers, `rg` is
+  usually the better tool; see the [FAQ](docs/faq.md).
 
 ## Licensing
 
@@ -67,7 +80,7 @@ Caveats we are still working through:
 
 [Quickstart](docs/quickstart.md) · [How it works](docs/how-it-works.md) ·
 [Privacy and licensing](docs/privacy-and-licensing.md) · [Adding a source](docs/adding-a-source.md) ·
-[FAQ](docs/faq.md) · [Launch plan](LAUNCH.md) · [Changelog](CHANGELOG.md)
+[FAQ](docs/faq.md) · [Building and testing](docs/building.md) · [Launch plan](LAUNCH.md) · [Changelog](CHANGELOG.md)
 
 ## Contributing
 
