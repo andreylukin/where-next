@@ -112,30 +112,47 @@ pub async fn serve_stdio(
     Ok(())
 }
 
-/// Production setup: a verified ONNX model, a per-repository cache under `cache_home`, and
-/// background warm-up and refresh. Returns the shared service and the refresher (stop it on exit).
+/// The encoder `open_repo` chose, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EncoderChoice {
+    /// The verified ONNX model.
+    Model,
+    /// The model could not be loaded; the deterministic lexical encoder answers instead.
+    LexicalFallback(String),
+}
+
+/// Production setup: the verified ONNX model (or, if it is missing or fails verification, the
+/// lexical `HashEncoder`, so hints still work offline), a per-repository cache under
+/// `cache_home`, and background warm-up and refresh. Returns the shared service, the refresher
+/// (stop it on exit) and which encoder is in use.
 #[cfg(feature = "onnx")]
 pub fn open_repo(
     root: &std::path::Path,
     model_dir: &std::path::Path,
     cache_home: &std::path::Path,
     refresh_every: std::time::Duration,
-) -> Result<
-    (
-        Arc<Mutex<dyn Service>>,
-        wn_daemon::daemon::background::Refresher,
-    ),
-    String,
-> {
+) -> (
+    Arc<Mutex<dyn Service>>,
+    wn_daemon::daemon::background::Refresher,
+    EncoderChoice,
+) {
+    use wn_core::encoder::HashEncoder;
     use wn_daemon::daemon::{background, Daemon};
-    use wn_daemon::workspace::Workspace;
+    use wn_daemon::workspace::{SharedEncoder, Workspace};
     use wn_embed::core_encoder::OnnxEncoder;
 
-    let encoder = Arc::new(OnnxEncoder::open(model_dir, None)?);
+    let (encoder, choice): (SharedEncoder, EncoderChoice) = match OnnxEncoder::open(model_dir, None)
+    {
+        Ok(e) => (Arc::new(e), EncoderChoice::Model),
+        Err(err) => (
+            Arc::new(HashEncoder::default()),
+            EncoderChoice::LexicalFallback(err),
+        ),
+    };
     let typed = Arc::new(Mutex::new(Daemon::new(Workspace::open(
         root, cache_home, encoder,
     ))));
     let refresher = background::spawn(typed.clone(), refresh_every);
     let service: Arc<Mutex<dyn Service>> = typed;
-    Ok((service, refresher))
+    (service, refresher, choice)
 }

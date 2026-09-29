@@ -14,7 +14,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let model = PathBuf::from(args.next().ok_or("missing <model-dir>")?);
     let cache = PathBuf::from(args.next().ok_or("missing <cache-home>")?);
-    let (service, refresher) = wn_mcp::open_repo(&root, &model, &cache, Duration::from_secs(10))?;
+    let (service, refresher, choice) =
+        wn_mcp::open_repo(&root, &model, &cache, Duration::from_secs(10));
+    if let wn_mcp::EncoderChoice::LexicalFallback(reason) = &choice {
+        // stdout carries MCP; diagnostics go to stderr.
+        eprintln!("where-next: model unavailable ({reason}); using the lexical fallback");
+    }
     let result = wn_mcp::serve_stdio(service).await;
     refresher.stop();
     result

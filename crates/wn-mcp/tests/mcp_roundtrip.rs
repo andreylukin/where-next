@@ -115,3 +115,30 @@ async fn tools_answer_over_mcp() {
     client.cancel().await.unwrap();
     server_task.abort();
 }
+
+#[cfg(feature = "onnx")]
+#[test]
+fn missing_model_falls_back_to_lexical_and_still_serves() {
+    use std::time::{Duration, Instant};
+    let dir = repo();
+    let cache = tempfile::tempdir().unwrap();
+    let (service, refresher, choice) = wn_mcp::open_repo(
+        dir.path(),
+        Path::new("/nonexistent/model"),
+        cache.path(),
+        Duration::from_millis(100),
+    );
+    assert!(matches!(choice, wn_mcp::EncoderChoice::LexicalFallback(_)));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while service.lock().unwrap().status().session != "Serving" {
+        assert!(Instant::now() < deadline, "never warmed");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let reply = service.lock().unwrap().ask("charge the invoice", "");
+    assert!(
+        reply.provenance.model.contains("hash"),
+        "{}",
+        reply.provenance.model
+    );
+    refresher.stop();
+}
