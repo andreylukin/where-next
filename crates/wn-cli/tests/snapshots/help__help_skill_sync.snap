@@ -1,0 +1,59 @@
+---
+source: crates/wn-cli/tests/help.rs
+expression: help(path)
+---
+Install or update the where-next skill for coding agents
+
+Usage: wn skill sync [OPTIONS]
+
+Options:
+      --agent <AGENTS>
+          Agents to sync (default: those detected in your home directory)
+          
+          [possible values: claude, codex, cursor, all]
+
+      --path <PATH>
+          Repository (or any directory inside it)
+          
+          [default: .]
+
+      --json
+          Print JSON instead of text
+
+      --project
+          Install into this repository (`.claude/skills`, `.agents/skills`, `.cursor/skills`) instead of your home directory
+
+      --dry-run
+          Show what would change without writing anything
+
+      --model <MODEL>
+          Model directory (default: `$WN_MODEL_DIR`, else the best installed model)
+
+      --no-daemon
+          Answer in this process instead of the background daemon (also `WN_NO_DAEMON=1`)
+
+      --uninstall
+          Remove the skill (and hook) instead
+
+  -y, --yes
+          Apply without asking
+
+      --from-state
+          Re-sync exactly the targets recorded by earlier syncs (used by `wn update`)
+
+      --with-hook
+          Also add a Claude Code hook that runs `wn ask --start` on the first prompt of a session in large repositories and adds the hints to the context (off by default)
+
+  -h, --help
+          Print help
+
+Shows what it will write and asks first. Only a marked where-next block is ever edited, and
+`wn update` re-syncs installed skills.
+
+Examples:
+  wn skill sync --dry-run                  show what would change, write nothing
+  wn skill sync                            agents detected in your home directory
+  wn skill sync --agent claude --yes
+  wn skill sync --project                  this repository's .claude/.agents/.cursor skills
+  wn skill sync --with-hook                also the Claude Code start-hint hook (large repos only)
+  wn skill sync --uninstall

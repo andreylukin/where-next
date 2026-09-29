@@ -39,7 +39,8 @@ pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("WN_VERSION_SU
 #[command(
     name = "wn",
     version = VERSION,
-    about = "Fast local \"where next\" hints for coding agents and developers"
+    about = "Fast local \"where next\" hints for coding agents and developers",
+    after_help = TOP_EXAMPLES
 )]
 pub struct Cli {
     /// Repository (or any directory inside it).
@@ -59,12 +60,66 @@ pub struct Cli {
     pub command: Command,
 }
 
+const TOP_EXAMPLES: &str = "\
+Examples:
+  wn init                                  index this repository, fit its adapter from git history
+  wn status                                which model answers (\"lexical fallback\" = no model installed)
+  wn ask \"where is the retry logic for S3 upload timeouts\"
+  wn bench                                 replay this repository's history: hit@1/3/10
+  wn skill sync                            let Claude Code / Codex / Cursor call wn
+
+Docs: https://github.com/andreylukin/where-next#quick-start";
+
+const INIT_EXAMPLES: &str = "\
+Indexes source and config files (untracked included, git-ignored excluded) with the best installed
+model, or the lexical fallback when none is installed, then fits the per-repository adapter from
+recent commits. Safe to re-run; only changed files are re-embedded.
+
+Examples:
+  wn init
+  wn --path ~/src/project init
+  wn --model ~/models/gemma-xl1 init       use a specific model directory";
+
+const ASK_EXAMPLES: &str = "\
+Good queries are self-contained: say what you are looking for, plus any error text.
+Use rg/grep for exact strings and identifiers. Results are hints: open the files and check.
+\"no confident hint\" means wn abstained (nothing above the calibrated threshold): use normal search.
+
+Examples:
+  wn ask \"where are gitignore rules matched against paths\"          good: says what to find
+  wn ask \"the other one\"                                            bad: nothing to match
+  wn ask \"why does the upload fail\" --context-file error.txt        add the error or last tool output
+  cargo test 2>&1 | wn ask \"fix the failing test\" --context-file -
+  wn ask --json \"where is the config loaded\"                        state, files, adapter
+  wn ask --start \"add rate limiting to the API\"                     task start; skipped below 3,000 files";
+
+const BENCH_EXAMPLES: &str = "\
+Replays recent commits as new tasks (query = commit message, candidates = files in the parent
+commit, adapter fitted only on earlier commits) and reports hit@1/3/10 and MRR for lexical search,
+the model, and the model with this repository's adapter. Read-only.
+
+Examples:
+  wn bench                                 the newest 300 eligible commits
+  wn bench --commits 1000 --json
+  wn bench --contextbench ~/data/contextbench    the public benchmark (see benchmarks/contextbench.md)";
+
+const REPORT_EXAMPLES: &str = "\
+The report holds only numbers, fixed labels and buckets: no repository names, paths, file names,
+commit messages or query text. You see all of it before anything is sent.
+
+Examples:
+  wn report --dry-run                      show the report and the issue link, post nothing
+  wn report                                show it, then post it as a GitHub issue if you answer y
+  wn --json report --dry-run               the report as JSON";
+
 /// Subcommands.
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Index the repository and fit its personal adapter from git history.
+    #[command(after_help = INIT_EXAMPLES)]
     Init,
     /// Rank the files (and optionally functions) to open next for a task.
+    #[command(after_help = ASK_EXAMPLES)]
     Ask {
         /// The task or request.
         query: String,
@@ -105,6 +160,7 @@ pub enum Command {
     /// Serve hints over MCP (stdio).
     Mcp,
     /// Measure hit@k on this repository's own history (default) or on ContextBench.
+    #[command(after_help = BENCH_EXAMPLES)]
     Bench {
         /// Replay this repository's past commits (the default).
         #[arg(long)]
@@ -145,6 +201,7 @@ pub enum Command {
     },
     /// Show an anonymous usage report (numbers and buckets only) and, if you confirm, post it as
     /// a GitHub issue to help improve wn. Nothing is sent without your confirmation.
+    #[command(after_help = REPORT_EXAMPLES)]
     Report {
         /// Show the report and the issue link without posting.
         #[arg(long)]

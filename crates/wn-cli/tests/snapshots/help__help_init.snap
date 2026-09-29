@@ -1,0 +1,34 @@
+---
+source: crates/wn-cli/tests/help.rs
+expression: help(path)
+---
+Index the repository and fit its personal adapter from git history
+
+Usage: wn init [OPTIONS]
+
+Options:
+      --path <PATH>
+          Repository (or any directory inside it)
+          
+          [default: .]
+
+      --json
+          Print JSON instead of text
+
+      --model <MODEL>
+          Model directory (default: `$WN_MODEL_DIR`, else the best installed model)
+
+      --no-daemon
+          Answer in this process instead of the background daemon (also `WN_NO_DAEMON=1`)
+
+  -h, --help
+          Print help
+
+Indexes source and config files (untracked included, git-ignored excluded) with the best installed
+model, or the lexical fallback when none is installed, then fits the per-repository adapter from
+recent commits. Safe to re-run; only changed files are re-embedded.
+
+Examples:
+  wn init
+  wn --path ~/src/project init
+  wn --model ~/models/gemma-xl1 init       use a specific model directory
