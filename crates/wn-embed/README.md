@@ -13,7 +13,7 @@ under their own license (see `NOTICE`).
 | `wn-model.json` | Model spec: `name`, `family` (`qwen` / `gemma`), `pooling`, `dim`, `max_seq`, `query_prefix`, `document_prefix`, `matryoshka` |
 | `tokenizer.json` | Hugging Face tokenizer |
 | `model.onnx` (+ `model.onnx.data`) | fp32 graph: inputs `input_ids`, `attention_mask` (int64, `[batch, seq]`, right padding); output `embeddings` (float32, `[batch, dim]`, L2-normalised). Pooling, projection layers and normalisation are inside the graph. |
-| quantized graphs (optional) | smaller graphs with the same interface, used only if they pass the parity gate |
+| `model.q8.onnx` (optional) | weight-only int8 graph (`MatMulNBits`, 8 bits) with the same interface: half the download, ~3x slower per query on Apple CPUs; used when no fp32 graph is present. Dynamic activation int8 and 4-bit graphs fail parity for these models. |
 | `wn-manifest.json` | SHA-256 of every file above. The model is only used after all checksums match. |
 | `fixture.json` (optional) | texts with reference embeddings from the Python export, for parity tests |
 

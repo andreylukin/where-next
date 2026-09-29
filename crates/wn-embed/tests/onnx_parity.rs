@@ -96,6 +96,6 @@ fn fp32_graph_matches_python() {
 }
 
 #[test]
-fn int8_graph_matches_python() {
-    check("model.int8.onnx", 0.99);
+fn q8_graph_matches_python() {
+    check("model.q8.onnx", 0.99);
 }

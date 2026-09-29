@@ -11,8 +11,10 @@ use tokenizers::{Tokenizer, TruncationParams};
 
 use crate::spec::{truncate_normalize, ModelSpec};
 
-/// Graph file preference: quantized first (smaller, faster on CPU), then fp32.
-pub const GRAPH_FILES: [&str; 2] = ["model.int8.onnx", "model.onnx"];
+/// Graph file preference: fp32, then the weight-only int8 graph (`MatMulNBits`, 8 bits). The q8
+/// graph is ~half the size but ~3x slower per query on Apple CPUs, so it is used only when it is the
+/// graph shipped. Dynamic activation int8 and 4-bit graphs fail the parity gate for these models.
+pub const GRAPH_FILES: [&str; 2] = ["model.onnx", "model.q8.onnx"];
 
 /// Errors from loading or running the embedder.
 #[derive(Debug)]
@@ -49,7 +51,7 @@ pub struct Embedder {
 
 impl Embedder {
     /// Loads a model directory containing `wn-model.json`, `tokenizer.json` and a graph.
-    /// `graph` picks a specific file; `None` prefers the int8 graph.
+    /// `graph` picks a specific file; `None` prefers fp32.
     pub fn load(dir: &Path, graph: Option<&str>) -> Result<Self, EmbedError> {
         let spec_text = std::fs::read_to_string(dir.join("wn-model.json"))
             .map_err(|e| EmbedError::Spec(e.to_string()))?;
@@ -95,7 +97,7 @@ impl Embedder {
         &self.spec
     }
 
-    /// The graph file in use (`model.int8.onnx` or `model.onnx`).
+    /// The graph file in use (`model.q8.onnx` or `model.onnx`).
     pub fn graph(&self) -> &str {
         &self.graph
     }
