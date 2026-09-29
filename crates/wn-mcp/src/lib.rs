@@ -1,3 +1,142 @@
-//! MCP server exposing where_next to coding agents.
+//! MCP server exposing where-next to coding agents (Claude Code, Codex, Cursor, …).
 //!
-//! Stub: see PLAN.md for the milestone that fills this crate in.
+//! Tools:
+//! - `where_next(query, context?)`: at most three paths with a reason and a similarity score, or a
+//!   fail-open answer telling the agent to use ordinary search. Always JSON with a `status` field.
+//! - `refresh_index()`: re-scan the repository now.
+//! - `status()`: session and index state, document count, model provenance.
+//!
+//! The server holds a shared [`Service`]; the MCP process is itself the resident session, so the
+//! model and index stay warm between calls.
+
+use std::sync::{Arc, Mutex};
+
+use rmcp::handler::server::router::tool::ToolRouter;
+use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::{CallToolResult, ContentBlock, ServerCapabilities, ServerConfig};
+use rmcp::{schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler};
+use serde::Deserialize;
+use wn_daemon::daemon::Service;
+use wn_daemon::engine::MAX_HINTS;
+
+/// Arguments of `where_next`.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct WhereNextArgs {
+    #[schemars(
+        description = "What you are trying to do: the task, bug report, error or question."
+    )]
+    pub query: String,
+    #[schemars(
+        description = "Optional recent context: last messages, a stack trace or failing test output."
+    )]
+    #[serde(default)]
+    pub context: Option<String>,
+}
+
+/// The MCP server.
+#[derive(Clone)]
+pub struct WhereNextServer {
+    service: Arc<Mutex<dyn Service>>,
+    tool_router: ToolRouter<Self>,
+}
+
+fn json_result(value: &impl serde::Serialize) -> Result<CallToolResult, McpError> {
+    let text =
+        serde_json::to_string(value).map_err(|e| McpError::internal_error(e.to_string(), None))?;
+    Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+}
+
+#[tool_router]
+impl WhereNextServer {
+    pub fn new(service: Arc<Mutex<dyn Service>>) -> Self {
+        Self {
+            service,
+            tool_router: Self::tool_router(),
+        }
+    }
+
+    fn with_service<T>(&self, f: impl FnOnce(&mut dyn Service) -> T) -> Result<T, McpError> {
+        let mut guard = self
+            .service
+            .lock()
+            .map_err(|_| McpError::internal_error("where-next service lock poisoned", None))?;
+        Ok(f(&mut *guard))
+    }
+
+    #[tool(
+        description = "Suggest up to 3 files in this repository worth opening next for a task, with a short reason each. Scores are similarities, not probabilities. If status is fail_open, use ordinary search instead."
+    )]
+    fn where_next(
+        &self,
+        Parameters(args): Parameters<WhereNextArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let context = args.context.unwrap_or_default();
+        let answer = self.with_service(|s| s.ask(&args.query, &context, MAX_HINTS))?;
+        json_result(&answer)
+    }
+
+    #[tool(description = "Re-scan the repository and re-embed changed files now.")]
+    fn refresh_index(&self) -> Result<CallToolResult, McpError> {
+        match self.with_service(|s| s.refresh())? {
+            Ok(stats) => json_result(&stats),
+            Err(err) => json_result(&serde_json::json!({"status": "error", "reason": err})),
+        }
+    }
+
+    #[tool(description = "Session and index state, document count and model provenance.")]
+    fn status(&self) -> Result<CallToolResult, McpError> {
+        let status = self.with_service(|s| s.status())?;
+        json_result(&status)
+    }
+}
+
+#[tool_handler(router = self.tool_router)]
+impl ServerHandler for WhereNextServer {
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "where-next suggests which files to open next for a coding task. Call where_next with \
+             the task (and optional recent context such as an error). It returns at most 3 paths; \
+             treat them as hints, and fall back to ordinary search when status is fail_open.",
+        )
+    }
+}
+
+/// Serves MCP over stdin/stdout until the client disconnects.
+pub async fn serve_stdio(
+    service: Arc<Mutex<dyn Service>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use rmcp::ServiceExt;
+    let running = WhereNextServer::new(service)
+        .serve(rmcp::transport::stdio())
+        .await?;
+    running.waiting().await?;
+    Ok(())
+}
+
+/// Production setup: a verified ONNX model, an index snapshot directory, background warm-up and
+/// refresh. Returns the shared service and the refresher handle (stop it on exit).
+#[cfg(feature = "onnx")]
+pub fn open_repo(
+    root: &std::path::Path,
+    model_dir: &std::path::Path,
+    cache_dir: Option<std::path::PathBuf>,
+    refresh_every: std::time::Duration,
+) -> Result<
+    (
+        Arc<Mutex<dyn Service>>,
+        wn_daemon::daemon::background::Refresher,
+    ),
+    String,
+> {
+    use wn_daemon::daemon::{background, Daemon};
+    use wn_daemon::engine::Engine;
+    use wn_daemon::onnx::OnnxEncoder;
+
+    let encoder = OnnxEncoder::open(model_dir, None)?;
+    let typed = Arc::new(Mutex::new(Daemon::new(Engine::new(
+        root, cache_dir, encoder,
+    ))));
+    let refresher = background::spawn(typed.clone(), refresh_every);
+    let service: Arc<Mutex<dyn Service>> = typed;
+    Ok((service, refresher))
+}
