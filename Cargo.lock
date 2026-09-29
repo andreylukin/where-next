@@ -2356,6 +2356,7 @@ dependencies = [
  "tempfile",
  "tokenizers",
  "wn-core",
+ "wn-sources",
 ]
 
 [[package]]

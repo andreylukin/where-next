@@ -1,0 +1,25 @@
+{
+ "model": "gemma-xl1",
+ "calibrated_on": "a private multi-language repository's history: 1,510 commit-message queries, thresholds fitted on the older half (answered hit@3 >= 0.75 default, >= 0.9 strict) and checked on the newer half",
+ "kinds": {
+  "default": {
+   "adapter": {
+    "min_top": 0.0,
+    "min_margin": 0.0
+   },
+   "plain": {
+    "min_top": 0.3667,
+    "min_margin": 0.0
+   },
+   "strict_adapter": {
+    "min_top": 0.5361,
+    "min_margin": 0.0288
+   },
+   "strict_plain": {
+    "min_top": 0.6857,
+    "min_margin": 0.0779
+   }
+  },
+  "issue": null
+ }
+}
