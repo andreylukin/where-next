@@ -261,3 +261,38 @@ fn empty_and_unsupported_repositories_fail_open() {
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["state"], "empty_index");
 }
+
+#[test]
+fn ask_without_a_model_says_how_to_install_one() {
+    let home = tempfile::tempdir().unwrap();
+    let repo = project();
+    let (out, code) = wn(
+        repo.path(),
+        home.path(),
+        &["ask", "where is the upload retried"],
+    );
+    assert_eq!(code, 0);
+    assert!(out.contains("run `wn model pull`"), "{out}");
+    // JSON stays machine-readable: no note appended.
+    let (json, _) = wn(
+        repo.path(),
+        home.path(),
+        &["ask", "where is the upload retried", "--json"],
+    );
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&json).is_ok(),
+        "{json}"
+    );
+}
+
+#[test]
+fn model_list_offers_the_default_model() {
+    let home = tempfile::tempdir().unwrap();
+    let repo = project();
+    let (out, code) = wn(repo.path(), home.path(), &["model", "list"]);
+    assert_eq!(code, 0);
+    assert!(
+        out.contains("wn model pull gemma-xl1") && out.contains("(default)"),
+        "{out}"
+    );
+}

@@ -511,6 +511,16 @@ fn after_install(bin: &Path) -> Vec<String> {
             notes.push(format!("{what} failed (run `wn {}`)", args.join(" ")));
         }
     }
+    // Never download ~1 GB unasked from `wn update`: say when the default model's pin moved.
+    let model = Command::new(bin)
+        .args(["model", "pull", "--check"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    if model.is_ok_and(|s| s.code() == Some(EXIT_UPDATE_AVAILABLE)) {
+        notes.push("the default model is missing or has an update: run `wn model pull`".into());
+    }
     notes
 }
 

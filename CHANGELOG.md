@@ -14,6 +14,14 @@ explicitly.
   "try it on your repo" step with real sample output, query-writing tips, and a Troubleshooting table.
   `wn --help`, `wn init`, `wn ask`, `wn bench`, `wn report` and `wn skill sync` now end with examples
   (snapshot-tested). `docs/quickstart.md` no longer claims `wn init` downloads a model.
+- The default model is public: [gemma-xl1](https://huggingface.co/lukandrey/where-next-gemma-xl1)
+  (Gemma Terms of Use). `wn model pull` with no arguments installs it from a pinned revision (still
+  verified against its manifest), is a no-op when current and upgrades when the pin moves;
+  `--check` exits 10 when a download is needed; `wn model list` shows known models to pull.
+  `install.sh` offers the model after building (`--yes`, `--no-model`, `WN_MODEL_SOURCE`), `wn update`
+  notes a model update without downloading it, and `wn ask` / `wn status` without a model say to run
+  `wn model pull`.
+
 - CLI + skill are now the primary agent interface (MCP stays as an optional adapter):
   - `skills/where-next/SKILL.md`, a short general skill for Claude Code, Codex and Cursor.
   - `wn skill sync` (`--agent`, `--project`, `--dry-run`, `--yes`, `--uninstall`, `--from-state`)

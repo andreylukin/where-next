@@ -1,8 +1,10 @@
 //! `wn model pull | list | remove`: installed models under [`crate::models_home`].
 //!
 //! Pulling goes through `wn_embed::store::ModelStore`, so a model is only kept after every file
-//! matches its SHA-256 manifest (Missing → Downloading → Verifying → Loaded). There is no default
-//! source until hosting is decided: `--source` is required.
+//! matches its SHA-256 manifest (Missing → Downloading → Verifying → Loaded). Known models (see
+//! [`KNOWN_MODELS`]) have a pinned default source, so `wn model pull` with no arguments installs
+//! [`DEFAULT_MODEL`]; `--source` overrides it. The source a model was installed from is recorded
+//! next to it, so a pull is a no-op when it is current and an upgrade when the pin moved.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,17 +16,24 @@ use serde::Serialize;
 #[derive(Debug, Subcommand)]
 pub enum ModelAction {
     /// Download (or copy) a model, verify it against its manifest, and install it.
+    #[command(
+        after_help = "Examples:\n  wn model pull                  # install or upgrade the default model (gemma-xl1)\n  wn model pull --check          # exit 0 if current, 10 if a download is needed\n  wn model pull gemma-xl1 --source ./my-model-dir"
+    )]
     Pull {
-        /// Name to install under (e.g. gemma-xl1).
-        name: String,
-        /// Where to get it: a local directory, an https:// base URL, or hf:owner/repo[@revision].
+        /// Name to install under (default: the default model, gemma-xl1).
+        name: Option<String>,
+        /// Where to get it: a local directory, an https:// base URL, or hf:owner/repo[@revision]
+        /// (default: the pinned source of a known model).
         #[arg(long)]
-        source: String,
+        source: Option<String>,
         /// Replace an installed model with the same name.
         #[arg(long)]
         force: bool,
+        /// Only report whether a download is needed: exit 0 if installed and current, 10 if not.
+        #[arg(long)]
+        check: bool,
     },
-    /// List installed models.
+    /// List installed models and the known models available to pull.
     List {
         /// Re-hash every file against its manifest (slow for large models).
         #[arg(long)]
@@ -49,6 +58,104 @@ where-next is not affiliated with or endorsed by Google.";
 
 const NOTICE_MARKER: &str = ".license-notice-shown";
 
+/// Records the source a model was installed from (for up-to-date checks).
+pub const SOURCE_MARKER: &str = ".wn-source";
+
+/// A model with a published, pinned source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct KnownModel {
+    pub name: &'static str,
+    /// Pinned source (`hf:owner/repo@revision`); files are still verified against the manifest.
+    pub source: &'static str,
+    pub family: &'static str,
+    /// Approximate download size, for prompts.
+    pub download_mb: u32,
+}
+
+/// Models `wn model pull NAME` can install without `--source`.
+pub const KNOWN_MODELS: &[KnownModel] = &[KnownModel {
+    name: "gemma-xl1",
+    source: "hf:lukandrey/where-next-gemma-xl1@0ba99c9950a937762f7b908ed6dd05acae185b32",
+    family: "gemma",
+    download_mb: 1250,
+}];
+
+/// What `wn model pull` installs when no name is given.
+pub const DEFAULT_MODEL: &str = "gemma-xl1";
+
+/// The known model named `name`.
+pub fn known(name: &str) -> Option<&'static KnownModel> {
+    KNOWN_MODELS.iter().find(|m| m.name == name)
+}
+
+/// Exit code of `wn model pull --check` when a download is needed.
+pub const CHECK_NEEDS_DOWNLOAD: i32 = crate::update::EXIT_UPDATE_AVAILABLE;
+
+/// State of the install directory for the requested name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Installed {
+    /// No model under that name.
+    Missing,
+    /// Installed from the requested source.
+    SameSource,
+    /// Installed from another source (or an unknown one: installed before sources were recorded).
+    OtherSource,
+}
+
+/// How the source was chosen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Requested {
+    /// The pinned source of a known model (no `--source`).
+    Pinned,
+    /// An explicit `--source`.
+    Explicit,
+}
+
+/// What a pull does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullPlan {
+    /// Download and install into an empty slot.
+    Install,
+    /// Already installed from this source: nothing to do.
+    UpToDate,
+    /// Replace the installed copy (the pin moved, or `--force`).
+    Replace,
+    /// Refuse: installed from another source and the caller did not pass `--force`.
+    Refuse,
+}
+
+/// The pull decision, as a pure function of the install state (tested exhaustively).
+pub fn plan(installed: Installed, requested: Requested, force: bool) -> PullPlan {
+    match (installed, requested, force) {
+        (Installed::Missing, _, _) => PullPlan::Install,
+        (_, _, true) => PullPlan::Replace,
+        (Installed::SameSource, _, false) => PullPlan::UpToDate,
+        // A known model's pin moved: upgrading it is the point of re-running pull/install.
+        (Installed::OtherSource, Requested::Pinned, false) => PullPlan::Replace,
+        (Installed::OtherSource, Requested::Explicit, false) => PullPlan::Refuse,
+    }
+}
+
+fn installed_state(dir: &Path, source: &str) -> Installed {
+    if !dir.join("wn-model.json").is_file() {
+        return Installed::Missing;
+    }
+    match fs::read_to_string(dir.join(SOURCE_MARKER)) {
+        Ok(recorded) if recorded.trim() == source => Installed::SameSource,
+        _ => Installed::OtherSource,
+    }
+}
+
+/// A known model, as listed.
+#[derive(Debug, Serialize)]
+pub struct AvailableModel {
+    pub name: String,
+    pub source: String,
+    pub download_mb: u32,
+    pub installed: bool,
+    pub default: bool,
+}
+
 /// One installed model, as listed.
 #[derive(Debug, Serialize)]
 pub struct InstalledModel {
@@ -72,6 +179,19 @@ pub struct ModelReport {
     pub models: Vec<InstalledModel>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notice: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub available: Vec<AvailableModel>,
+}
+
+fn report(action: &'static str, message: String) -> ModelReport {
+    ModelReport {
+        action,
+        ok: true,
+        message,
+        models: Vec::new(),
+        notice: None,
+        available: Vec::new(),
+    }
 }
 
 fn valid_name(name: &str) -> bool {
@@ -116,11 +236,8 @@ fn dir_bytes(dir: &Path) -> u64 {
 fn fail(action: &'static str, message: String) -> (ModelReport, i32) {
     (
         ModelReport {
-            action,
             ok: false,
-            message,
-            models: Vec::new(),
-            notice: None,
+            ..report(action, message)
         },
         1,
     )
@@ -133,66 +250,142 @@ pub fn run(action: ModelAction, models_home: &Path) -> (ModelReport, i32) {
             name,
             source,
             force,
-        } => pull(&name, &source, force, models_home),
+            check,
+        } => pull(
+            name.as_deref().unwrap_or(DEFAULT_MODEL),
+            source.as_deref(),
+            force,
+            check,
+            models_home,
+        ),
         ModelAction::List { verify } => list(models_home, verify),
         ModelAction::Remove { name, yes } => remove(&name, yes, models_home),
     }
 }
 
-fn pull(name: &str, source: &str, force: bool, home: &Path) -> (ModelReport, i32) {
+fn pull(
+    name: &str,
+    source: Option<&str>,
+    force: bool,
+    check: bool,
+    home: &Path,
+) -> (ModelReport, i32) {
     use wn_embed::source::ModelSource;
     use wn_embed::store::ModelStore;
 
     if !valid_name(name) {
         return fail("pull", format!("invalid model name {name:?}"));
     }
-    let source = match ModelSource::parse(source) {
+    let (source_text, requested) = match (source, known(name)) {
+        (Some(s), _) => (s.to_string(), Requested::Explicit),
+        (None, Some(k)) => (k.source.to_string(), Requested::Pinned),
+        (None, None) => {
+            let names: Vec<_> = KNOWN_MODELS.iter().map(|m| m.name).collect();
+            return fail(
+                "pull",
+                format!(
+                    "{name} is not a known model (known: {}); pass --source",
+                    names.join(", ")
+                ),
+            );
+        }
+    };
+    let source = match ModelSource::parse(&source_text) {
         Ok(s) => s,
         Err(e) => return fail("pull", e.to_string()),
     };
     let dir = home.join(name);
-    if dir.exists() {
-        if !force {
+    let state = installed_state(&dir, &source_text);
+    let decision = plan(state, requested, force);
+    if check {
+        let (message, code) = match decision {
+            PullPlan::UpToDate => (format!("{name} is installed and current"), 0),
+            PullPlan::Install => (
+                format!("{name} is not installed ({})", source.describe()),
+                CHECK_NEEDS_DOWNLOAD,
+            ),
+            PullPlan::Replace => (
+                format!("{name} has an update ({})", source.describe()),
+                CHECK_NEEDS_DOWNLOAD,
+            ),
+            PullPlan::Refuse => (
+                format!("{name} is installed from another source (use --force to replace)"),
+                CHECK_NEEDS_DOWNLOAD,
+            ),
+        };
+        return (report("pull", message), code);
+    }
+    match decision {
+        PullPlan::UpToDate => {
+            return (
+                report(
+                    "pull",
+                    format!("{name} is up to date ({})", source.describe()),
+                ),
+                0,
+            )
+        }
+        PullPlan::Refuse => {
             return fail(
                 "pull",
                 format!(
-                    "{name} is already installed at {} (use --force)",
+                    "{name} is already installed at {} from another source (use --force)",
                     dir.display()
                 ),
-            );
+            )
         }
-        if let Err(e) = fs::remove_dir_all(&dir) {
-            return fail("pull", format!("could not remove {}: {e}", dir.display()));
-        }
+        PullPlan::Install | PullPlan::Replace => {}
     }
-    let mut store = ModelStore::new(&dir, source.clone());
+    // Download next to the target and swap only after verification, so a failed upgrade keeps
+    // the working copy and an unverified model is never where `wn` would pick it up.
+    let staging = home.join(format!(".{name}.pulling"));
+    let _ = fs::remove_dir_all(&staging);
+    let mut store = ModelStore::new(&staging, source.clone());
     if let Err(e) = store.ensure() {
-        // Never leave an unverified model where `wn` would pick it up.
-        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&staging);
         return fail("pull", format!("{name}: {e}"));
     }
-    if !dir.join("wn-model.json").is_file() {
-        let _ = fs::remove_dir_all(&dir);
+    if !staging.join("wn-model.json").is_file() {
+        let _ = fs::remove_dir_all(&staging);
         return fail("pull", format!("{name}: source has no wn-model.json"));
     }
+    let _ = fs::write(staging.join(SOURCE_MARKER), &source_text);
+    let notice_shown = dir.join(NOTICE_MARKER).exists();
+    if dir.exists() {
+        if let Err(e) = fs::remove_dir_all(&dir) {
+            let _ = fs::remove_dir_all(&staging);
+            return fail("pull", format!("could not replace {}: {e}", dir.display()));
+        }
+    }
+    if let Err(e) = fs::rename(&staging, &dir) {
+        let _ = fs::remove_dir_all(&staging);
+        return fail(
+            "pull",
+            format!("could not install into {}: {e}", dir.display()),
+        );
+    }
     let fam = family(&dir);
-    let notice =
-        (fam.as_deref() == Some("gemma") && !dir.join(NOTICE_MARKER).exists()).then(|| {
-            let _ = fs::write(dir.join(NOTICE_MARKER), "");
-            GEMMA_NOTICE.to_string()
-        });
+    let notice = (fam.as_deref() == Some("gemma") && !notice_shown).then(|| {
+        let _ = fs::write(dir.join(NOTICE_MARKER), "");
+        GEMMA_NOTICE.to_string()
+    });
     let fingerprint = store.manifest().map(|m| m.fingerprint());
+    let verb = if decision == PullPlan::Replace {
+        "updated"
+    } else {
+        "installed"
+    };
     (
         ModelReport {
-            action: "pull",
-            ok: true,
-            message: format!(
-                "installed {name} from {} (verified, fingerprint {})",
-                source.describe(),
-                fingerprint.as_deref().unwrap_or("?")
-            ),
-            models: Vec::new(),
             notice,
+            ..report(
+                "pull",
+                format!(
+                    "{verb} {name} from {} (verified, fingerprint {})",
+                    source.describe(),
+                    fingerprint.as_deref().unwrap_or("?")
+                ),
+            )
         },
         0,
     )
@@ -227,17 +420,28 @@ fn list(home: &Path, verify: bool) -> (ModelReport, i32) {
         });
     }
     let message = if models.is_empty() {
-        format!("no models installed in {}", home.display())
+        format!(
+            "no models installed in {} (install the default with: wn model pull)",
+            home.display()
+        )
     } else {
         format!("{} model(s) in {}", models.len(), home.display())
     };
+    let available = KNOWN_MODELS
+        .iter()
+        .map(|k| AvailableModel {
+            name: k.name.into(),
+            source: k.source.into(),
+            download_mb: k.download_mb,
+            installed: models.iter().any(|m| m.name == k.name),
+            default: k.name == DEFAULT_MODEL,
+        })
+        .collect();
     (
         ModelReport {
-            action: "list",
-            ok: true,
-            message,
             models,
-            notice: None,
+            available,
+            ..report("list", message)
         },
         0,
     )
@@ -264,16 +468,7 @@ fn remove(name: &str, yes: bool, home: &Path) -> (ModelReport, i32) {
         );
     }
     match fs::remove_dir_all(&dir) {
-        Ok(()) => (
-            ModelReport {
-                action: "remove",
-                ok: true,
-                message: format!("removed {name}"),
-                models: Vec::new(),
-                notice: None,
-            },
-            0,
-        ),
+        Ok(()) => (report("remove", format!("removed {name}")), 0),
         Err(e) => fail("remove", format!("could not remove {}: {e}", dir.display())),
     }
 }
@@ -295,6 +490,19 @@ pub fn render(report: &ModelReport) -> String {
             m.license,
             verified
         ));
+    }
+    let pullable: Vec<_> = report.available.iter().filter(|a| !a.installed).collect();
+    if !pullable.is_empty() {
+        out.push_str("\navailable:");
+        for a in pullable {
+            out.push_str(&format!(
+                "\n  {:<12} ~{} MB  wn model pull {}{}",
+                a.name,
+                a.download_mb,
+                a.name,
+                if a.default { "  (default)" } else { "" }
+            ));
+        }
     }
     if let Some(n) = &report.notice {
         out.push_str("\n\n");
@@ -324,9 +532,19 @@ mod tests {
 
     fn pull_action(name: &str, source: &Path, force: bool) -> ModelAction {
         ModelAction::Pull {
-            name: name.into(),
-            source: source.display().to_string(),
+            name: Some(name.into()),
+            source: Some(source.display().to_string()),
             force,
+            check: false,
+        }
+    }
+
+    fn check_action(name: &str, source: &Path) -> ModelAction {
+        ModelAction::Pull {
+            name: Some(name.into()),
+            source: Some(source.display().to_string()),
+            force: false,
+            check: true,
         }
     }
 
@@ -338,14 +556,17 @@ mod tests {
         assert_eq!(code, 0, "{}", r.message);
         assert!(r.notice.as_deref().unwrap().contains("Gemma Terms of Use"));
 
+        // Same source again: nothing to do (re-running the installer must be cheap).
         let (again, code) = run(pull_action("gemma-t", src.path(), false), home.path());
-        assert_eq!(code, 1);
-        assert!(again.message.contains("--force"));
+        assert_eq!(code, 0, "{}", again.message);
+        assert!(again.message.contains("up to date"), "{}", again.message);
 
         let (forced, code) = run(pull_action("gemma-t", src.path(), true), home.path());
         assert_eq!(code, 0);
-        // A fresh install shows the notice again (the directory was replaced).
-        assert!(forced.notice.is_some());
+        assert!(forced.message.starts_with("updated"), "{}", forced.message);
+        // The notice is shown once per install location, not again on a replace.
+        assert!(forced.notice.is_none());
+        assert!(!home.path().join(".gemma-t.pulling").exists());
 
         let (l, _) = run(ModelAction::List { verify: true }, home.path());
         assert_eq!(l.models.len(), 1);
@@ -392,6 +613,92 @@ mod tests {
         assert_eq!(code, 1);
         assert!(r.message.contains("verification failed"), "{}", r.message);
         assert!(!home.path().join("bad").exists());
+    }
+
+    #[test]
+    fn plan_is_total_and_matches_the_spec() {
+        use Installed::*;
+        use Requested::*;
+        for installed in [Missing, SameSource, OtherSource] {
+            for requested in [Pinned, Explicit] {
+                for force in [false, true] {
+                    let expected = match (installed, requested, force) {
+                        (Missing, _, _) => PullPlan::Install,
+                        (_, _, true) => PullPlan::Replace,
+                        (SameSource, _, false) => PullPlan::UpToDate,
+                        (OtherSource, Pinned, false) => PullPlan::Replace,
+                        (OtherSource, Explicit, false) => PullPlan::Refuse,
+                    };
+                    assert_eq!(plan(installed, requested, force), expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn check_reports_without_downloading() {
+        let src = source_model("gemma");
+        let home = tempfile::tempdir().unwrap();
+        let (r, code) = run(check_action("gemma-t", src.path()), home.path());
+        assert_eq!(code, CHECK_NEEDS_DOWNLOAD, "{}", r.message);
+        assert!(!home.path().join("gemma-t").exists());
+        run(pull_action("gemma-t", src.path(), false), home.path());
+        let (r, code) = run(check_action("gemma-t", src.path()), home.path());
+        assert_eq!(code, 0, "{}", r.message);
+        // A different explicit source is not "current".
+        let other = source_model("gemma");
+        let (_, code) = run(check_action("gemma-t", other.path()), home.path());
+        assert_eq!(code, CHECK_NEEDS_DOWNLOAD);
+    }
+
+    #[test]
+    fn other_explicit_source_is_refused_and_keeps_the_working_copy() {
+        let src = source_model("gemma");
+        let other = source_model("gemma");
+        let home = tempfile::tempdir().unwrap();
+        run(pull_action("gemma-t", src.path(), false), home.path());
+        let (r, code) = run(pull_action("gemma-t", other.path(), false), home.path());
+        assert_eq!(code, 1);
+        assert!(r.message.contains("--force"), "{}", r.message);
+        assert!(home.path().join("gemma-t/wn-model.json").is_file());
+    }
+
+    #[test]
+    fn failed_upgrade_keeps_the_installed_model() {
+        let src = source_model("gemma");
+        let home = tempfile::tempdir().unwrap();
+        run(pull_action("gemma-t", src.path(), false), home.path());
+        let bad = source_model("gemma");
+        fs::write(bad.path().join("model.onnx"), b"tampered").unwrap();
+        let (_, code) = run(pull_action("gemma-t", bad.path(), true), home.path());
+        assert_eq!(code, 1);
+        assert!(home.path().join("gemma-t/wn-model.json").is_file());
+        assert!(!home.path().join(".gemma-t.pulling").exists());
+    }
+
+    #[test]
+    fn default_model_is_known_with_a_pinned_source() {
+        let k = known(DEFAULT_MODEL).expect("default model is known");
+        assert!(
+            k.source.starts_with("hf:") && k.source.contains('@'),
+            "{}",
+            k.source
+        );
+        let home = tempfile::tempdir().unwrap();
+        let (r, code) = run(
+            ModelAction::Pull {
+                name: Some("nope".into()),
+                source: None,
+                force: false,
+                check: false,
+            },
+            home.path(),
+        );
+        assert_eq!(code, 1);
+        assert!(r.message.contains("--source"), "{}", r.message);
+        let (l, _) = run(ModelAction::List { verify: false }, home.path());
+        assert!(l.available.iter().any(|a| a.default && !a.installed));
+        assert!(render(&l).contains("wn model pull gemma-xl1"));
     }
 
     #[test]

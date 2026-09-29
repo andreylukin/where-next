@@ -70,6 +70,7 @@ jobs:
             echo "WN_HOME=$RUNNER_TEMP/wn-home"
             echo "WN_BIN_ROOT=$RUNNER_TEMP/wn-root"
             echo "CARGO_TARGET_DIR=$GITHUB_WORKSPACE/target"
+            echo "WN_NO_MODEL=1"
           } >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2

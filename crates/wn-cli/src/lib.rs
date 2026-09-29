@@ -295,6 +295,13 @@ pub fn repo_dir(root: &Path, fingerprint: &str) -> PathBuf {
     wn_daemon::workspace::model_cache_dir(&home(), root, fingerprint)
 }
 
+/// Fallback reason when no model is installed.
+pub const NO_MODEL: &str = "no model installed";
+
+/// Printed with hints and status when [`NO_MODEL`] applies.
+pub const NO_MODEL_HINT: &str =
+    "no model installed → run `wn model pull` (hints use the lexical fallback until then)";
+
 /// Which encoder is in use.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct EncoderInfo {
@@ -330,7 +337,7 @@ pub fn encoder_for(dir: Option<&Path>) -> (SharedEncoder, EncoderInfo) {
         (Arc::new(e) as SharedEncoder, info)
     };
     let Some(dir) = dir else {
-        return fallback("no model installed".into());
+        return fallback(NO_MODEL.into());
     };
     open_model(dir).unwrap_or_else(|e| fallback(format!("model unavailable: {e}")))
 }
@@ -604,11 +611,13 @@ pub fn render_status(s: &StatusReport) -> String {
     });
     lines.push(match (&s.encoder.model, &s.encoder.reason) {
         (Some(name), _) => format!("model: {name} ({})", s.encoder.fingerprint),
-        (None, reason) => format!(
-            "model: {} (lexical fallback: {})",
-            s.encoder.fingerprint,
-            reason.as_deref().unwrap_or("no model installed")
-        ),
+        (None, reason) => match reason.as_deref().unwrap_or(NO_MODEL) {
+            NO_MODEL => format!("model: {} ({NO_MODEL_HINT})", s.encoder.fingerprint),
+            reason => format!(
+                "model: {} (lexical fallback: {reason})",
+                s.encoder.fingerprint
+            ),
+        },
     });
     lines.join("\n")
 }
@@ -1002,6 +1011,16 @@ pub fn ask_command_with(
     }
     if json {
         (erased::Json::to_json(&outcome), 0)
+    } else if ws.info.fallback
+        && ws.info.reason.as_deref() == Some(NO_MODEL)
+        && matches!(
+            outcome.state,
+            wn_core::rank::AnswerState::Ok
+                | wn_core::rank::AnswerState::Abstain
+                | wn_core::rank::AnswerState::StaleIndex
+        )
+    {
+        (format!("{}\nnote: {NO_MODEL_HINT}", render(&outcome)), 0)
     } else {
         (render(&outcome), 0)
     }
