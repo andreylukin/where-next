@@ -110,7 +110,7 @@ pub fn models_home() -> PathBuf {
 }
 
 /// Models tried in order when none is named: the best measured first.
-pub const DEFAULT_MODELS: &[&str] = &["gemma-g2r", "v2b"];
+pub const DEFAULT_MODELS: &[&str] = &["gemma-xl1", "gemma-g2r", "v2b"];
 
 /// The model directory to use: `--model`, else `$WN_MODEL_DIR`, else the first installed
 /// [`DEFAULT_MODELS`] entry under [`models_home`]. `None` means no model is installed.
@@ -594,6 +594,9 @@ mod tests {
         std::fs::create_dir_all(m.join("gemma-g2r")).unwrap();
         std::fs::write(m.join("gemma-g2r/wn-model.json"), "{}").unwrap();
         assert_eq!(resolve_model_in(None, None, m), Some(m.join("gemma-g2r")));
+        std::fs::create_dir_all(m.join("gemma-xl1")).unwrap();
+        std::fs::write(m.join("gemma-xl1/wn-model.json"), "{}").unwrap();
+        assert_eq!(resolve_model_in(None, None, m), Some(m.join("gemma-xl1")));
         let env = Path::new("/env/model");
         assert_eq!(resolve_model_in(None, Some(env), m), Some(env.into()));
         let flag = Path::new("/flag/model");

@@ -13,7 +13,7 @@ headed, see [PLAN.md](../PLAN.md).
 | `wn-embed` | ONNX Runtime inference: loads a model directory, verifies every file against its manifest, and embeds queries and documents. Model lifecycle state machine: `Missing → Downloading → Verifying → Loaded / Corrupt`. See [crates/wn-embed/README.md](../crates/wn-embed/README.md). |
 | `wn-daemon` | The resident session: keeps model and index warm, refreshes in the background, and fails open. Session lifecycle state machine: `Starting → Warming → Serving / Degraded → ShuttingDown → Stopped`. |
 | `wn-mcp` | MCP server over stdio with three tools: `where_next(query, context?)` (at most 3 paths, or a fail-open state), `refresh_index()` and `status()`. Ships the `wn-mcp-server` binary. If the model is missing or fails verification, it falls back to a lexical encoder and says so. |
-| `wn-cli` | The `wn` command: `init` (index + fit the adapter from git history), `ask` (at most k hints, `--json` for agents), `status`, `train`, `rollback` and `mcp` (the MCP server over stdio). Uses the model from `--model`, `$WN_MODEL_DIR`, or the best installed one under `~/.cache/where-next-models` (`gemma-g2r`, then `v2b`); without one it falls back to a lexical encoder and says so. The CLI and MCP server share one index per repository and model. |
+| `wn-cli` | The `wn` command: `init` (index + fit the adapter from git history), `ask` (at most k hints, `--json` for agents), `status`, `train`, `rollback` and `mcp` (the MCP server over stdio). Uses the model from `--model`, `$WN_MODEL_DIR`, or the best installed one under `~/.cache/where-next-models` (`gemma-xl1`, then `gemma-g2r`, then `v2b`); without one it falls back to a lexical encoder and says so. The CLI and MCP server share one index per repository and model. |
 
 Model weights are not in this repository. Tests that need a real model skip unless you point them at one.
 
@@ -80,18 +80,19 @@ cargo build --release -p wn-mcp --bin wn-mcp-server
 
 Write a model manifest with `cargo run -p wn-embed --example manifest -- <model-dir>`.
 
-### Measured (Apple M-series laptop, CPU, gemma-g2r fp32)
+### Measured (Apple M-series laptop, CPU, fp32)
 
 On kubernetes (31,425 tracked files; 13,534 source and 6,620 config files indexed):
 
-| | |
-|---|---|
-| First `wn init` (index + adapter fit) | 372 s, 1.4 GB peak memory (v2b took about 31 min) |
-| Of which scan, read and skeletons | about 5 s; embedding is the rest |
-| Document throughput | 75 docs/s at batch 16 (60 at 4, 70 at 8, 73 at 32, 61 at 64) |
-| Warm `where_next` query (resident MCP server) | p50 19 ms, p95 21 ms |
-| Reopen a stored index | 1.1 s; no-op refresh 0.6 s |
-| Cold `wn ask` (loads the model each time) | 5.7 s, most of it model load: agents should use `wn mcp` |
+| | gemma-xl1 (default) | gemma-g2r |
+|---|---|---|
+| First `wn init` (index + adapter fit) | 360 s, 2.5 GB peak memory | 372 s, 1.4 GB (v2b took about 31 min) |
+| Of which scan, read and skeletons | about 5 s; embedding is the rest | same |
+| Warm `where_next` query (resident MCP server) | p50 19 ms, p95 21 ms | p50 19 ms, p95 21 ms |
+| Reopen a stored index | 0.7 s; no-op refresh 0.6 s | 1.1 s; no-op refresh 0.6 s |
+| Cold `wn ask` (loads the model each time) | about 5 s, most of it model load: agents should use `wn mcp` | 5.7 s |
+
+Document throughput for gemma-g2r: 75 docs/s at batch 16 (60 at 4, 70 at 8, 73 at 32, 61 at 64).
 
 An interrupted first index keeps its checkpoints (every 1,024 documents) and resumes. The CoreML
 execution provider cannot compile these graphs today, so inference is CPU-only.

@@ -4,9 +4,9 @@ A fast, local "where next" model for coding agents and developers. Given what yo
 `wn` ranks the files, functions, configs and docs you are most likely to need next, and it learns
 your repositories from their git history, on your machine.
 
-> **Status: early.** This repository is the new home of a research prototype. The Rust core, git
-> mining, source extraction, ONNX inference and an MCP server are in place and tested; the `wn`
-> command itself is not wired up yet, and nothing is ready to install. See [PLAN.md](PLAN.md) and
+> **Status: early.** This repository is the new home of a research prototype. `wn init`, `wn ask`
+> and `wn mcp` work end to end when built from source with a model directory installed locally;
+> there are no release binaries or published model weights yet. See [PLAN.md](PLAN.md) and
 > [docs/building.md](docs/building.md).
 
 ## What it will do
@@ -34,18 +34,20 @@ From the research prototype. Numbers are **hit@3**: the share of tasks where *at
 files the real change touched appears in the top 3. They measure a good first pointer, not complete
 localization. Protocols and metric definitions are in [benchmarks/](benchmarks/README.md).
 
-| Benchmark | BM25 | Zero-shot | SweRankEmbed-Small | Fine-tuned | + per-repo adapter |
-|---|---|---|---|---|---|
-| [ContextBench](benchmarks/contextbench.md), all 1,136 tasks | .37 | .54 | .62 | .74 | .79 |
-| ContextBench, 999 tasks in repositories with no training data | .35 | .52 | | .72 | .78 |
-| [History replay](benchmarks/history-replay.md) of one private multi-language repository with 8 architecture rewrites (1,510 matched commits) | | .32 | | .65 | .80 |
+| Benchmark | Zero-shot | Qwen3-Emb-0.6B fine-tuned (+ adapter) | **EmbeddingGemma-300M fine-tuned, the default** (+ adapter) |
+|---|---|---|---|
+| ContextBench, official 500-task subset | .49 | .73 (.80) | **.76 (.81)** |
+| ContextBench, 994 tasks in repositories held out from fine-tuning | .52 | .72 (.78) | **.76 (.80)** |
+| History replay, one private multi-language repository with 8 architecture rewrites (1,510 matched commits) | .32 | .65 (.80) | **.70 (.83)** |
 
-Fine-tuned is Qwen3-Embedding-0.6B trained on outcome labels (commit message to changed files, issue
-to the files the fix edited). The smaller EmbeddingGemma-300M, fine-tuned on more data with mined hard
-negatives, scores .73, or .79 with the adapter, on all 1,136 ContextBench tasks. On the 999 ContextBench
-tasks from repositories with no training data at all, the fine-tuned model beats symbol-aware lexical
-search by 20 points of hit@3 (.72 vs .53, confidence interval computed over repositories). Warm MCP
-queries took 82 to 198 ms at p95 on repositories of 1,000 to 20,000 files.
+Zero-shot is the untrained Qwen3-Embedding-0.6B. Both fine-tunes are trained on outcome labels (commit
+message to changed files, issue to the files the fix edited); the EmbeddingGemma-300M default (`gemma-xl1`)
+was trained on about 1.1M examples with mined hard negatives and a query layout that puts the last tool
+output first. On file-level top 5 it also scores .66 on Multi-SWE-bench (7 languages) and .70 on
+SWE-PolyBench. On all 1,136 ContextBench tasks, BM25 scores .37 and SweRankEmbed-Small, the closest
+published retriever, .62 zero-shot; on the held-out repositories the Qwen fine-tune beats symbol-aware
+lexical search by 20 points (.72 vs .53, confidence interval computed over repositories). All numbers
+are preliminary.
 
 About the adapter: on ContextBench it adds about 5 points, and a control with shuffled training pairs
 shows that gain comes from learning which descriptions map to which files. On the single-repository
@@ -61,9 +63,11 @@ history replay, much of its gain can also be had from simple history and file-fr
   2 points of success harm) was not met. We do not claim agent savings.
 - **Whether it helps where search is the bottleneck:** more expensive agents, very large repositories,
   and people navigating by hand. These are the next trials.
-- **Conversational follow-ups** ("now do the same for the other handler"): still weak, about .25 hit@3.
-- **Well-calibrated abstention.** The pilot showed the current thresholds withhold too many good hints on
-  issue-style questions; per-model and per-query-type calibration is in progress.
+- **Conversational follow-ups** ("now do the same for the other handler"): still weak, about .31 hit@3
+  with the default model.
+- **Well-calibrated abstention for every kind of query.** Thresholds are now per model and per query
+  kind, and issue-style task starts never abstain, but error and conversational queries still use the
+  thresholds fitted on commit-message queries from one repository.
 - **Breadth.** The history replay covers a single project. For exact strings and identifiers, `rg` is
   usually the better tool; see the [FAQ](docs/faq.md).
 
