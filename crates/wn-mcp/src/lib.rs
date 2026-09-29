@@ -22,11 +22,11 @@ use wn_daemon::daemon::Service;
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct WhereNextArgs {
     #[schemars(
-        description = "What you are trying to do: the task, bug report, error or question."
+        description = "A self-contained query: what you are looking for, in full (the task, bug report or question), plus any error text. Rephrase terse follow-ups like \"now do the other one\" into a standalone request."
     )]
     pub query: String,
     #[schemars(
-        description = "Optional recent context: last messages, a stack trace or failing test output."
+        description = "Optional: the latest error, stack trace or failing test output (most useful), then recent context."
     )]
     #[serde(default)]
     pub context: Option<String>,
@@ -68,7 +68,7 @@ impl WhereNextServer {
     }
 
     #[tool(
-        description = "Suggest up to 3 files in this repository worth opening next for a task. Scores are similarities, not probabilities. Only state \"ok\" (or \"stale_index\") carries hints; any other state (abstain, empty_index, unsupported_scope, error) means use ordinary search instead."
+        description = "Suggest up to 3 files in this repository worth opening next for a task. Send a self-contained query (what you are looking for plus any error text), not a terse follow-up. Scores are similarities, not probabilities. Only state \"ok\" (or \"stale_index\") carries hints; any other state (abstain, empty_index, unsupported_scope, error) means use ordinary search instead."
     )]
     fn where_next(
         &self,
