@@ -9,6 +9,13 @@ explicitly.
 
 ### Added
 
+- `wn bench` (`--history`, the default): replays the repository's own commits against their parent
+  trees and reports hit@1/3/10 and MRR for lexical BM25, the model and the rolling, ancestry-safe
+  personal adapter, by repository size and era; vectors cached between runs. `wn bench --contextbench
+  <dir>` runs prepared ContextBench tasks. Matches the research prototype on ripgrep (lexical and
+  model exactly, adapter within 0.3 points).
+- `wn-git`: read-only history plumbing for replay (commits with parents, source trees, batched blob
+  reads, ancestry among commits).
 - Rust workspace skeleton with seven crates and a `wn` binary placeholder.
 - Index lifecycle state machine with exhaustive transition tests and model-based tests.
 - Documentation: quickstart, how it works, privacy and licensing, adding a source, FAQ.
