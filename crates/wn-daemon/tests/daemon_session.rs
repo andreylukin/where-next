@@ -93,3 +93,36 @@ fn shutdown_stops_answering() {
     assert_eq!(d.state(), SessionState::Stopped);
     assert!(matches!(d.ask("enqueue", "", 3), Answer::FailOpen { .. }));
 }
+
+#[test]
+fn background_refresher_warms_and_picks_up_new_files() {
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+    use wn_daemon::daemon::background;
+
+    let dir = repo();
+    let shared = Arc::new(Mutex::new(daemon(dir.path())));
+    let refresher = background::spawn(shared.clone(), Duration::from_millis(100));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while shared.lock().unwrap().state() != SessionState::Serving {
+        assert!(Instant::now() < deadline, "never warmed");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    fs::write(
+        dir.path().join("mailer.py"),
+        "def send_welcome_email():\n    pass\n",
+    )
+    .unwrap();
+    loop {
+        let found = match shared.lock().unwrap().ask("send the welcome email", "", 3) {
+            Answer::Hints { hints, .. } => hints.first().map(|h| h.path.clone()),
+            _ => None,
+        };
+        if found.as_deref() == Some("mailer.py") {
+            break;
+        }
+        assert!(Instant::now() < deadline, "new file never indexed");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    refresher.stop();
+}

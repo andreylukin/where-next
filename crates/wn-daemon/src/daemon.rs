@@ -166,3 +166,112 @@ impl<E: Encoder> Daemon<E> {
         self.event(SessionEvent::Closed);
     }
 }
+
+/// What a transport (MCP, CLI) needs from a session, object-safe so transports need not be
+/// generic over the encoder.
+pub trait Service: Send {
+    fn ask(&mut self, query: &str, context: &str, k: usize) -> Answer;
+    fn refresh(&mut self) -> Result<RefreshStats, String>;
+    fn status(&self) -> Status;
+}
+
+impl<E: Encoder + Send> Service for Daemon<E> {
+    fn ask(&mut self, query: &str, context: &str, k: usize) -> Answer {
+        Daemon::ask(self, query, context, k)
+    }
+
+    fn refresh(&mut self) -> Result<RefreshStats, String> {
+        Daemon::refresh(self)
+    }
+
+    fn status(&self) -> Status {
+        Daemon::status(self)
+    }
+}
+
+/// Background work for a shared daemon: warm-up and periodic refresh. Planning (git listing and
+/// stat calls) happens without holding the lock; only applying a non-empty plan takes it.
+pub mod background {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::thread::JoinHandle;
+    use std::time::Duration;
+
+    use super::Daemon;
+    use crate::engine::{plan_changes, Encoder};
+    use crate::session::SessionState;
+
+    /// Handle to stop the refresher.
+    pub struct Refresher {
+        stop: Arc<AtomicBool>,
+        handle: Option<JoinHandle<()>>,
+    }
+
+    impl Refresher {
+        pub fn stop(mut self) {
+            self.stop.store(true, Ordering::SeqCst);
+            if let Some(h) = self.handle.take() {
+                let _ = h.join();
+            }
+        }
+    }
+
+    /// Warms the daemon, then refreshes every `interval` until stopped.
+    pub fn spawn<E: Encoder + Send + 'static>(
+        daemon: Arc<Mutex<Daemon<E>>>,
+        interval: Duration,
+    ) -> Refresher {
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let handle = std::thread::spawn(move || {
+            if let Ok(mut d) = daemon.lock() {
+                let _ = d.warm();
+            }
+            while !flag.load(Ordering::SeqCst) {
+                sleep_unless_stopped(interval, &flag);
+                if flag.load(Ordering::SeqCst) {
+                    break;
+                }
+                let (root, known, state) = match daemon.lock() {
+                    Ok(d) => (
+                        d.engine().root().to_path_buf(),
+                        d.engine().known_keys(),
+                        d.state(),
+                    ),
+                    Err(_) => break,
+                };
+                if state == SessionState::Degraded && known.is_empty() {
+                    if let Ok(mut d) = daemon.lock() {
+                        let _ = d.warm();
+                    }
+                    continue;
+                }
+                if !matches!(state, SessionState::Serving | SessionState::Degraded) {
+                    continue;
+                }
+                let Ok(plan) = plan_changes(&root, &known) else {
+                    continue;
+                };
+                if plan.is_empty() {
+                    continue;
+                }
+                if let Ok(mut d) = daemon.lock() {
+                    let _ = d.refresh_with(plan);
+                }
+            }
+        });
+        Refresher {
+            stop,
+            handle: Some(handle),
+        }
+    }
+
+    fn sleep_unless_stopped(total: Duration, stop: &AtomicBool) {
+        let step = Duration::from_millis(50);
+        let mut waited = Duration::ZERO;
+        while waited < total && !stop.load(Ordering::SeqCst) {
+            std::thread::sleep(step);
+            waited += step;
+        }
+    }
+}
