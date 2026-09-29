@@ -1,0 +1,89 @@
+name: usage reports
+
+# Validates usage reports posted with `wn report` and appends them to the `stats` branch
+# (stats/reports.jsonl + stats/SUMMARY.md). Only the default GITHUB_TOKEN is used.
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: usage-reports
+  cancel-in-progress: false
+
+jobs:
+  record:
+    if: >-
+      contains(github.event.issue.body, 'wn-usage-report') ||
+      contains(join(github.event.issue.labels.*.name, ','), 'usage-report')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build wn (no model runtime needed)
+        run: cargo build --release --locked -p where-next --no-default-features
+      - name: Validate the report
+        id: validate
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          printf '%s' "$BODY" > body.md
+          if ./target/release/wn report --validate body.md > report.json 2> error.txt; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            cat error.txt
+          fi
+      - name: Explain a rejected report
+        if: steps.validate.outputs.ok == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          {
+            echo "This report could not be recorded: $(cat error.txt)"
+            echo
+            echo "Reports must be exactly what \`wn report\` produces (numbers, fixed labels and buckets only)."
+            echo "Please re-run \`wn report\` and paste its output unchanged."
+          } > comment.md
+          gh issue comment "$NUMBER" --body-file comment.md
+          gh issue edit "$NUMBER" --add-label invalid-report || true
+      - name: Record in the stats branch
+        if: steps.validate.outputs.ok == 'true'
+        env:
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin stats > /dev/null; then
+            git worktree add stats origin/stats
+            git -C stats checkout -B stats origin/stats
+          else
+            git worktree add --detach stats
+            git -C stats checkout --orphan stats
+            git -C stats rm -rf --quiet .
+          fi
+          touch stats/reports.jsonl
+          jq -c --argjson n "$NUMBER" 'select(.issue != $n)' stats/reports.jsonl > stats/reports.tmp
+          jq -c -n --argjson n "$NUMBER" --arg day "$(date -u +%F)" --slurpfile r report.json \
+            '{issue: $n, received: $day, report: $r[0]}' >> stats/reports.tmp
+          mv stats/reports.tmp stats/reports.jsonl
+          ./target/release/wn report --summarize stats/reports.jsonl > stats/SUMMARY.md
+          git -C stats add reports.jsonl SUMMARY.md
+          git -C stats commit -q -m "usage report #$NUMBER" || exit 0
+          git -C stats push origin stats
+      - name: Thank the reporter
+        if: steps.validate.outputs.ok == 'true' && github.event.action == 'opened'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh issue edit "$NUMBER" --add-label usage-report || true
+          gh issue comment "$NUMBER" --body "Thanks! Recorded. The aggregate is in [SUMMARY.md](https://github.com/$REPO/blob/stats/SUMMARY.md) on the \`stats\` branch."

@@ -1,0 +1,25 @@
+---
+source: crates/wn-cli/tests/report.rs
+expression: "summarize(&[a, b])"
+---
+# wn usage reports
+
+2 reports.
+
+## hit@3 from `wn bench --history` (median)
+
+| repo size | language | runs | lexical | model | + adapter |
+|---|---|---|---|---|---|
+| 1k-3k | rust | 2 | 0.54 | 0.76 | 0.85 |
+
+## Latency by hardware (median of reports)
+
+| os | arch | threads | reports | p50 ms | p95 ms |
+|---|---|---|---|---|---|
+| linux | x86_64 | 9-16 | 1 | 30 | 40 |
+| macos | aarch64 | 9-16 | 1 | 20 | 40 |
+
+## Answers
+
+- abstain rate (median): 0.20
+- hints later edited (median): 0.65
