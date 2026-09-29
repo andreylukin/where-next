@@ -1405,7 +1405,13 @@ dependencies = [
 name = "wn-daemon"
 version = "0.0.1"
 dependencies = [
+ "proptest",
+ "proptest-state-machine",
+ "serde",
+ "serde_json",
+ "tempfile",
  "wn-core",
+ "wn-sources",
 ]
 
 [[package]]
