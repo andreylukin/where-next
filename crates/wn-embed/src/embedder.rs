@@ -118,44 +118,47 @@ impl Embedder {
     }
 
     /// Embeds already-formatted texts (see [`ModelSpec::format_document`] and
-    /// `wn_core::text::query_text`) in batches of `batch`. Texts are grouped by token length so
-    /// batches carry little padding; results come back in input order. Returns unit vectors of
-    /// the model's full dimension, or of `dim` when given (Matryoshka truncation, re-normalised).
+    /// `wn_core::text::query_text`). Texts are sorted by token length and grouped into batches of
+    /// at most `batch` rows and at most [`TOKEN_BUDGET`] padded tokens (rows × longest), so long
+    /// documents (up to `max_seq`, 1,024 for gemma-xl1) run in smaller batches and ONNX Runtime's
+    /// peak activation memory stays bounded. Results come back in input order. Returns unit vectors
+    /// of the model's full dimension, or of `dim` when given (Matryoshka truncation, re-normalised).
     pub fn embed(
         &mut self,
         texts: &[String],
         batch: usize,
         dim: Option<usize>,
     ) -> Result<Vec<Vec<f32>>, EmbedError> {
-        let encodings = self
+        // Keep only ids and lengths: full `Encoding`s also carry offsets, token strings and the
+        // truncated overflow, which for 1,024 long documents is most of the tokenizer's memory.
+        let ids: Vec<Vec<u32>> = self
             .tokenizer
             .encode_batch(texts.to_vec(), true)
-            .map_err(|e| EmbedError::Tokenizer(e.to_string()))?;
-        let order = length_order(&encodings.iter().map(|e| e.len()).collect::<Vec<_>>());
+            .map_err(|e| EmbedError::Tokenizer(e.to_string()))?
+            .into_iter()
+            .map(|e| e.get_ids().to_vec())
+            .collect();
+        let lengths: Vec<usize> = ids.iter().map(Vec::len).collect();
+        let order = length_order(&lengths);
         let mut out: Vec<Vec<f32>> = vec![Vec::new(); texts.len()];
-        for chunk in order.chunks(batch.max(1)) {
+        for range in plan_batches(&order, &lengths, batch, TOKEN_BUDGET) {
+            let chunk = &order[range];
             let rows = chunk.len();
-            let cols = chunk
-                .iter()
-                .map(|&i| encodings[i].len())
-                .max()
-                .unwrap_or(0)
-                .max(1);
-            let mut ids = Vec::with_capacity(rows * cols);
-            let mut mask = Vec::with_capacity(rows * cols);
+            let cols = chunk.iter().map(|&i| lengths[i]).max().unwrap_or(0).max(1);
+            let mut input = Vec::with_capacity(rows * cols);
+            let mut mask: Vec<i64> = Vec::with_capacity(rows * cols);
             for &i in chunk {
-                let e = &encodings[i];
-                ids.extend(e.get_ids().iter().map(|&x| x as i64));
-                mask.extend(e.get_attention_mask().iter().map(|&x| x as i64));
-                let pad = cols - e.len();
-                ids.resize(ids.len() + pad, self.pad_id as i64);
+                input.extend(ids[i].iter().map(|&x| x as i64));
+                mask.resize(mask.len() + lengths[i], 1);
+                let pad = cols - lengths[i];
+                input.resize(input.len() + pad, self.pad_id as i64);
                 mask.resize(mask.len() + pad, 0);
             }
-            let ids = Tensor::from_array(([rows, cols], ids)).map_err(rt)?;
+            let input = Tensor::from_array(([rows, cols], input)).map_err(rt)?;
             let mask = Tensor::from_array(([rows, cols], mask)).map_err(rt)?;
             let outputs = self
                 .session
-                .run(ort::inputs!["input_ids" => ids, "attention_mask" => mask])
+                .run(ort::inputs!["input_ids" => input, "attention_mask" => mask])
                 .map_err(rt)?;
             let (shape, data) = outputs["embeddings"]
                 .try_extract_tensor::<f32>()
@@ -172,6 +175,37 @@ impl Embedder {
     }
 }
 
+/// Most padded tokens (rows × longest row) in one ONNX batch. 16 rows of 512 tokens: short
+/// documents still run 16 at a time (the measured CPU sweet spot), long ones in smaller batches.
+pub const TOKEN_BUDGET: usize = 16 * 512;
+
+/// Splits `order` (indices sorted by ascending length) into consecutive batches of at most
+/// `max_rows` rows whose padded size (rows × longest length) stays within `token_budget`. A single
+/// text longer than the budget gets a batch of its own.
+pub fn plan_batches(
+    order: &[usize],
+    lengths: &[usize],
+    max_rows: usize,
+    token_budget: usize,
+) -> Vec<std::ops::Range<usize>> {
+    let max_rows = max_rows.max(1);
+    let mut batches = Vec::new();
+    let mut start = 0;
+    while start < order.len() {
+        let mut end = start + 1;
+        // Sorted ascending, so the newest row is always the longest.
+        while end < order.len()
+            && end - start < max_rows
+            && (end - start + 1) * lengths[order[end]].max(1) <= token_budget
+        {
+            end += 1;
+        }
+        batches.push(start..end);
+        start = end;
+    }
+    batches
+}
+
 /// Indices of `lengths` sorted by length (stable), so consecutive batches have similar lengths.
 pub fn length_order(lengths: &[usize]) -> Vec<usize> {
     let mut order: Vec<usize> = (0..lengths.len()).collect();
@@ -182,6 +216,46 @@ pub fn length_order(lengths: &[usize]) -> Vec<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn batches_cover_every_text_once_within_limits(
+            lengths in proptest::collection::vec(1usize..1100, 0..300),
+            max_rows in 1usize..40,
+            budget in 1usize..20_000,
+        ) {
+            let order = length_order(&lengths);
+            let batches = plan_batches(&order, &lengths, max_rows, budget);
+            let mut seen: Vec<usize> = batches.iter().flat_map(|r| order[r.clone()].to_vec()).collect();
+            seen.sort();
+            prop_assert_eq!(seen, (0..lengths.len()).collect::<Vec<_>>());
+            let mut next = 0;
+            for r in &batches {
+                prop_assert_eq!(r.start, next);
+                next = r.end;
+                let rows = r.len();
+                prop_assert!(rows >= 1 && rows <= max_rows);
+                let longest = order[r.clone()].iter().map(|&i| lengths[i]).max().unwrap();
+                prop_assert!(rows == 1 || rows * longest <= budget);
+            }
+        }
+    }
+
+    #[test]
+    fn short_texts_fill_rows_long_texts_shrink_batches() {
+        let lengths = vec![100; 40];
+        let order = length_order(&lengths);
+        let b = plan_batches(&order, &lengths, 16, TOKEN_BUDGET);
+        assert_eq!(
+            b.iter().map(|r| r.len()).collect::<Vec<_>>(),
+            vec![16, 16, 8]
+        );
+        let lengths = vec![1024; 20];
+        let order = length_order(&lengths);
+        let b = plan_batches(&order, &lengths, 16, TOKEN_BUDGET);
+        assert_eq!(b.iter().map(|r| r.len()).collect::<Vec<_>>(), vec![8, 8, 4]);
+    }
 
     #[test]
     fn length_order_is_a_stable_permutation() {
