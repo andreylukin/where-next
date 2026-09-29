@@ -21,6 +21,7 @@ ort = { version = "=2.0.0-rc.13", optional = true }
 tokenizers = { version = "0.23", optional = true, default-features = false, features = ["onig"] }
 
 [dev-dependencies]
+wn-sources = { path = "../wn-sources" }
 proptest.workspace = true
 proptest-state-machine.workspace = true
 tempfile = "3"

@@ -76,4 +76,22 @@ cargo build --release -p wn-mcp --bin wn-mcp-server
 | `cargo run --release -p wn-mcp --example latency -- <repo> <model-dir> <cache-home>` | Warm-up, then p50/p95/max of warm `where_next` calls in-process |
 | `cargo run --release -p wn-mcp --example mcp_bench -- <server-bin> <repo> <model-dir> <cache-home>` | Round trips through `wn-mcp-server` over stdio, as an agent would call it |
 
+| `cargo run --release -p wn-embed --example doc_throughput -- <model-dir> <repo> [n]` | Document throughput on a real repository's skeletons, by batch size |
+
 Write a model manifest with `cargo run -p wn-embed --example manifest -- <model-dir>`.
+
+### Measured (Apple M-series laptop, CPU, gemma-g2r fp32)
+
+On kubernetes (31,425 tracked files; 13,534 source and 6,620 config files indexed):
+
+| | |
+|---|---|
+| First `wn init` (index + adapter fit) | 372 s, 1.4 GB peak memory (v2b took about 31 min) |
+| Of which scan, read and skeletons | about 5 s; embedding is the rest |
+| Document throughput | 75 docs/s at batch 16 (60 at 4, 70 at 8, 73 at 32, 61 at 64) |
+| Warm `where_next` query (resident MCP server) | p50 19 ms, p95 21 ms |
+| Reopen a stored index | 1.1 s; no-op refresh 0.6 s |
+| Cold `wn ask` (loads the model each time) | 5.7 s, most of it model load: agents should use `wn mcp` |
+
+An interrupted first index keeps its checkpoints (every 1,024 documents) and resumes. The CoreML
+execution provider cannot compile these graphs today, so inference is CPU-only.
