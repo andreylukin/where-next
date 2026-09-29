@@ -1,8 +1,8 @@
 //! MCP server exposing where-next to coding agents (Claude Code, Codex, Cursor, …).
 //!
 //! Tools:
-//! - `where_next(query, context?)`: at most three paths with a reason and a similarity score, or a
-//!   fail-open answer telling the agent to use ordinary search. Always JSON with a `status` field.
+//! - `where_next(query, context?)`: at most three paths with similarity scores, or a fail-open
+//!   state telling the agent to use ordinary search. Always JSON with a `state` field.
 //! - `refresh_index()`: re-scan the repository now.
 //! - `status()`: session and index state, document count, model provenance.
 //!
@@ -17,7 +17,6 @@ use rmcp::model::{CallToolResult, ContentBlock, ServerCapabilities, ServerConfig
 use rmcp::{schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler};
 use serde::Deserialize;
 use wn_daemon::daemon::Service;
-use wn_daemon::engine::MAX_HINTS;
 
 /// Arguments of `where_next`.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -64,14 +63,14 @@ impl WhereNextServer {
     }
 
     #[tool(
-        description = "Suggest up to 3 files in this repository worth opening next for a task, with a short reason each. Scores are similarities, not probabilities. If status is fail_open, use ordinary search instead."
+        description = "Suggest up to 3 files in this repository worth opening next for a task. Scores are similarities, not probabilities. Only state \"ok\" (or \"stale_index\") carries hints; any other state (abstain, empty_index, unsupported_scope, error) means use ordinary search instead."
     )]
     fn where_next(
         &self,
         Parameters(args): Parameters<WhereNextArgs>,
     ) -> Result<CallToolResult, McpError> {
         let context = args.context.unwrap_or_default();
-        let answer = self.with_service(|s| s.ask(&args.query, &context, MAX_HINTS))?;
+        let answer = self.with_service(|s| s.ask(&args.query, &context))?;
         json_result(&answer)
     }
 
@@ -96,7 +95,7 @@ impl ServerHandler for WhereNextServer {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             "where-next suggests which files to open next for a coding task. Call where_next with \
              the task (and optional recent context such as an error). It returns at most 3 paths; \
-             treat them as hints, and fall back to ordinary search when status is fail_open.",
+             treat them as hints, and fall back to ordinary search whenever state is not ok.",
         )
     }
 }
@@ -113,13 +112,13 @@ pub async fn serve_stdio(
     Ok(())
 }
 
-/// Production setup: a verified ONNX model, an index snapshot directory, background warm-up and
-/// refresh. Returns the shared service and the refresher handle (stop it on exit).
+/// Production setup: a verified ONNX model, a per-repository cache under `cache_home`, and
+/// background warm-up and refresh. Returns the shared service and the refresher (stop it on exit).
 #[cfg(feature = "onnx")]
 pub fn open_repo(
     root: &std::path::Path,
     model_dir: &std::path::Path,
-    cache_dir: Option<std::path::PathBuf>,
+    cache_home: &std::path::Path,
     refresh_every: std::time::Duration,
 ) -> Result<
     (
@@ -129,12 +128,12 @@ pub fn open_repo(
     String,
 > {
     use wn_daemon::daemon::{background, Daemon};
-    use wn_daemon::engine::Engine;
-    use wn_daemon::onnx::OnnxEncoder;
+    use wn_daemon::workspace::Workspace;
+    use wn_embed::core_encoder::OnnxEncoder;
 
-    let encoder = OnnxEncoder::open(model_dir, None)?;
-    let typed = Arc::new(Mutex::new(Daemon::new(Engine::new(
-        root, cache_dir, encoder,
+    let encoder = Arc::new(OnnxEncoder::open(model_dir, None)?);
+    let typed = Arc::new(Mutex::new(Daemon::new(Workspace::open(
+        root, cache_home, encoder,
     ))));
     let refresher = background::spawn(typed.clone(), refresh_every);
     let service: Arc<Mutex<dyn Service>> = typed;

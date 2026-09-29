@@ -8,9 +8,9 @@ use std::sync::{Arc, Mutex};
 use rmcp::model::CallToolRequestParams;
 use rmcp::ServiceExt;
 use serde_json::Value;
+use wn_core::encoder::HashEncoder;
 use wn_daemon::daemon::{Daemon, Service};
-use wn_daemon::engine::Engine;
-use wn_daemon::fake::HashEncoder;
+use wn_daemon::workspace::Workspace;
 use wn_mcp::WhereNextServer;
 
 fn git(dir: &Path, args: &[&str]) {
@@ -56,11 +56,10 @@ fn args(v: Value) -> serde_json::Map<String, Value> {
 #[tokio::test]
 async fn tools_answer_over_mcp() {
     let dir = repo();
-    let typed = Arc::new(Mutex::new(Daemon::new(Engine::new(
-        dir.path(),
-        None,
-        HashEncoder::new(128),
-    ))));
+    let cache = tempfile::tempdir().unwrap();
+    let mut ws = Workspace::open(dir.path(), cache.path(), Arc::new(HashEncoder { dim: 128 }));
+    ws.options.no_abstain = true;
+    let typed = Arc::new(Mutex::new(Daemon::new(ws)));
     // Before warm-up the tool fails open rather than returning an empty hint list.
     let service: Arc<Mutex<dyn Service>> = typed.clone();
     let (server_io, client_io) = tokio::io::duplex(1 << 16);
@@ -83,7 +82,7 @@ async fn tools_answer_over_mcp() {
         )
         .await
         .unwrap();
-    assert_eq!(text(&cold)["status"], "fail_open");
+    assert_eq!(text(&cold)["state"], "error");
 
     typed.lock().unwrap().warm().unwrap();
 
@@ -97,9 +96,9 @@ async fn tools_answer_over_mcp() {
         .await
         .unwrap();
     let answer = text(&warm);
-    assert_eq!(answer["status"], "hints");
-    assert_eq!(answer["hints"][0]["path"], "billing.py");
-    assert!(answer["hints"].as_array().unwrap().len() <= 3);
+    assert_eq!(answer["state"], "ok");
+    assert_eq!(answer["files"][0]["path"], "billing.py");
+    assert!(answer["files"].as_array().unwrap().len() <= 3);
 
     let status = client
         .call_tool(CallToolRequestParams::new("status"))
@@ -111,7 +110,7 @@ async fn tools_answer_over_mcp() {
         .call_tool(CallToolRequestParams::new("refresh_index"))
         .await
         .unwrap();
-    assert_eq!(text(&refresh)["embedded"], 0);
+    assert_eq!(text(&refresh)["encoded"], 0);
 
     client.cancel().await.unwrap();
     server_task.abort();

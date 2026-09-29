@@ -1,0 +1,238 @@
+//! One repository's where-next state: scan, index, personal adapter and queries, built on the
+//! `wn-core` runtime and the `wn-git` scanner.
+//!
+//! Scanning (git listing, stat calls) is a free function so it can run without holding the
+//! daemon lock; only applying a changed scan (embedding new file versions) needs the workspace.
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Instant;
+
+use serde::Serialize;
+use wn_core::adapter::{AdapterParams, ADAPTER_COMMITS};
+use wn_core::encoder::Encoder;
+use wn_core::index::{EntryKind, Index, IndexedFile, RefreshStats};
+use wn_core::index_lifecycle::IndexState;
+use wn_core::rank::Outcome;
+use wn_core::runtime::{
+    fit_from_history, load_adapter, save_adapter, suggest, HistoryExample, StoredAdapter,
+    SuggestOptions,
+};
+use wn_git::Coverage;
+
+/// Largest file read for its skeleton.
+pub const MAX_FILE_BYTES: usize = 400_000;
+
+/// A shareable encoder.
+pub type SharedEncoder = Arc<dyn Encoder + Send + Sync>;
+
+/// Result of one scan: the indexable files with their version ids, and coverage counts.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Scan {
+    pub files: Vec<IndexedFile>,
+    pub coverage: Coverage,
+}
+
+impl Scan {
+    /// Path → version id, to detect changes between scans.
+    pub fn versions(&self) -> BTreeMap<&str, &str> {
+        self.files
+            .iter()
+            .map(|f| (f.path.as_str(), f.cid.as_str()))
+            .collect()
+    }
+}
+
+/// Scans `root` (tracked + untracked, deletions dropped). Safe to call without any lock.
+pub fn scan(root: &Path) -> Scan {
+    let (files, coverage) = wn_git::scan(root);
+    Scan {
+        files: files
+            .into_iter()
+            .map(|(path, e)| IndexedFile {
+                path,
+                cid: e.id.as_str().to_string(),
+                kind: e.kind,
+            })
+            .collect(),
+        coverage,
+    }
+}
+
+/// Directory for a repository's index and adapter under `cache_home`: a hash of the absolute
+/// root, so two checkouts never share a cache.
+pub fn repo_cache_dir(cache_home: &Path, root: &Path) -> PathBuf {
+    let abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let mut h: u64 = 1469598103934665603;
+    for b in abs.to_string_lossy().bytes() {
+        h = (h ^ b as u64).wrapping_mul(1099511628211);
+    }
+    let name = abs
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "repo".into());
+    cache_home.join(format!("{name}-{h:016x}"))
+}
+
+/// Where an answer came from.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Provenance {
+    pub model: String,
+    pub index_state: String,
+    pub files_indexed: usize,
+    pub configs_indexed: usize,
+    pub coverage: Coverage,
+}
+
+/// What a refresh or warm-up did.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Refreshed {
+    pub encoded: usize,
+    pub removed: usize,
+    pub files_indexed: usize,
+    pub adapter: Option<String>,
+    pub ms: u128,
+}
+
+pub struct Workspace {
+    root: PathBuf,
+    dir: PathBuf,
+    encoder: SharedEncoder,
+    index: Index,
+    adapter: Option<StoredAdapter>,
+    last_scan: Option<Scan>,
+    pub options: SuggestOptions,
+}
+
+impl Workspace {
+    /// Opens the stored index and adapter for this repository and model (nothing is embedded
+    /// yet; call [`Workspace::apply`] with a scan).
+    pub fn open(root: &Path, cache_home: &Path, encoder: SharedEncoder) -> Self {
+        let dir = repo_cache_dir(cache_home, root);
+        let index = Index::open(&dir.join("index"), &encoder.fingerprint());
+        let adapter =
+            load_adapter(&dir.join("adapter")).filter(|a| a.meta.base == encoder.fingerprint());
+        Self {
+            root: root.to_path_buf(),
+            dir,
+            encoder,
+            index,
+            adapter,
+            last_scan: None,
+            options: SuggestOptions::default(),
+        }
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn index_state(&self) -> IndexState {
+        self.index.state()
+    }
+
+    /// Versions from the last applied scan (for cheap change detection outside the lock).
+    pub fn last_versions(&self) -> BTreeMap<String, String> {
+        self.last_scan
+            .as_ref()
+            .map(|s| {
+                s.files
+                    .iter()
+                    .map(|f| (f.path.clone(), f.cid.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Embeds new or changed file versions from `scan` and drops the rest.
+    pub fn apply(&mut self, scan: Scan) -> Result<RefreshStats, String> {
+        let root = self.root.clone();
+        let read = move |path: &str, _kind: wn_sources::Kind| {
+            wn_sources::read_text(&root.join(path), MAX_FILE_BYTES).ok()
+        };
+        let stats = self
+            .index
+            .refresh(&scan.files, &read, self.encoder.as_ref(), false)
+            .map_err(|e| e.to_string())?;
+        self.last_scan = Some(scan);
+        Ok(stats)
+    }
+
+    /// Fits the personal adapter from commit history when none matches the current model.
+    /// Returns the adapter revision in use, or why none could be fitted.
+    pub fn ensure_adapter(&mut self) -> Result<String, String> {
+        if let Some(a) = &self.adapter {
+            return Ok(a.meta.revision.clone());
+        }
+        let examples: Vec<HistoryExample> = wn_git::history(&self.root, ADAPTER_COMMITS)
+            .into_iter()
+            .map(|c| HistoryExample {
+                sha: c.sha,
+                date: c.date,
+                subject: c.subject,
+                body: c.body,
+                paths: c.paths,
+            })
+            .collect();
+        let adapter = fit_from_history(
+            &self.index,
+            &examples,
+            &[],
+            self.encoder.as_ref(),
+            &AdapterParams::default(),
+            ADAPTER_COMMITS,
+            0,
+        )
+        .map_err(|e| e.to_string())?;
+        save_adapter(&self.dir.join("adapter"), &adapter).map_err(|e| e.to_string())?;
+        let revision = adapter.meta.revision.clone();
+        self.adapter = Some(adapter);
+        Ok(revision)
+    }
+
+    /// Scan, apply and (if possible) fit the adapter.
+    pub fn warm(&mut self) -> Result<Refreshed, String> {
+        let start = Instant::now();
+        let stats = self.apply(scan(&self.root))?;
+        let adapter = self.ensure_adapter().ok();
+        Ok(Refreshed {
+            encoded: stats.encoded,
+            removed: stats.removed,
+            files_indexed: self.index.count(EntryKind::File),
+            adapter,
+            ms: start.elapsed().as_millis(),
+        })
+    }
+
+    /// Answers a query. Operational problems come back as fail-open outcome states.
+    pub fn ask(&self, query: &str, context: &str) -> Outcome {
+        let mut opts = self.options;
+        opts.unsupported_only = self
+            .last_scan
+            .as_ref()
+            .is_some_and(|s| s.files.is_empty() && s.coverage.unsupported > 0);
+        suggest(
+            &self.index,
+            self.adapter.as_ref(),
+            self.encoder.as_ref(),
+            query,
+            context,
+            opts,
+        )
+    }
+
+    pub fn provenance(&self) -> Provenance {
+        Provenance {
+            model: self.encoder.fingerprint(),
+            index_state: format!("{:?}", self.index.state()),
+            files_indexed: self.index.count(EntryKind::File),
+            configs_indexed: self.index.count(EntryKind::Config),
+            coverage: self
+                .last_scan
+                .as_ref()
+                .map(|s| s.coverage.clone())
+                .unwrap_or_default(),
+        }
+    }
+}
