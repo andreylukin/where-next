@@ -172,7 +172,7 @@
 {
 "query": "[Bug]ProducerTopicManager throw NPE when runtime module started\n### Search before asking\n\n- [X] I had searched in the [issues](https://github.com/apache/eventmesh/issues?q=is%3Aissue) and found no similar issues.\n\n\n### Environment\n\nWindows\n\n### EventMesh version\n\nmaster\n\n### What happened\n\nwhen I start eventmesh runtime module. when ProducerTopicManager.scheduler execute then will throw java.lang.NullPointerException:\r\n\r\n```\r\n2023-03-12 12:27:53,048 INFO  [eventMesh-metrics-2] HTTPMetricsServer(HTTPMetricsServer.java:155) - maxPushMsgTPS: 0.0, avgPushMsgTPS: 0.0, sum: 0, sumFail: 0, sumFailRate: 0.0, maxClientLatency: 0.0, avgClientLatency: 0.0\r\n2023-03-12 12:27:53,048 INFO  [eventMesh-metri",
 "context": "",
-"kind": "issue"
+"kind": "error"
 },
 {
 "query": "Python Lint failing on CI, blocking merges\nJobs have begun failing with errors in linting the Python SDK, specifically failing on running `mypy`: https://github.com/pulumi/pulumi/actions/runs/3624968763/jobs/6112540141\r\n\r\nLogs:\r\n\r\n```\r\n. venv/*/activate && \\\\\r\n\tMYPYPATH=./stubs python -m mypy ./lib/pulumi --config-file=mypy.ini\r\nlib/pulumi/runtime/invoke.py:[19](https://github.com/pulumi/pulumi/actions/runs/3624968763/jobs/6112540141#step:16:22)0: note: By default the bodies of untyped functions are not checked, consider using --check-untyped-defs  [annotation-unchecked]\r\nlib/pulumi/runtime/invoke.py:236: note: By default the bodies of untyped functions are not checked, consider using --chec",
@@ -477,7 +477,7 @@
 {
 "query": "JsonObject.entrySet() Entry.setValue(...) does not prevent null values\nThe Map.Entry objects in the Set returned by `JsonObject.entrySet()` do not validate the value passed to their `Entry.setValue(...)` method, allowing Java `null`s. This can cause runtime exceptions when the user of the JsonObject later expects that the values returned by JsonObject are never `null`:\n```java\nJsonObject jsonObject = new JsonObject();\njsonObject.addProperty(\"test\", 1);\njsonObject.entrySet().iterator().next().setValue(null);\n\nSystem.out.println(\"has=\" + jsonObject.has(\"test\"));\njsonObject.getAsJsonPrimitive(\"test\").toString(); // NullPointerException\n```\n\nThe Map.Entry objects should instead throw a NullPoint",
 "context": "",
-"kind": "issue"
+"kind": "error"
 },
 {
 "query": "Sandbox: Enable on Insiders by default\n\n",
@@ -642,7 +642,7 @@
 {
 "query": "<uploaded_files>\n/workspace/python__mypy__0.920\n</uploaded_files>\nI've uploaded a python code repository in the directory python__mypy__0.920. Consider the following PR description:\n\n<pr_description>\ncrash for protocol member with contravariant type variable\n\r\n**Reproducer**\r\n\r\n```\r\nfrom typing import overload, Protocol, TypeVar\r\n\r\nI = TypeVar('I')\r\nV_contra = TypeVar('V_contra', contravariant=True)\r\n\r\nclass C(Protocol[I]):\r\n    def __abs__(self: 'C[V_contra]') -> 'C[V_contra]':\r\n        ...\r\n\r\n    @overload\r\n    def f(self: 'C', q: int) -> int:\r\n        ...\r\n    @overload\r\n    def f(self: 'C[float]', q: float) -> 'C[float]':\r\n        ...\r\n```\r\n\r\n**Traceback**\r\n\r\n```\r\n$  mypy --show-tracebac",
 "context": "",
-"kind": "issue"
+"kind": "error"
 },
 {
 "query": "<uploaded_files>\n/workspace/iterative__dvc__2.0\n</uploaded_files>\nI've uploaded a python code repository in the directory iterative__dvc__2.0. Consider the following PR description:\n\n<pr_description>\nlist: Add --show-json (or similar flag)\nIn the vs code project we have a view that uses `dvc list . --dvc-only` to show all paths that are tracked by DVC in a tree view.  Reasons for this view, some discussion around it and a short demo are shown here: https://github.com/iterative/vscode-dvc/issues/318.\r\n\r\nAt the moment we take the stdout from the command, split the string into a list (using `\\n` as a delimiter) and then post process to work out whether or not the paths relate to files or direct",
@@ -723,5 +723,50 @@
 "query": "now the same for billing",
 "context": "Assistant: done with invoices",
 "kind": "conversational"
+},
+{
+"query": "Traceback: KeyError 'user_id' in handler",
+"context": "",
+"kind": "error"
+},
+{
+"query": "TypeError: cannot read properties of undefined (reading 'map')",
+"context": "",
+"kind": "error"
+},
+{
+"query": "thread main panicked at index out of bounds",
+"context": "",
+"kind": "error"
+},
+{
+"query": "fix the parser, it raises ValueError",
+"context": "",
+"kind": "error"
+},
+{
+"query": "got Error: connection refused on startup",
+"context": "",
+"kind": "error"
+},
+{
+"query": "Exception in thread \"main\" java.lang.NullPointerException",
+"context": "",
+"kind": "error"
+},
+{
+"query": "add an ErrorBoundary around the picker",
+"context": "",
+"kind": "request"
+},
+{
+"query": "handle ValueError in parser",
+"context": "",
+"kind": "request"
+},
+{
+"query": "rename the error field in the settings form",
+"context": "",
+"kind": "request"
 }
 ]
