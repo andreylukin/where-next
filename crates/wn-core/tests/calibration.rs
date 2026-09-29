@@ -185,3 +185,27 @@ fn v2b_has_fitted_error_thresholds_and_keeps_issue_starts_open() {
         c.thresholds(QueryKind::Request, false, false)
     );
 }
+
+/// Single-line error queries count as errors without full stack frames: a `Traceback` header, an
+/// exception name followed by its message, `panicked at`, or `Error: …`. Class names such as
+/// `ErrorBoundary`, or an exception named in passing, do not.
+#[test]
+fn single_line_error_queries_are_errors() {
+    for q in [
+        "Traceback: KeyError 'user_id' in handler",
+        "TypeError: cannot read properties of undefined (reading 'map')",
+        "thread main panicked at index out of bounds",
+        "fix the parser, it raises ValueError",
+        "got Error: connection refused on startup",
+        "Exception in thread \"main\" java.lang.NullPointerException",
+    ] {
+        assert_eq!(QueryKind::classify(q, ""), QueryKind::Error, "{q}");
+    }
+    for q in [
+        "add an ErrorBoundary around the picker",
+        "handle ValueError in parser",
+        "rename the error field in the settings form",
+    ] {
+        assert_eq!(QueryKind::classify(q, ""), QueryKind::Request, "{q}");
+    }
+}

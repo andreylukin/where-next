@@ -107,6 +107,10 @@ const STRONG_ERROR: &[&str] = &[
     r"exit (code|status) [1-9]\d*\b",
     r"\bUncaught \w+",
     r"(?i)\bstack ?trace\b",
+    r"\bTraceback\b",
+    r#"(?m)\b[A-Z][A-Za-z0-9]*(Error|Exception)(:|\(|\s+['"]|\s*$)"#,
+    r"\bError: \S",
+    r"\bException(:|\s+in\s)",
 ];
 /// Words that suggest an error in prose; they count only in pairs, in code-looking text.
 const WEAK_ERROR: &str =
