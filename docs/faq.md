@@ -27,15 +27,21 @@ it isn't confident.
 
 ## Does it help agents in practice?
 
-We don't know yet. Offline benchmarks show it finds the right file far more often than baselines, but
-a controlled agent trial measuring cost, time and success is the gate before we claim savings. See
-[LAUNCH.md](../LAUNCH.md).
+Not measurably, in the one setting we have tested. In a controlled pilot on 50 SWE-bench Pro tasks with
+a cheap, capable agent, hints got the agent to a correct file about 2.6 steps sooner, but success was
+unchanged and cost per resolved task was slightly higher (within noise). Finding the file wasn't where
+that agent spent its budget. The full numbers are in [benchmarks/agent-trial.md](../benchmarks/agent-trial.md).
+
+Still open: more expensive agents, very large repositories, and people navigating by hand. Until one of
+those shows a real benefit, treat where-next as fast local navigation, not a cost saver.
 
 ## What does it do badly?
 
-- Short conversational follow-ups ("now do the same for the other one") without enough context.
+- Short conversational follow-ups ("now do the same for the other one"): about .25 hit@3 so far.
 - Exact identifiers and strings, where grep is better.
 - Files it cannot see: anything ignored by git, or resource types without a source yet.
+- Deciding when to stay quiet: current abstain thresholds withhold too many good hints on issue-style
+  questions. Calibration per model and query type is in progress.
 
 ## Does it send my code anywhere?
 
