@@ -28,7 +28,8 @@ remote = ["onnx", "wn-embed/remote"]
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
+similar = "2"
 wn-core.workspace = true
 wn-git = { version = "0.0.1", path = "../wn-git" }
 wn-sources = { version = "0.0.1", path = "../wn-sources" }

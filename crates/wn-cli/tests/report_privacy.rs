@@ -49,6 +49,7 @@ fn wn(repo: &Path, home: &Path, args: &[&str]) -> (String, String, i32) {
         .env("WN_MODELS_HOME", home.join("no-models"))
         .env_remove("WN_MODEL_DIR")
         .env_remove("WN_NO_LOG")
+        .env("WN_NO_DAEMON", "1")
         .output()
         .unwrap();
     (

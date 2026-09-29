@@ -204,11 +204,12 @@ impl Fixture {
         git(&upstream, &["commit", "-q", "-m", "first"]);
         let log = tmp.path().join("cargo.log");
         let cargo = tmp.path().join("fake-cargo");
-        // Records its arguments and "installs" a wn that prints the source commit.
+        // Records its arguments and "installs" a wn that prints the source commit and logs the
+        // arguments it is run with.
         fs::write(
             &cargo,
             format!(
-                "#!/bin/sh\necho \"$@\" >> '{log}'\nroot=''\npath=''\nwhile [ $# -gt 0 ]; do case \"$1\" in --root) root=\"$2\"; shift;; --path) path=\"$2\"; shift;; esac; shift; done\nsha=$(git -C \"$path\" rev-parse HEAD)\nmkdir -p \"$root/bin\"\nprintf '#!/bin/sh\\necho wn 0.0.1 %s\\n' \"$sha\" > \"$root/bin/wn\"\nchmod +x \"$root/bin/wn\"\n",
+                "#!/bin/sh\necho \"$@\" >> '{log}'\nroot=''\npath=''\nwhile [ $# -gt 0 ]; do case \"$1\" in --root) root=\"$2\"; shift;; --path) path=\"$2\"; shift;; esac; shift; done\nsha=$(git -C \"$path\" rev-parse HEAD)\nmkdir -p \"$root/bin\"\nprintf '#!/bin/sh\\n[ $# -gt 0 ] && echo \"$@\" >> %s/wn.log\\necho wn 0.0.1 %s\\n' \"$root\" \"$sha\" > \"$root/bin/wn\"\nchmod +x \"$root/bin/wn\"\n",
                 log = log.display()
             ),
         )
@@ -257,6 +258,13 @@ impl Fixture {
         fs::read_to_string(&self.log).map_or(0, |s| s.lines().count())
     }
 
+    /// Commands the installed `wn` was run with (by the post-install steps).
+    fn wn_calls(&self) -> Vec<String> {
+        fs::read_to_string(self.root.join("wn.log"))
+            .map(|s| s.lines().map(str::to_string).collect())
+            .unwrap_or_default()
+    }
+
     fn installed(&self) -> String {
         let out = Command::new(self.root.join("bin/wn")).output().unwrap();
         String::from_utf8_lossy(&out.stdout).trim().to_string()
@@ -279,6 +287,12 @@ fn first_run_clones_builds_and_installs() {
     assert_eq!(f.installed(), format!("wn 0.0.1 {}", f.head()));
     let log = fs::read_to_string(&f.log).unwrap();
     assert!(log.contains("install --path") && log.contains("--locked") && log.contains("--root"));
+    assert_eq!(
+        f.wn_calls(),
+        ["daemon stop", "skill sync --yes --from-state"],
+        "the new binary stops the old daemon and re-syncs skills"
+    );
+    assert!(r.message.is_empty(), "{}", r.message);
 }
 
 #[cfg(unix)]
@@ -290,6 +304,10 @@ fn up_to_date_does_not_rebuild_and_check_reports_updates() {
     assert_eq!(r.state, S::UpToDate);
     assert_eq!(r.exit_code(), 0);
     assert_eq!(f.cargo_calls(), 0, "no rebuild when up to date");
+    assert!(
+        f.wn_calls().is_empty(),
+        "no post-install steps when up to date"
+    );
 
     let second = f.commit("second");
     let mut check = f.opts(Some(first.clone()));
@@ -300,6 +318,7 @@ fn up_to_date_does_not_rebuild_and_check_reports_updates() {
     assert_eq!(r.old.as_deref(), Some(first.as_str()));
     assert_eq!(r.new.as_deref(), Some(second.as_str()));
     assert_eq!(f.cargo_calls(), 0, "--check never builds");
+    assert!(f.wn_calls().is_empty(), "no post-install steps on --check");
 
     let r = update::run(&f.opts(Some(first)), &mut yes());
     assert_eq!(r.state, S::Installed, "{}", r.message);
@@ -348,6 +367,10 @@ fn failures_are_reported_not_hidden() {
     assert_eq!(r.state, S::UpdateAvailable);
     assert_eq!(r.message, "cancelled");
     assert_eq!(f.cargo_calls(), 0);
+    assert!(
+        f.wn_calls().is_empty(),
+        "no post-install steps after a failure"
+    );
 }
 
 #[test]

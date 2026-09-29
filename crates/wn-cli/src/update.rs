@@ -284,6 +284,13 @@ pub fn render(r: &UpdateReport) -> String {
             short(&r.new),
             r.git_ref
         ),
+        UpdateState::Installed if !r.message.is_empty() => format!(
+            "updated wn: {} -> {} ({})\nnote: {}",
+            short(&r.old),
+            short(&r.new),
+            r.git_ref,
+            r.message
+        ),
         UpdateState::Installed => format!(
             "updated wn: {} -> {} ({})",
             short(&r.old),
@@ -451,13 +458,60 @@ pub fn run(opts: &UpdateOptions, confirm: &mut dyn FnMut(&UpdateReport) -> bool)
     }
     step(&mut life, &mut report, E::Build);
     match build(opts, &target) {
-        Ok(()) => step(&mut life, &mut report, E::BuildSucceeded),
+        Ok(()) => {
+            step(&mut life, &mut report, E::BuildSucceeded);
+            report.message = after_install(&installed_binary(opts)).join("; ");
+        }
         Err(e) => {
             report.message = e;
             step(&mut life, &mut report, E::BuildFailed);
         }
     }
     report
+}
+
+/// Where `cargo install` put the new `wn`: `--root`, else `$CARGO_INSTALL_ROOT`, `$CARGO_HOME` or
+/// `~/.cargo`.
+pub fn installed_binary(opts: &UpdateOptions) -> PathBuf {
+    let exe = if cfg!(windows) { "wn.exe" } else { "wn" };
+    let root = opts
+        .cargo_root
+        .clone()
+        .or_else(|| std::env::var_os("CARGO_INSTALL_ROOT").map(PathBuf::from))
+        .or_else(|| std::env::var_os("CARGO_HOME").map(PathBuf::from))
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .or_else(|| std::env::var_os("USERPROFILE"))
+                .map(|h| PathBuf::from(h).join(".cargo"))
+        })
+        .unwrap_or_default();
+    root.join("bin").join(exe)
+}
+
+/// After installing: stop a daemon from the old build and re-sync previously installed agent
+/// skills, with the new binary. Failures don't fail the update; they come back as notes.
+fn after_install(bin: &Path) -> Vec<String> {
+    let steps: [(&[&str], &str); 2] = [
+        (&["daemon", "stop"], "stopping the old daemon"),
+        (
+            &["skill", "sync", "--yes", "--from-state"],
+            "re-syncing skills",
+        ),
+    ];
+    let mut notes = Vec::new();
+    for (args, what) in steps {
+        let ok = Command::new(bin)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        if !ok {
+            notes.push(format!("{what} failed (run `wn {}`)", args.join(" ")));
+        }
+    }
+    notes
 }
 
 /// Interactive confirmation on a terminal; `--yes` or no terminal proceeds without asking.

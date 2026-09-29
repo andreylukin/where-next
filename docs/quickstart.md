@@ -45,14 +45,16 @@ flags.
 
 ## Use it from an agent
 
-Claude Code:
-
 ```sh
-claude mcp add where-next -- wn mcp
+wn skill sync            # shows what it will write and asks; --yes to skip the question
 ```
 
-The MCP server keeps the model and index warm, so repeated calls are fast. Configuration for Cursor
-and VS Code will be committed to `docs/integrations/` with the M1 release.
+installs the where-next skill for the agents found in your home directory (Claude Code, Codex,
+Cursor), so they call `wn ask --json` when they need to find where to work. A background daemon
+keeps the model and index warm between calls. Details, the optional Claude Code hook and the
+daemon's settings: [skill.md](skill.md).
+
+Clients without skills can use the MCP adapter instead: `claude mcp add where-next -- wn mcp`.
 
 ## Useful commands
 
@@ -61,6 +63,8 @@ and VS Code will be committed to `docs/integrations/` with the M1 release.
 | `wn status` | Index state, model and adapter versions, last refresh |
 | `wn ask --json` | Machine-readable output, including abstain and fail-open states |
 | `wn ask --no-log` | Don't record this query in the local usage log |
+| `wn skill sync` | Install or update the agent skill (`--dry-run`, `--uninstall`, `--agent`, `--project`) |
+| `wn daemon status` | Whether the background daemon runs, and what it keeps warm (`start`, `stop`) |
 | `wn train` | Refit the adapter now (normally automatic) |
 | `wn rollback` | Return to the previous adapter |
 | `wn bench` | Replay this repository's history to measure quality on your own code (`--contextbench <dir>` runs the public benchmark) |

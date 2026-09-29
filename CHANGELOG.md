@@ -9,6 +9,17 @@ explicitly.
 
 ### Added
 
+- CLI + skill are now the primary agent interface (MCP stays as an optional adapter):
+  - `skills/where-next/SKILL.md`, a short general skill for Claude Code, Codex and Cursor.
+  - `wn skill sync` (`--agent`, `--project`, `--dry-run`, `--yes`, `--uninstall`, `--from-state`)
+    installs it idempotently with version markers, shows a diff and asks, and never overwrites
+    files it did not write. Optional `--with-hook` adds a Claude Code `UserPromptSubmit` hook that
+    injects `wn ask --start` hints on a session's first prompt in large repositories.
+  - An auto-started per-user daemon for `wn ask` / `wn status`: Unix socket, version handshake,
+    background rescans, 15-minute idle exit, fail-open to in-process; `wn daemon start|stop|status`,
+    `--no-daemon` / `WN_NO_DAEMON`. The resident, client-connection and skill-sync lifecycles are
+    explicit state machines with exhaustive and model-based tests. See [docs/skill.md](docs/skill.md).
+
 - One-line install and update from source: `curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh`
   clones into a private `$WN_HOME/src`, builds with `cargo install --locked`, and on later runs
   rebuilds only when the ref moved (`--ref`, `--yes`, `--force`, `--dry-run`, `--uninstall`;

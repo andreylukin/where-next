@@ -19,13 +19,25 @@ your repositories from their git history, on your machine.
   second on CPU, without re-indexing, and keeps up as the codebase changes.
 - **Beyond code.** Configs, logs, docs and CLI help sections are planned resource types.
 
-Planned setup:
+Quick start:
 
 ```sh
-brew install where-next
+curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh
 wn init                                  # index the repo, fit the adapter from git history
+wn skill sync                            # teach Claude Code / Codex / Cursor when to call `wn`
 wn ask "retry the upload when S3 times out"
-claude mcp add where-next -- wn mcp      # expose it to Claude Code
+```
+
+Agents use `wn` through its CLI and a short [skill](skills/where-next/SKILL.md) (see
+[docs/skill.md](docs/skill.md)). A background daemon starts on first use and keeps the model and
+index warm, so repeated calls are fast; it exits after 15 idle minutes.
+
+### Other clients (MCP)
+
+For clients without skills, `wn mcp` is a thin MCP adapter over the same engine:
+
+```sh
+claude mcp add where-next -- wn mcp
 ```
 
 ## Install
@@ -116,7 +128,7 @@ Every field is listed in [privacy and licensing](docs/privacy-and-licensing.md#e
 
 [Quickstart](docs/quickstart.md) · [How it works](docs/how-it-works.md) ·
 [Privacy and licensing](docs/privacy-and-licensing.md) · [Adding a source](docs/adding-a-source.md) ·
-[FAQ](docs/faq.md) · [Building and testing](docs/building.md) · [Launch plan](LAUNCH.md) · [Changelog](CHANGELOG.md)
+[Agent skill and daemon](docs/skill.md) · [FAQ](docs/faq.md) · [Building and testing](docs/building.md) · [Launch plan](LAUNCH.md) · [Changelog](CHANGELOG.md)
 
 ## Contributing
 

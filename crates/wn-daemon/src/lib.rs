@@ -8,7 +8,14 @@
 //!   for transports, and the background warm-up / refresh thread.
 //! - [`usage`]: the local usage log that `wn report` summarises (never sent anywhere by itself).
 
+//! - [`resident`]: the per-user background process behind `wn ask` (Starting → Listening →
+//!   Draining → Stopped / Failed); idle timeout and shutdown both drain.
+//! - [`connect`]: how one command reaches that process (connect, spawn at most once, replace a
+//!   daemon from another build at most once), failing open to in-process answers.
+
+pub mod connect;
 pub mod daemon;
+pub mod resident;
 pub mod session;
 pub mod usage;
 pub mod workspace;
