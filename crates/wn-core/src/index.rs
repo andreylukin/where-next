@@ -1,9 +1,12 @@
 //! A repository's vector index: one vector per source file, config file and (optionally)
 //! definition, cached on disk per embedding model and refreshed incrementally.
 //!
-//! Only files whose version id changed are re-embedded. Snapshots are written atomically (new
-//! files, then rename), so a reader never sees a half-written index. The lifecycle is driven
-//! through [`IndexLifecycle`], so an index that failed to build can never serve results.
+//! Only files whose version id changed are re-embedded. Documents are embedded in chunks and
+//! the index is checkpointed after each chunk, so an interrupted first build resumes where it
+//! stopped; a checkpoint of an unfinished first build is marked incomplete and never serves.
+//! Snapshots are written atomically (new files, then rename), so a reader never sees a
+//! half-written index. The lifecycle is driven through [`IndexLifecycle`], so an index that
+//! failed to build can never serve results.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -15,7 +18,10 @@ use wn_sources::{config_doc, file_doc, function_docs, Kind, CONFIG_LINES};
 
 use crate::encoder::{EncodeError, Encoder};
 use crate::index_lifecycle::{IndexEvent, IndexLifecycle, IndexState};
-use crate::rank::{round4, top_k, Hint};
+use crate::rank::{round4, select_top, Hint};
+
+/// Documents embedded between checkpoints by default.
+pub const CHECKPOINT_EVERY: usize = 1024;
 
 /// What an index entry stands for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -72,6 +78,13 @@ struct Meta {
     fingerprint: String,
     dim: usize,
     entries: Vec<Entry>,
+    /// False for a checkpoint of an unfinished first build (older snapshots are complete).
+    #[serde(default = "complete_by_default")]
+    complete: bool,
+}
+
+fn complete_by_default() -> bool {
+    true
 }
 
 /// A repository index for one embedding model.
@@ -83,6 +96,7 @@ pub struct Index {
     vecs: Vec<f32>,
     dim: usize,
     lifecycle: IndexLifecycle,
+    checkpoint_every: usize,
 }
 
 impl Index {
@@ -96,18 +110,28 @@ impl Index {
             vecs: Vec::new(),
             dim: 0,
             lifecycle: IndexLifecycle::default(),
+            checkpoint_every: CHECKPOINT_EVERY,
         };
         if let Some((meta, vecs)) = load(dir) {
             if meta.fingerprint == fingerprint && vecs.len() == meta.entries.len() * meta.dim {
                 index.entries = meta.entries;
                 index.vecs = vecs;
                 index.dim = meta.dim;
-                // A stored snapshot is a completed build; the next refresh brings it up to date.
-                let _ = index.lifecycle.handle(IndexEvent::Init);
-                let _ = index.lifecycle.handle(IndexEvent::IndexDone);
+                if meta.complete {
+                    // A completed build; the next refresh brings it up to date.
+                    let _ = index.lifecycle.handle(IndexEvent::Init);
+                    let _ = index.lifecycle.handle(IndexEvent::IndexDone);
+                }
+                // An incomplete checkpoint stays Uninitialized: its vectors are reused by the
+                // next refresh, which finishes the build before anything is served.
             }
         }
         index
+    }
+
+    /// Documents to embed between checkpoints (at least 1).
+    pub fn set_checkpoint_every(&mut self, n: usize) {
+        self.checkpoint_every = n.max(1);
     }
 
     /// Lifecycle state.
@@ -230,55 +254,81 @@ impl Index {
             self.transition(IndexEvent::FilesChanged);
             self.transition(IndexEvent::Refresh);
         }
-        let to_encode: Vec<String> = texts.iter().flatten().cloned().collect();
-        let encoded = if to_encode.is_empty() {
-            Vec::new()
-        } else {
-            match encoder.documents(&to_encode) {
-                Ok(v) => v,
-                Err(e) => {
-                    self.transition(if first_build {
-                        IndexEvent::IndexFailed
-                    } else {
-                        IndexEvent::RefreshFailed
-                    });
-                    return Err(e);
-                }
-            }
-        };
-        let dim = encoded
-            .first()
-            .map(Vec::len)
-            .unwrap_or(if self.dim > 0 { self.dim } else { 1 });
-        if self.dim != 0 && dim != self.dim {
-            self.transition(if first_build {
-                IndexEvent::IndexFailed
-            } else {
-                IndexEvent::RefreshFailed
-            });
-            return Err(EncodeError(format!(
-                "dimension changed from {} to {dim}",
-                self.dim
-            )));
-        }
-        let mut vecs = Vec::with_capacity((keep.len() + texts.len()) * dim);
+        let encoded_total = texts.iter().flatten().count();
+        // Kept entries first, then new ones as their chunk is embedded.
+        let mut vecs = Vec::with_capacity((keep.len() + texts.len()) * self.dim.max(1));
         let mut entries = Vec::with_capacity(keep.len() + new_entries.len());
         for &i in &keep {
             entries.push(self.entries[i].clone());
             vecs.extend_from_slice(&self.vecs[i * self.dim..(i + 1) * self.dim]);
         }
-        let mut next = encoded.into_iter();
-        for (entry, text) in new_entries.into_iter().zip(&texts) {
-            entries.push(entry);
-            match text {
-                Some(_) => vecs.extend(next.next().unwrap_or_else(|| vec![0.0; dim])),
-                None => vecs.extend(std::iter::repeat(0.0).take(dim)),
+        let mut dim = self.dim;
+        let mut pending = new_entries.into_iter().zip(texts).peekable();
+        while pending.peek().is_some() {
+            // One chunk: up to `checkpoint_every` texts, plus any text-less markers among them.
+            let mut chunk = Vec::new();
+            let mut n_texts = 0;
+            while let Some((_, text)) = pending.peek() {
+                if text.is_some() && n_texts == self.checkpoint_every {
+                    break;
+                }
+                n_texts += usize::from(text.is_some());
+                chunk.push(pending.next().expect("peeked"));
+            }
+            let batch: Vec<String> = chunk.iter().filter_map(|(_, t)| t.clone()).collect();
+            let result = if batch.is_empty() {
+                Ok(Vec::new())
+            } else {
+                encoder.documents(&batch)
+            };
+            let embedded = match result {
+                Ok(v) => v,
+                Err(e) => {
+                    self.fail(first_build);
+                    return Err(e);
+                }
+            };
+            let chunk_dim = embedded.first().map(Vec::len).unwrap_or(dim.max(1));
+            if dim != 0 && chunk_dim != dim {
+                self.fail(first_build);
+                return Err(EncodeError(format!(
+                    "dimension changed from {dim} to {chunk_dim}"
+                )));
+            }
+            if dim == 0 {
+                dim = chunk_dim;
+            }
+            let mut next = embedded.into_iter();
+            for (entry, text) in chunk {
+                entries.push(entry);
+                match text {
+                    Some(_) => vecs.extend(next.next().unwrap_or_else(|| vec![0.0; dim])),
+                    None => vecs.extend(std::iter::repeat(0.0).take(dim)),
+                }
+            }
+            if pending.peek().is_some() {
+                // Checkpoint: an unfinished first build is saved as incomplete.
+                let _ = save(
+                    &self.dir,
+                    &self.fingerprint,
+                    dim,
+                    &entries,
+                    &vecs,
+                    !first_build,
+                );
             }
         }
         self.entries = entries;
         self.vecs = vecs;
-        self.dim = dim;
-        let saved = self.save();
+        self.dim = dim.max(1);
+        let saved = save(
+            &self.dir,
+            &self.fingerprint,
+            self.dim,
+            &self.entries,
+            &self.vecs,
+            true,
+        );
         self.transition(match (first_build, saved.is_ok()) {
             (true, true) => IndexEvent::IndexDone,
             (true, false) => IndexEvent::IndexFailed,
@@ -287,9 +337,17 @@ impl Index {
         });
         saved.map_err(|e| EncodeError(format!("saving index: {e}")))?;
         Ok(RefreshStats {
-            encoded: to_encode.len(),
+            encoded: encoded_total,
             removed,
         })
+    }
+
+    fn fail(&mut self, first_build: bool) {
+        self.transition(if first_build {
+            IndexEvent::IndexFailed
+        } else {
+            IndexEvent::RefreshFailed
+        });
     }
 
     fn transition(&mut self, event: IndexEvent) {
@@ -304,11 +362,21 @@ impl Index {
         if self.dim == 0 || q.len() != self.dim {
             return Vec::new();
         }
-        let (rows, mat) = self.matrix(kind);
-        top_k(&mat, self.dim, q, k)
+        let d = self.dim;
+        let scored: Vec<(usize, f32)> = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.kind == kind)
+            .map(|(i, _)| {
+                let row = &self.vecs[i * d..(i + 1) * d];
+                (i, row.iter().zip(q).map(|(a, b)| a * b).sum())
+            })
+            .collect();
+        select_top(scored, k)
             .into_iter()
             .map(|(i, score)| {
-                let e = rows[i];
+                let e = &self.entries[i];
                 let func = kind == EntryKind::Function;
                 Hint {
                     path: e.path.clone(),
@@ -319,27 +387,37 @@ impl Index {
             })
             .collect()
     }
+}
 
-    fn save(&self) -> io::Result<()> {
-        fs::create_dir_all(&self.dir)?;
-        let tag = format!("{}.{}", std::process::id(), nanos());
-        let vtmp = self.dir.join(format!("vecs.{tag}.f32"));
-        let mtmp = self.dir.join(format!("meta.{tag}.json"));
-        let mut bytes = Vec::with_capacity(self.vecs.len() * 4);
-        for x in &self.vecs {
-            bytes.extend_from_slice(&x.to_le_bytes());
-        }
-        fs::write(&vtmp, bytes)?;
-        let meta = Meta {
-            fingerprint: self.fingerprint.clone(),
-            dim: self.dim,
-            entries: self.entries.clone(),
-        };
-        fs::write(&mtmp, serde_json::to_vec(&meta).map_err(io::Error::other)?)?;
-        fs::rename(&vtmp, self.dir.join("vecs.f32"))?;
-        fs::rename(&mtmp, self.dir.join("meta.json"))?;
-        Ok(())
+fn save(
+    dir: &Path,
+    fingerprint: &str,
+    dim: usize,
+    entries: &[Entry],
+    vecs: &[f32],
+    complete: bool,
+) -> io::Result<()> {
+    fs::create_dir_all(dir)?;
+    let tag = format!("{}.{}", std::process::id(), nanos());
+    let vtmp = dir.join(format!("vecs.{tag}.f32"));
+    let mtmp = dir.join(format!("meta.{tag}.json"));
+    let mut bytes = Vec::with_capacity(vecs.len() * 4);
+    for x in vecs {
+        bytes.extend_from_slice(&x.to_le_bytes());
     }
+    fs::write(&vtmp, bytes)?;
+    let meta = Meta {
+        fingerprint: fingerprint.to_string(),
+        dim,
+        entries: entries.to_vec(),
+        complete,
+    };
+    fs::write(&mtmp, serde_json::to_vec(&meta).map_err(io::Error::other)?)?;
+    // Vectors first: `load` rejects a meta whose entry count does not match the vectors, so a
+    // crash between the renames yields no index rather than a mismatched one.
+    fs::rename(&vtmp, dir.join("vecs.f32"))?;
+    fs::rename(&mtmp, dir.join("meta.json"))?;
+    Ok(())
 }
 
 fn nanos() -> u128 {
