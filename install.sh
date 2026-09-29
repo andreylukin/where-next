@@ -246,6 +246,9 @@ fi
 
 if [ -n "$current" ]; then
   say "updated wn: $current -> $short_target ($git_ref)"
+  # Replace a daemon from the old build and re-sync agent skills installed by `wn skill sync`.
+  "$bin_dir/wn" daemon stop >/dev/null 2>&1 || true
+  "$bin_dir/wn" skill sync --yes --from-state >/dev/null 2>&1 || say "note: run 'wn skill sync' to update agent skills"
 else
   say "installed wn $short_target ($git_ref) at $bin_dir/wn"
 fi
@@ -257,6 +260,6 @@ say "update later with: wn update   (or re-run this installer)"
 say "next steps:"
 say "  cd your-repo && wn init        # index + learn from this repo's git history"
 say "  wn ask \"where is X handled?\"   # ranked files to open next"
-say "  claude mcp add where-next -- wn mcp   # use it from Claude Code"
+say "  wn skill sync                  # teach Claude Code / Codex / Cursor when to call wn"
 say "models: there are no public model weights yet. Without a model wn uses a lexical fallback;"
 say "  install one with: wn model pull <name> --source <path|https-url|hf-repo-id>"
