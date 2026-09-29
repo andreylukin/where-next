@@ -39,6 +39,7 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [dev-dependencies]
 proptest.workspace = true
+proptest-state-machine.workspace = true
 insta = { version = "1.48", features = ["filters"] }
 tempfile = "3"
 

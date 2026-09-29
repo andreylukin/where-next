@@ -4,6 +4,7 @@
 //! a process. Every report has a JSON form (`--json`) for agents and a short text form for people.
 
 pub mod bench;
+pub mod update;
 
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -26,11 +27,14 @@ use wn_sources::{read_text, Kind, MAX_CONFIG_BYTES, MAX_SOURCE_BYTES};
 #[cfg(feature = "onnx")]
 pub mod models;
 
+/// `wn --version`: the crate version plus the commit it was built from, e.g. `0.0.1 (abc1234 2026-09-29)`.
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("WN_VERSION_SUFFIX"));
+
 /// Command-line interface.
 #[derive(Debug, Parser)]
 #[command(
     name = "wn",
-    version,
+    version = VERSION,
     about = "Fast local \"where next\" hints for coding agents and developers"
 )]
 pub struct Cli {
@@ -113,6 +117,21 @@ pub enum Command {
         /// Skip the personal adapter.
         #[arg(long)]
         no_adapter: bool,
+    },
+    /// Rebuild wn from the tip of main (or --ref) of its source repository.
+    Update {
+        /// Only report whether an update is available (exit code 10 when it is).
+        #[arg(long)]
+        check: bool,
+        /// Branch, tag or commit to build.
+        #[arg(long = "ref", default_value = "main")]
+        git_ref: String,
+        /// Do not ask before rebuilding.
+        #[arg(long, short = 'y')]
+        yes: bool,
+        /// Rebuild even when already up to date.
+        #[arg(long)]
+        force: bool,
     },
     /// Install, list or remove models.
     #[cfg(feature = "onnx")]
@@ -481,6 +500,26 @@ pub fn run(cli: Cli) -> (String, i32) {
     if let Command::Bench { .. } = cli.command {
         return run_bench(cli);
     }
+    if let Command::Update {
+        check,
+        git_ref,
+        yes,
+        force,
+    } = &cli.command
+    {
+        let mut opts = update::UpdateOptions::from_env(git_ref);
+        opts.check_only = *check;
+        opts.force = *force;
+        opts.show_build_output = !cli.json;
+        let report = update::run(&opts, &mut update::confirm_on_tty(*yes));
+        let code = report.exit_code();
+        let text = if cli.json {
+            erased::Json::to_json(&report)
+        } else {
+            update::render(&report)
+        };
+        return (text, code);
+    }
     #[cfg(feature = "onnx")]
     if let Command::Model { action } = cli.command {
         let (report, code) = models::run(action, &models_home());
@@ -576,7 +615,9 @@ pub fn run(cli: Cli) -> (String, i32) {
             let value = serde_json::json!({ "message": msg });
             (out(&value, msg.clone()), 0)
         }
-        Command::Mcp | Command::Bench { .. } => unreachable!("handled above"),
+        Command::Mcp | Command::Bench { .. } | Command::Update { .. } => {
+            unreachable!("handled above")
+        }
         #[cfg(feature = "onnx")]
         Command::Model { .. } => unreachable!("handled above"),
     }

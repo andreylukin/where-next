@@ -1,14 +1,55 @@
 # Install
 
-> **Coming soon.** There are no releases yet, so the commands below do not work today. Build from
-> source instead: see [building.md](building.md). This page documents what the first release will
-> ship and how to verify it.
+## From source (works today)
 
-## Binary
+```sh
+curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh
+```
+
+Run it again at any time to update: it only rebuilds when the requested ref moved. What it does:
+
+1. Checks for `git` and a Rust toolchain. If `cargo` is missing it prints the rustup command and
+   asks before running it (`--yes` to skip the prompt, e.g. in CI).
+2. Clones `https://github.com/andreylukin/where-next` into `$WN_HOME/src` (default
+   `~/.local/share/where-next/src`), a private clone; your other checkouts are never touched.
+   Later runs `git fetch` it.
+3. Checks out `--ref` (default `main`) and builds with
+   `cargo install --path crates/wn-cli --locked`, installing `wn` into `~/.cargo/bin`
+   (or `$WN_BIN_ROOT/bin`).
+4. Prints the old and new commit and the next steps.
+
+From inside `wn`, the same flow is `wn update`:
+
+```sh
+wn update                 # fetch main, rebuild if it moved (asks first on a terminal; --yes to skip)
+wn update --check         # exit 0: up to date, 10: update available, 1: error
+wn update --ref v0.1.0    # any branch, tag or commit
+wn update --force         # rebuild even when up to date
+wn --version              # wn 0.0.1 (abc1234 2026-09-29): the commit this binary was built from
+```
+
+| option / variable | meaning |
+|---|---|
+| `--ref <branch\|tag\|sha>` | what to build (default `main`) |
+| `--yes`, `WN_YES=1` | no prompts; installs Rust with rustup if `cargo` is missing |
+| `--force` | rebuild even if already up to date |
+| `--dry-run` | print what would happen; no clone, checkout or build |
+| `--uninstall` | remove the `wn` binary and the private clone (caches and models are kept) |
+| `WN_HOME` | private clone location (default `~/.local/share/where-next`) |
+| `WN_BIN_ROOT` | `cargo install --root` (default: cargo's own, usually `~/.cargo`) |
+| `WN_REPO_URL` | source repository (default this repo; a local path works too) |
+
+Uninstall: `curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh -s -- --uninstall`.
+Caches (`~/.cache/where-next`) and models (`~/.cache/where-next-models`) are left in place.
+
+## Prebuilt binaries (coming soon)
+
+> There are no releases yet. When the first release is published, the same script installs a
+> prebuilt, checksum-verified binary with `WN_FROM=release`.
 
 ```sh
 # macOS (Apple silicon) and Linux (x86_64, arm64). Verifies the SHA-256 before installing to ~/.local/bin.
-curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | WN_FROM=release sh
 
 # Homebrew (tap, once published)
 brew install andreylukin/tap/where-next
@@ -19,7 +60,7 @@ cargo install where-next
 
 Windows: download `wn-x86_64-pc-windows-msvc.zip` from the releases page.
 
-Environment variables for `install.sh`: `WN_VERSION` (a tag, default latest), `WN_INSTALL_DIR`
+Environment variables for release mode: `WN_VERSION` (a tag, default latest), `WN_INSTALL_DIR`
 (default `~/.local/bin`).
 
 ## Verify a release

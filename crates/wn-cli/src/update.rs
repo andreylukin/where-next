@@ -1,0 +1,479 @@
+//! `wn update`: rebuild `wn` from the tip of `main` (or any ref) of the source repository.
+//!
+//! The installer (`install.sh`) and this command share one layout: a private clone at
+//! `$WN_HOME/src` (default `~/.local/share/where-next/src`), built with
+//! `cargo install --path crates/wn-cli --locked`. The flow is an explicit state machine
+//! ([`UpdateLifecycle`]) so every step and failure has a named state:
+//!
+//! `Idle --Start--> Fetching --FetchedSame--> UpToDate` (or `--FetchedNewer--> UpdateAvailable
+//! --Build--> Building --BuildSucceeded--> Installed`); fetch and build failures go to `Failed`,
+//! which can `Retry`. `UpToDate --Build--> Building` is `--force`.
+
+use std::fmt;
+use std::io::IsTerminal as _;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+use serde::Serialize;
+
+/// The commit this binary was built from (empty when not built from a git checkout).
+pub const BUILD_COMMIT: &str = env!("WN_GIT_COMMIT");
+
+/// Default source repository.
+pub const DEFAULT_REPO: &str = "https://github.com/andreylukin/where-next";
+
+/// Exit code of `wn update --check` when an update is available.
+pub const EXIT_UPDATE_AVAILABLE: i32 = 10;
+
+/// States of an update run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub enum UpdateState {
+    /// Nothing done yet.
+    Idle,
+    /// Cloning or fetching the source repository.
+    Fetching,
+    /// The installed binary already matches the requested ref.
+    UpToDate,
+    /// The requested ref differs from the installed binary.
+    UpdateAvailable,
+    /// `cargo install` is running.
+    Building,
+    /// The new binary is installed.
+    Installed,
+    /// A fetch or build failed.
+    Failed,
+}
+
+impl UpdateState {
+    /// Every state, for exhaustive tests.
+    pub const ALL: [UpdateState; 7] = [
+        UpdateState::Idle,
+        UpdateState::Fetching,
+        UpdateState::UpToDate,
+        UpdateState::UpdateAvailable,
+        UpdateState::Building,
+        UpdateState::Installed,
+        UpdateState::Failed,
+    ];
+}
+
+/// Events that drive an update run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UpdateEvent {
+    /// Begin: clone or fetch the source repository.
+    Start,
+    /// The fetched ref is the commit the binary was built from.
+    FetchedSame,
+    /// The fetched ref is a different commit (or the build commit is unknown).
+    FetchedNewer,
+    /// Cloning or fetching failed.
+    FetchFailed,
+    /// Start `cargo install`.
+    Build,
+    /// `cargo install` succeeded.
+    BuildSucceeded,
+    /// `cargo install` failed.
+    BuildFailed,
+    /// Try again after a failure.
+    Retry,
+}
+
+impl UpdateEvent {
+    /// Every event, for exhaustive tests.
+    pub const ALL: [UpdateEvent; 8] = [
+        UpdateEvent::Start,
+        UpdateEvent::FetchedSame,
+        UpdateEvent::FetchedNewer,
+        UpdateEvent::FetchFailed,
+        UpdateEvent::Build,
+        UpdateEvent::BuildSucceeded,
+        UpdateEvent::BuildFailed,
+        UpdateEvent::Retry,
+    ];
+}
+
+use UpdateEvent as E;
+use UpdateState as S;
+
+/// The complete transition table. Pairs not listed are illegal.
+pub const TRANSITIONS: &[(UpdateState, UpdateEvent, UpdateState)] = &[
+    (S::Idle, E::Start, S::Fetching),
+    (S::Fetching, E::FetchedSame, S::UpToDate),
+    (S::Fetching, E::FetchedNewer, S::UpdateAvailable),
+    (S::Fetching, E::FetchFailed, S::Failed),
+    (S::UpdateAvailable, E::Build, S::Building),
+    // `--force`: rebuild the same commit.
+    (S::UpToDate, E::Build, S::Building),
+    (S::Building, E::BuildSucceeded, S::Installed),
+    (S::Building, E::BuildFailed, S::Failed),
+    (S::Failed, E::Retry, S::Fetching),
+];
+
+/// Returns the next state for a legal `(state, event)` pair.
+pub fn next(state: UpdateState, event: UpdateEvent) -> Option<UpdateState> {
+    TRANSITIONS
+        .iter()
+        .find(|(from, on, _)| *from == state && *on == event)
+        .map(|(_, _, to)| *to)
+}
+
+/// A rejected `(state, event)` pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IllegalTransition {
+    pub state: UpdateState,
+    pub event: UpdateEvent,
+}
+
+impl fmt::Display for IllegalTransition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "event {:?} is not allowed in state {:?}",
+            self.event, self.state
+        )
+    }
+}
+
+impl std::error::Error for IllegalTransition {}
+
+/// The update lifecycle. The state only changes through [`UpdateLifecycle::handle`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateLifecycle {
+    state: UpdateState,
+}
+
+impl Default for UpdateLifecycle {
+    fn default() -> Self {
+        Self {
+            state: UpdateState::Idle,
+        }
+    }
+}
+
+impl UpdateLifecycle {
+    /// Current state.
+    pub fn state(&self) -> UpdateState {
+        self.state
+    }
+
+    /// Applies an event; illegal events are rejected and leave the state unchanged.
+    pub fn handle(&mut self, event: UpdateEvent) -> Result<UpdateState, IllegalTransition> {
+        let to = next(self.state, event).ok_or(IllegalTransition {
+            state: self.state,
+            event,
+        })?;
+        self.state = to;
+        Ok(to)
+    }
+}
+
+/// Where to fetch from and what to build.
+#[derive(Debug, Clone)]
+pub struct UpdateOptions {
+    /// Private clone (`$WN_HOME/src`).
+    pub src: PathBuf,
+    /// Source repository URL or path.
+    pub repo: String,
+    /// Branch, tag or commit to build.
+    pub git_ref: String,
+    /// Only report whether an update is available.
+    pub check_only: bool,
+    /// Rebuild even when already up to date.
+    pub force: bool,
+    /// `cargo install --root` (default: cargo's own default).
+    pub cargo_root: Option<PathBuf>,
+    /// The cargo executable.
+    pub cargo: PathBuf,
+    /// Commit the running binary was built from (`None` when unknown).
+    pub current: Option<String>,
+    /// Stream cargo's progress to stderr.
+    pub show_build_output: bool,
+}
+
+impl UpdateOptions {
+    /// Options from the environment, as `install.sh` sets them up.
+    pub fn from_env(git_ref: &str) -> Self {
+        Self {
+            src: wn_home().join("src"),
+            repo: std::env::var("WN_REPO_URL").unwrap_or_else(|_| DEFAULT_REPO.to_string()),
+            git_ref: git_ref.to_string(),
+            check_only: false,
+            force: false,
+            cargo_root: std::env::var_os("WN_BIN_ROOT").map(PathBuf::from),
+            cargo: find_cargo(),
+            current: (!BUILD_COMMIT.is_empty()).then(|| BUILD_COMMIT.to_string()),
+            show_build_output: true,
+        }
+    }
+}
+
+/// `$WN_HOME`, else `$XDG_DATA_HOME/where-next`, else `~/.local/share/where-next`.
+pub fn wn_home() -> PathBuf {
+    if let Some(h) = std::env::var_os("WN_HOME") {
+        return PathBuf::from(h);
+    }
+    if let Some(x) = std::env::var_os("XDG_DATA_HOME") {
+        return PathBuf::from(x).join("where-next");
+    }
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    home.join(".local").join("share").join("where-next")
+}
+
+/// `$WN_CARGO`, else `cargo` on `PATH`, else `~/.cargo/bin/cargo`.
+pub fn find_cargo() -> PathBuf {
+    if let Some(c) = std::env::var_os("WN_CARGO") {
+        return PathBuf::from(c);
+    }
+    let exe = if cfg!(windows) { "cargo.exe" } else { "cargo" };
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            let p = dir.join(exe);
+            if p.is_file() {
+                return p;
+            }
+        }
+    }
+    let home = std::env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cargo")));
+    home.map(|h| h.join("bin").join(exe))
+        .unwrap_or_else(|| PathBuf::from(exe))
+}
+
+/// What happened, for text and `--json` output.
+#[derive(Debug, Clone, Serialize)]
+pub struct UpdateReport {
+    pub state: UpdateState,
+    /// Commit the running binary was built from.
+    pub old: Option<String>,
+    /// Commit of the requested ref.
+    pub new: Option<String>,
+    pub git_ref: String,
+    pub src: PathBuf,
+    pub message: String,
+}
+
+impl UpdateReport {
+    /// Exit code: 0 up to date / installed, 10 update available (`--check`), 1 failed.
+    pub fn exit_code(&self) -> i32 {
+        match self.state {
+            UpdateState::UpdateAvailable => EXIT_UPDATE_AVAILABLE,
+            UpdateState::Failed => 1,
+            _ => 0,
+        }
+    }
+}
+
+fn short(c: &Option<String>) -> String {
+    match c {
+        Some(c) => c.chars().take(7).collect(),
+        None => "unknown".to_string(),
+    }
+}
+
+/// Text form of a report.
+pub fn render(r: &UpdateReport) -> String {
+    match r.state {
+        UpdateState::UpToDate => format!("wn is up to date ({} on {})", short(&r.new), r.git_ref),
+        UpdateState::UpdateAvailable => format!(
+            "update available: {} -> {} ({})\nrun `wn update` to install it",
+            short(&r.old),
+            short(&r.new),
+            r.git_ref
+        ),
+        UpdateState::Installed => format!(
+            "updated wn: {} -> {} ({})",
+            short(&r.old),
+            short(&r.new),
+            r.git_ref
+        ),
+        _ => format!("wn update failed: {}", r.message),
+    }
+}
+
+fn git_cmd(dir: Option<&Path>, args: &[&str]) -> Result<String, String> {
+    let mut cmd = Command::new("git");
+    if let Some(d) = dir {
+        cmd.arg("-C").arg(d);
+    }
+    let out = cmd
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("git not found ({e}); install git and retry"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        Err(format!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
+    }
+}
+
+/// Clones (first run) or fetches `git_ref`, returning the commit it points to.
+fn fetch(opts: &UpdateOptions) -> Result<String, String> {
+    if !opts.src.join(".git").exists() {
+        if opts.src.exists()
+            && std::fs::read_dir(&opts.src).map_or(true, |mut d| d.next().is_some())
+        {
+            return Err(format!(
+                "{} exists but is not a git clone; remove it or set WN_HOME",
+                opts.src.display()
+            ));
+        }
+        if let Some(parent) = opts.src.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let src = opts.src.to_string_lossy().to_string();
+        git_cmd(None, &["clone", "--quiet", &opts.repo, &src])?;
+    } else {
+        // Keep following the configured repository even if it moved.
+        let _ = git_cmd(
+            Some(&opts.src),
+            &["remote", "set-url", "origin", &opts.repo],
+        );
+    }
+    let fetched = git_cmd(
+        Some(&opts.src),
+        &["fetch", "--quiet", "--force", "origin", &opts.git_ref],
+    );
+    if fetched.is_err() {
+        // A commit sha the server will not serve by name: fetch everything and resolve locally.
+        git_cmd(
+            Some(&opts.src),
+            &["fetch", "--quiet", "--force", "--tags", "origin"],
+        )?;
+        let commit = format!("{}^{{commit}}", opts.git_ref);
+        return git_cmd(Some(&opts.src), &["rev-parse", "--verify", &commit])
+            .map_err(|_| format!("ref {:?} not found in {}", opts.git_ref, opts.repo));
+    }
+    git_cmd(Some(&opts.src), &["rev-parse", "FETCH_HEAD^{commit}"])
+}
+
+fn build(opts: &UpdateOptions, commit: &str) -> Result<(), String> {
+    git_cmd(
+        Some(&opts.src),
+        &["checkout", "--quiet", "--force", "--detach", commit],
+    )?;
+    let mut cmd = Command::new(&opts.cargo);
+    cmd.arg("install")
+        .arg("--path")
+        .arg(opts.src.join("crates").join("wn-cli"))
+        .arg("--locked")
+        .arg("--force");
+    if let Some(root) = &opts.cargo_root {
+        cmd.arg("--root").arg(root);
+    }
+    cmd.stdin(Stdio::null()).stdout(Stdio::null());
+    if opts.show_build_output {
+        cmd.stderr(Stdio::inherit());
+    } else {
+        cmd.stderr(Stdio::piped());
+    }
+    let out = cmd.output().map_err(|e| {
+        format!(
+            "cargo not found at {} ({e}); install Rust with `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh` and retry",
+            opts.cargo.display()
+        )
+    })?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        let tail: String = String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .rev()
+            .take(20)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
+        Err(format!(
+            "cargo install failed ({}){}",
+            out.status,
+            if tail.is_empty() {
+                String::new()
+            } else {
+                format!(":\n{tail}")
+            }
+        ))
+    }
+}
+
+/// Runs the update flow. `confirm` is asked before building (return `false` to stop).
+pub fn run(opts: &UpdateOptions, confirm: &mut dyn FnMut(&UpdateReport) -> bool) -> UpdateReport {
+    let mut life = UpdateLifecycle::default();
+    let mut report = UpdateReport {
+        state: UpdateState::Idle,
+        old: opts.current.clone(),
+        new: None,
+        git_ref: opts.git_ref.clone(),
+        src: opts.src.clone(),
+        message: String::new(),
+    };
+    let step = |life: &mut UpdateLifecycle, report: &mut UpdateReport, event| {
+        report.state = life
+            .handle(event)
+            .expect("update flow follows the transition table");
+    };
+    step(&mut life, &mut report, E::Start);
+    let target = match fetch(opts) {
+        Ok(t) => t,
+        Err(e) => {
+            report.message = e;
+            step(&mut life, &mut report, E::FetchFailed);
+            return report;
+        }
+    };
+    report.new = Some(target.clone());
+    let same = opts.current.as_deref() == Some(target.as_str());
+    step(
+        &mut life,
+        &mut report,
+        if same {
+            E::FetchedSame
+        } else {
+            E::FetchedNewer
+        },
+    );
+    if opts.check_only || (same && !opts.force) {
+        return report;
+    }
+    if !confirm(&report) {
+        report.message = "cancelled".to_string();
+        return report;
+    }
+    step(&mut life, &mut report, E::Build);
+    match build(opts, &target) {
+        Ok(()) => step(&mut life, &mut report, E::BuildSucceeded),
+        Err(e) => {
+            report.message = e;
+            step(&mut life, &mut report, E::BuildFailed);
+        }
+    }
+    report
+}
+
+/// Interactive confirmation on a terminal; `--yes` or no terminal proceeds without asking.
+pub fn confirm_on_tty(yes: bool) -> impl FnMut(&UpdateReport) -> bool {
+    move |r: &UpdateReport| {
+        if yes || !std::io::stdin().is_terminal() {
+            return true;
+        }
+        eprint!(
+            "rebuild wn {} -> {} from {} (takes a few minutes)? [Y/n] ",
+            short(&r.old),
+            short(&r.new),
+            r.git_ref
+        );
+        let mut line = String::new();
+        let _ = std::io::stdin().read_line(&mut line);
+        !matches!(line.trim(), "n" | "N" | "no" | "No")
+    }
+}
