@@ -1,0 +1,31 @@
+name: Bad result
+description: wn pointed to the wrong place, or abstained when it shouldn't have
+labels: ["quality", "triage"]
+body:
+  - type: textarea
+    id: query
+    attributes:
+      label: Query
+      description: What you asked (and any context passed in).
+    validations:
+      required: true
+  - type: textarea
+    id: got
+    attributes:
+      label: What wn returned
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the right answer was
+      description: The file, function or resource you needed. Paths only; don't paste private code.
+    validations:
+      required: true
+  - type: checkboxes
+    id: public
+    attributes:
+      label: Can we add this to the benchmark?
+      options:
+        - label: This is from a public repository and may be used as a benchmark example.

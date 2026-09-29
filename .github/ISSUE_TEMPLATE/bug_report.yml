@@ -1,0 +1,36 @@
+name: Bug report
+description: Something doesn't work as documented
+labels: ["bug", "triage"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: "Output of `wn status` and the failing command with `--json`. Remove anything private."
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "wn --version"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: "macOS 16 arm64, Ubuntu 24.04 x86_64, ..."
+    validations:
+      required: true
+  - type: input
+    id: repo-size
+    attributes:
+      label: Repository size and languages
+      placeholder: "about 3,000 files, Go and TypeScript"
