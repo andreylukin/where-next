@@ -1,0 +1,18 @@
+[package]
+name = "wn-cli"
+description = "The `wn` command"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "wn"
+path = "src/main.rs"
+
+[dependencies]
+wn-core.workspace = true
+
+[lints]
+workspace = true

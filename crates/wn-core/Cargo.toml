@@ -1,0 +1,17 @@
+[package]
+name = "wn-core"
+description = "Core types, ranking and the explicit state machines behind where-next"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+proptest.workspace = true
+proptest-state-machine.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,11 @@
+where-next
+Copyright 2026 The where-next authors
+
+This repository contains source code licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Model weights are NOT part of this repository. They are downloaded separately at runtime and are
+distributed under their own terms. The default model is fine-tuned from google/embeddinggemma-300m
+and is provided under and subject to the Gemma Terms of Use (https://ai.google.dev/gemma/terms),
+including the Gemma Prohibited Use Policy. Google does not endorse this project.
+
+Datasets are published separately; each source keeps its original license, listed in its dataset card.

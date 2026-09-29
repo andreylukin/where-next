@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/andreylukin/where-next"
+rust-version = "1.80"
+
+[workspace.dependencies]
+wn-core = { path = "crates/wn-core" }
+proptest = "1.11"
+proptest-state-machine = "0.8"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
