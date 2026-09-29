@@ -1,0 +1,933 @@
+{
+ "files": [
+  {
+   "path": "Retry.java",
+   "lang": "java",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": "Retries uploads when the storage backend times out.",
+   "symbols": [
+    {
+     "name": "Retry",
+     "line": 7,
+     "end": 22
+    },
+    {
+     "name": "shouldRetry",
+     "line": 14,
+     "end": 17
+    },
+    {
+     "name": "backoff",
+     "line": 18,
+     "end": 22
+    },
+    {
+     "name": "Policy",
+     "line": 23,
+     "end": 26
+    }
+   ],
+   "skeleton": "Retry.java\nRetries uploads when the storage backend times out.\nRetry shouldRetry backoff Policy",
+   "file_doc": "file: Retry.java\nRetries uploads when the storage backend times out.\nRetry shouldRetry backoff Policy",
+   "function_docs": [
+    [
+     "Retry",
+     7,
+     "function: Retry.java::Retry\nRetries uploads when the storage backend times out."
+    ],
+    [
+     "shouldRetry",
+     14,
+     "function: Retry.java::shouldRetry\nRetries uploads when the storage backend times out."
+    ],
+    [
+     "backoff",
+     18,
+     "function: Retry.java::backoff\nRetries uploads when the storage backend times out."
+    ],
+    [
+     "Policy",
+     23,
+     "function: Retry.java::Policy\nRetries uploads when the storage backend times out."
+    ]
+   ],
+   "config_doc": "file: Retry.java\n/*\n* Copyright (c) 2023 Example. All rights reserved.\n*/\npackage com.example.net;\n/** Retries uploads when the storage backend times out. */\npublic class Retry {\nprivate final int limit;\npublic Retry(int limit) {\nthis.limit = limit;\n}\npublic static boolean shouldRetry(int attempt, Exception e) {\nreturn attempt < 3;\n}\nprivate void backoff(long millis) throws InterruptedException {\nThread.sleep(millis);"
+  },
+  {
+   "path": "Sync.kt",
+   "lang": "kotlin",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": "Background sync worker that reconciles local and remote notes.",
+   "symbols": [
+    {
+     "name": "Note",
+     "line": 4,
+     "end": 5
+    },
+    {
+     "name": "SyncWorker",
+     "line": 6,
+     "end": 13
+    },
+    {
+     "name": "run",
+     "line": 7,
+     "end": 10
+    },
+    {
+     "name": "merge",
+     "line": 11,
+     "end": 13
+    },
+    {
+     "name": "isEmpty",
+     "line": 14,
+     "end": 15
+    }
+   ],
+   "skeleton": "Sync.kt\nBackground sync worker that reconciles local and remote notes.\nNote SyncWorker run merge isEmpty",
+   "file_doc": "file: Sync.kt\nBackground sync worker that reconciles local and remote notes.\nNote SyncWorker run merge isEmpty",
+   "function_docs": [
+    [
+     "Note",
+     4,
+     "function: Sync.kt::Note\nBackground sync worker that reconciles local and remote notes."
+    ],
+    [
+     "SyncWorker",
+     6,
+     "function: Sync.kt::SyncWorker\nBackground sync worker that reconciles local and remote notes."
+    ],
+    [
+     "run",
+     7,
+     "function: Sync.kt::run\nBackground sync worker that reconciles local and remote notes."
+    ],
+    [
+     "merge",
+     11,
+     "function: Sync.kt::merge\nBackground sync worker that reconciles local and remote notes."
+    ],
+    [
+     "isEmpty",
+     14,
+     "function: Sync.kt::isEmpty\nBackground sync worker that reconciles local and remote notes."
+    ]
+   ],
+   "config_doc": "file: Sync.kt\npackage com.example.sync\ndata class Note(val id: String, val body: String)\nobject SyncWorker {\nsuspend fun run(notes: List<Note>): Int {\nreturn notes.size\n}\nprivate fun <T> merge(a: List<T>, b: List<T>): List<T> = a + b\n}\nfun Note.isEmpty(): Boolean = body.isBlank()"
+  },
+  {
+   "path": "auth.py",
+   "lang": "python",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": null,
+   "symbols": [
+    {
+     "name": "TokenStore",
+     "line": 8,
+     "end": 15
+    },
+    {
+     "name": "__init__",
+     "line": 9,
+     "end": 11
+    },
+    {
+     "name": "verify",
+     "line": 12,
+     "end": 15
+    },
+    {
+     "name": "authenticate",
+     "line": 16,
+     "end": 18
+    }
+   ],
+   "skeleton": "auth.py\nTokenStore __init__ verify authenticate",
+   "file_doc": "file: auth.py\nTokenStore __init__ verify authenticate",
+   "function_docs": [
+    [
+     "TokenStore",
+     8,
+     "function: auth.py::TokenStore"
+    ],
+    [
+     "__init__",
+     9,
+     "function: auth.py::__init__"
+    ],
+    [
+     "verify",
+     12,
+     "function: auth.py::verify"
+    ],
+    [
+     "authenticate",
+     16,
+     "function: auth.py::authenticate"
+    ]
+   ],
+   "config_doc": "file: auth.py\n\"\"\"Token authentication helpers for the request pipeline.\"\"\"\nimport hmac\nclass TokenStore:\ndef __init__(self, secret):\nself.secret = secret\nasync def verify(self, token):\nreturn hmac.compare_digest(token, self.secret)\ndef authenticate(request):\nreturn request.headers.get(\"Authorization\")"
+  },
+  {
+   "path": "cache.cpp",
+   "lang": "cpp",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": "LRU cache for decoded tiles, shared across render workers.",
+   "symbols": [
+    {
+     "name": "tiles",
+     "line": 4,
+     "end": 15
+    },
+    {
+     "name": "TileCache::get",
+     "line": 16,
+     "end": 23
+    }
+   ],
+   "skeleton": "cache.cpp\nLRU cache for decoded tiles, shared across render workers.\ntiles TileCache::get",
+   "file_doc": "file: cache.cpp\nLRU cache for decoded tiles, shared across render workers.\ntiles TileCache::get",
+   "function_docs": [
+    [
+     "tiles",
+     4,
+     "function: cache.cpp::tiles\nLRU cache for decoded tiles, shared across render workers."
+    ],
+    [
+     "TileCache::get",
+     16,
+     "function: cache.cpp::TileCache::get\nLRU cache for decoded tiles, shared across render workers."
+    ]
+   ],
+   "config_doc": "file: cache.cpp\nnamespace tiles {\nclass TileCache {\npublic:\nTileCache(size_t capacity);\n~TileCache();\nbool get(int key, std::string &out);\n};\nTileCache::TileCache(size_t capacity) : capacity_(capacity) {\n}\nbool TileCache::get(int key, std::string &out) {\nfor (auto &kv : map_) {\n}\nreturn false;\n}\n}  // namespace tiles"
+  },
+  {
+   "path": "cfg/Dockerfile",
+   "lang": null,
+   "is_source": false,
+   "kind": "config",
+   "first_comment": "build config",
+   "symbols": [],
+   "skeleton": "cfg/Dockerfile\nbuild config\n",
+   "file_doc": "file: cfg/Dockerfile\nbuild config\n",
+   "function_docs": [],
+   "config_doc": "file: cfg/Dockerfile\nFROM rust:1.80\nRUN cargo build --release"
+  },
+  {
+   "path": "cfg/app.yaml",
+   "lang": null,
+   "is_source": false,
+   "kind": "config",
+   "first_comment": null,
+   "symbols": [],
+   "skeleton": "cfg/app.yaml\n",
+   "file_doc": "file: cfg/app.yaml\n",
+   "function_docs": [],
+   "config_doc": "file: cfg/app.yaml\nserver:\nport: 8080\nhost: 0.0.0.0"
+  },
+  {
+   "path": "cfg/pyproject.toml",
+   "lang": null,
+   "is_source": false,
+   "kind": "config",
+   "first_comment": null,
+   "symbols": [],
+   "skeleton": "cfg/pyproject.toml\n",
+   "file_doc": "file: cfg/pyproject.toml\n",
+   "function_docs": [],
+   "config_doc": "file: cfg/pyproject.toml\n[tool.x]\nname = \"demo\""
+  },
+  {
+   "path": "deploy.sh",
+   "lang": "shell",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": null,
+   "symbols": [
+    {
+     "name": "build_bundle",
+     "line": 5,
+     "end": 8
+    },
+    {
+     "name": "push-hosts",
+     "line": 9,
+     "end": 12
+    }
+   ],
+   "skeleton": "deploy.sh\nbuild_bundle push-hosts",
+   "file_doc": "file: deploy.sh\nbuild_bundle push-hosts",
+   "function_docs": [
+    [
+     "build_bundle",
+     5,
+     "function: deploy.sh::build_bundle"
+    ],
+    [
+     "push-hosts",
+     9,
+     "function: deploy.sh::push-hosts"
+    ]
+   ],
+   "config_doc": "file: deploy.sh\nset -euo pipefail\nbuild_bundle() {\ntar czf bundle.tgz dist\n}\nfunction push-hosts {\nfor h in a b; do scp bundle.tgz \"$h\":; done\n}"
+  },
+  {
+   "path": "empty.py",
+   "lang": "python",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": null,
+   "symbols": [],
+   "skeleton": "empty.py\n",
+   "file_doc": "file: empty.py\n",
+   "function_docs": [],
+   "config_doc": "file: empty.py\n"
+  },
+  {
+   "path": "nodoc.js",
+   "lang": "javascript",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": null,
+   "symbols": [
+    {
+     "name": "late",
+     "line": 4,
+     "end": 5
+    }
+   ],
+   "skeleton": "nodoc.js\nlate",
+   "file_doc": "file: nodoc.js\nlate",
+   "function_docs": [
+    [
+     "late",
+     4,
+     "function: nodoc.js::late"
+    ]
+   ],
+   "config_doc": "file: nodoc.js\n'use strict';\nconst x = 1;\nfunction late() {}"
+  },
+  {
+   "path": "picker.ts",
+   "lang": "typescript",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": "Model picker component: folds providers into a listbox.",
+   "symbols": [
+    {
+     "name": "PickerProps",
+     "line": 6,
+     "end": 9
+    },
+    {
+     "name": "foldByProvider",
+     "line": 10,
+     "end": 13
+    },
+    {
+     "name": "Picker",
+     "line": 14,
+     "end": 27
+    },
+    {
+     "name": "toggle",
+     "line": 17,
+     "end": 20
+    },
+    {
+     "name": "render",
+     "line": 21,
+     "end": 27
+    },
+    {
+     "name": "mount",
+     "line": 28,
+     "end": 31
+    }
+   ],
+   "skeleton": "picker.ts\nModel picker component: folds providers into a listbox.\nPickerProps foldByProvider Picker toggle render mount",
+   "file_doc": "file: picker.ts\nModel picker component: folds providers into a listbox.\nPickerProps foldByProvider Picker toggle render mount",
+   "function_docs": [
+    [
+     "PickerProps",
+     6,
+     "function: picker.ts::PickerProps\nModel picker component: folds providers into a listbox."
+    ],
+    [
+     "foldByProvider",
+     10,
+     "function: picker.ts::foldByProvider\nModel picker component: folds providers into a listbox."
+    ],
+    [
+     "Picker",
+     14,
+     "function: picker.ts::Picker\nModel picker component: folds providers into a listbox."
+    ],
+    [
+     "toggle",
+     17,
+     "function: picker.ts::toggle\nModel picker component: folds providers into a listbox."
+    ],
+    [
+     "render",
+     21,
+     "function: picker.ts::render\nModel picker component: folds providers into a listbox."
+    ],
+    [
+     "mount",
+     28,
+     "function: picker.ts::mount\nModel picker component: folds providers into a listbox."
+    ]
+   ],
+   "config_doc": "file: picker.ts\n/**\n* Model picker component: folds providers into a listbox.\n*/\nimport { h } from \"./dom\";\nexport interface PickerProps {\nmodels: string[];\n}\nexport const foldByProvider = (models: string[]): Map<string, string[]> => {\nreturn new Map();\n};\nexport class Picker {\nprivate open = false;\ntoggle(): void {\nthis.open = !this.open;\n}"
+  },
+  {
+   "path": "queue.rs",
+   "lang": "rust",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": null,
+   "symbols": [
+    {
+     "name": "Queue",
+     "line": 4,
+     "end": 7
+    },
+    {
+     "name": "Slot",
+     "line": 8,
+     "end": 22
+    },
+    {
+     "name": "push",
+     "line": 18,
+     "end": 22
+    },
+    {
+     "name": "tests",
+     "line": 23,
+     "end": 26
+    },
+    {
+     "name": "helper",
+     "line": 24,
+     "end": 26
+    }
+   ],
+   "skeleton": "queue.rs\nQueue Slot push tests helper",
+   "file_doc": "file: queue.rs\nQueue Slot push tests helper",
+   "function_docs": [
+    [
+     "Queue",
+     4,
+     "function: queue.rs::Queue"
+    ],
+    [
+     "Slot",
+     8,
+     "function: queue.rs::Slot"
+    ],
+    [
+     "push",
+     18,
+     "function: queue.rs::push"
+    ],
+    [
+     "tests",
+     23,
+     "function: queue.rs::tests"
+    ],
+    [
+     "helper",
+     24,
+     "function: queue.rs::helper"
+    ]
+   ],
+   "config_doc": "file: queue.rs\nuse std::collections::VecDeque;\npub struct Queue {\nitems: VecDeque<u32>,\n}\npub(crate) enum Slot {\nFree,\nTaken,\n}\nimpl Queue {\npub fn new() -> Self {\nQueue { items: VecDeque::new() }\n}\npub async fn push(&mut self, x: u32) {\nself.items.push_back(x);\n}"
+  },
+  {
+   "path": "ring.c",
+   "lang": "c",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": "Ring buffer used by the audio capture thread.",
+   "symbols": [
+    {
+     "name": "ring",
+     "line": 4,
+     "end": 8
+    },
+    {
+     "name": "stats",
+     "line": 9,
+     "end": 12
+    },
+    {
+     "name": "ring_push",
+     "line": 13,
+     "end": 19
+    },
+    {
+     "name": "ring_len",
+     "line": 20,
+     "end": 23
+    }
+   ],
+   "skeleton": "ring.c\nRing buffer used by the audio capture thread.\nring stats ring_push ring_len",
+   "file_doc": "file: ring.c\nRing buffer used by the audio capture thread.\nring stats ring_push ring_len",
+   "function_docs": [
+    [
+     "ring",
+     4,
+     "function: ring.c::ring\nRing buffer used by the audio capture thread."
+    ],
+    [
+     "stats",
+     9,
+     "function: ring.c::stats\nRing buffer used by the audio capture thread."
+    ],
+    [
+     "ring_push",
+     13,
+     "function: ring.c::ring_push\nRing buffer used by the audio capture thread."
+    ],
+    [
+     "ring_len",
+     20,
+     "function: ring.c::ring_len\nRing buffer used by the audio capture thread."
+    ]
+   ],
+   "config_doc": "file: ring.c\n/* Ring buffer used by the audio capture thread. */\ntypedef struct ring {\nint *buf;\nsize_t head;\n} ring_t;\nstruct stats {\nlong drops;\n};\nstatic int ring_push(ring_t *r, int value)\n{\nif (r == NULL)\nreturn -1;\nreturn 0;\n}\nsize_t ring_len(const ring_t *r) {"
+  },
+  {
+   "path": "server.go",
+   "lang": "go",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": "Package server wires HTTP handlers to the session store.",
+   "symbols": [
+    {
+     "name": "Server",
+     "line": 6,
+     "end": 9
+    },
+    {
+     "name": "Store",
+     "line": 10,
+     "end": 13
+    },
+    {
+     "name": "New",
+     "line": 14,
+     "end": 15
+    },
+    {
+     "name": "handleLogin",
+     "line": 16,
+     "end": 21
+    }
+   ],
+   "skeleton": "server.go\nPackage server wires HTTP handlers to the session store.\nServer Store New handleLogin",
+   "file_doc": "file: server.go\nPackage server wires HTTP handlers to the session store.\nServer Store New handleLogin",
+   "function_docs": [
+    [
+     "Server",
+     6,
+     "function: server.go::Server\nPackage server wires HTTP handlers to the session store."
+    ],
+    [
+     "Store",
+     10,
+     "function: server.go::Store\nPackage server wires HTTP handlers to the session store."
+    ],
+    [
+     "New",
+     14,
+     "function: server.go::New\nPackage server wires HTTP handlers to the session store."
+    ],
+    [
+     "handleLogin",
+     16,
+     "function: server.go::handleLogin\nPackage server wires HTTP handlers to the session store."
+    ]
+   ],
+   "config_doc": "file: server.go\npackage server\nimport \"net/http\"\ntype Server struct {\nmux *http.ServeMux\n}\ntype Store interface {\nGet(id string) string\n}\nfunc New() *Server { return &Server{mux: http.NewServeMux()} }\nfunc (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {\nif r.Method != \"POST\" {\nreturn\n}\n}"
+  },
+  {
+   "path": "unicode.py",
+   "lang": "python",
+   "is_source": true,
+   "kind": "source",
+   "first_comment": "Résumé parser: extracts naïve dates from café receipts — ünïcödé.",
+   "symbols": [
+    {
+     "name": "parse_résumé",
+     "line": 2,
+     "end": 3
+    },
+    {
+     "name": "Café",
+     "line": 4,
+     "end": 6
+    }
+   ],
+   "skeleton": "unicode.py\nRésumé parser: extracts naïve dates from café receipts — ünïcödé.\nparse_résumé Café",
+   "file_doc": "file: unicode.py\nRésumé parser: extracts naïve dates from café receipts — ünïcödé.\nparse_résumé Café",
+   "function_docs": [
+    [
+     "parse_résumé",
+     2,
+     "function: unicode.py::parse_résumé\nRésumé parser: extracts naïve dates from café receipts — ünïcödé."
+    ],
+    [
+     "Café",
+     4,
+     "function: unicode.py::Café\nRésumé parser: extracts naïve dates from café receipts — ünïcödé."
+    ]
+   ],
+   "config_doc": "file: unicode.py\ndef parse_résumé(text):\nreturn text\nclass Café:\npass"
+  }
+ ],
+ "paths": [
+  {
+   "path": "src/a.py",
+   "lang": "python",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "vendor/x/a.go",
+   "lang": "go",
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "node_modules/p/i.js",
+   "lang": "javascript",
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "a/b.min.js",
+   "lang": "javascript",
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "x_pb2.py",
+   "lang": "python",
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "api.pb.go",
+   "lang": "go",
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "t.d.ts",
+   "lang": "typescript",
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "build/out.rs",
+   "lang": "rust",
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "gen/x.go",
+   "lang": "go",
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "generated/y.py",
+   "lang": "python",
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "third_party/z.c",
+   "lang": "c",
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "Cargo.lock",
+   "lang": null,
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "yarn.lock",
+   "lang": null,
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "package-lock.json",
+   "lang": null,
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "go.sum",
+   "lang": null,
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "Makefile",
+   "lang": null,
+   "is_source": false,
+   "kind": "config"
+  },
+  {
+   "path": "Dockerfile",
+   "lang": null,
+   "is_source": false,
+   "kind": "config"
+  },
+  {
+   "path": "docker-compose.yml",
+   "lang": null,
+   "is_source": false,
+   "kind": "config"
+  },
+  {
+   "path": "deploy/app.YAML",
+   "lang": null,
+   "is_source": false,
+   "kind": "config"
+  },
+  {
+   "path": "conf/nginx.conf",
+   "lang": null,
+   "is_source": false,
+   "kind": "config"
+  },
+  {
+   "path": "svc/x.service",
+   "lang": null,
+   "is_source": false,
+   "kind": "config"
+  },
+  {
+   "path": "a.toml",
+   "lang": null,
+   "is_source": false,
+   "kind": "config"
+  },
+  {
+   "path": "requirements-dev.txt",
+   "lang": null,
+   "is_source": false,
+   "kind": "config"
+  },
+  {
+   "path": ".env.example",
+   "lang": null,
+   "is_source": false,
+   "kind": "config"
+  },
+  {
+   "path": "README.md",
+   "lang": null,
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "img.png",
+   "lang": null,
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "noext",
+   "lang": null,
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "lib/X.KT",
+   "lang": "kotlin",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "a.tsx",
+   "lang": "typescript",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "b.mjs",
+   "lang": "javascript",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "c.hpp",
+   "lang": "cpp",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "d.exs",
+   "lang": "elixir",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "e.cs",
+   "lang": "csharp",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "f.swift",
+   "lang": "swift",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "g.scala",
+   "lang": "scala",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "h.lua",
+   "lang": "lua",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "i.rb",
+   "lang": "ruby",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "j.php",
+   "lang": "php",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "k.bash",
+   "lang": "shell",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "dist/app.js",
+   "lang": "javascript",
+   "is_source": false,
+   "kind": null
+  },
+  {
+   "path": "src/build.rs",
+   "lang": "rust",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "src/gen.rs",
+   "lang": "rust",
+   "is_source": true,
+   "kind": "source"
+  },
+  {
+   "path": "x/__generated__/a.ts",
+   "lang": "typescript",
+   "is_source": false,
+   "kind": null
+  }
+ ],
+ "queries": [
+  {
+   "query": "fix the upload retry",
+   "context": "",
+   "granularity": "file",
+   "text": "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: fix the upload retry"
+  },
+  {
+   "query": "  now the other one  ",
+   "context": "Traceback: boom in push.py:88",
+   "granularity": "file",
+   "text": "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: now the other one\nRecent context:\nTraceback: boom in push.py:88"
+  },
+  {
+   "query": "rename it",
+   "context": "",
+   "granularity": "function",
+   "text": "Instruct: Given a coding task and recent context, find the function that must be edited\nQuery: rename it"
+  },
+  {
+   "query": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "context": "ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ",
+   "granularity": "file",
+   "text": "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nRecent context:\n ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx ctx"
+  },
+  {
+   "query": "short",
+   "context": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "granularity": "file",
+   "text": "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: short\nRecent context:\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "query": "",
+   "context": "only context",
+   "granularity": "file",
+   "text": "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: \nRecent context:\nonly context"
+  },
+  {
+   "query": "q",
+   "context": null,
+   "granularity": "function",
+   "text": "Instruct: Given a coding task and recent context, find the function that must be edited\nQuery: q"
+  },
+  {
+   "query": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "context": "",
+   "granularity": "function",
+   "text": "Instruct: Given a coding task and recent context, find the function that must be edited\nQuery: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+ ],
+ "history": [
+  {
+   "subject": "fix: retry uploads",
+   "body": "",
+   "text": "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: fix: retry uploads"
+  },
+  {
+   "subject": "feat: add picker",
+   "body": "Body first line here\nsecond",
+   "text": "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: feat: add picker\nBody first line here"
+  },
+  {
+   "subject": "x",
+   "body": "\n\n  first non-empty  \nmore",
+   "text": "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: x\nfirst non-empty"
+  },
+  {
+   "subject": "long body",
+   "body": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+   "text": "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: long body"
+  },
+  {
+   "subject": "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+   "body": "",
+   "text": "Instruct: Given a coding task and recent context, find the file that must be read or edited next\nQuery: ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss"
+  }
+ ]
+}
