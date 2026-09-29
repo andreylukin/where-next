@@ -8,6 +8,9 @@
 //! thresholds, hint budget) is pinned to the evaluated reference implementation by golden tests.
 
 pub mod adapter;
+pub mod adapter_lifecycle;
 pub mod index_lifecycle;
+pub mod machine;
+pub mod query_lifecycle;
 pub mod rank;
 pub mod text;

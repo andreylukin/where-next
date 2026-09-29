@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 675cbbd3a9f4fb4454a7a7ee89cfb3ea0da57f571fafef5803737427be8a0abe # shrinks to (initial_state, transitions, seen_counter) = (Model { state: None, last_legal: true, fitted_for_current_model: false }, [Fit, FitDone, Fit, FitFailed], None)
