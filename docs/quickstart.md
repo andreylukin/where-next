@@ -1,7 +1,8 @@
 # Quickstart
 
 > **Not installable yet.** This page describes the M1 release. Until then, `wn` prints a
-> placeholder. Follow progress in [PLAN.md](../PLAN.md).
+> placeholder. The MCP server can already be built and run from source with a local model; see
+> [building.md](building.md#run-the-mcp-server). Follow progress in [PLAN.md](../PLAN.md).
 
 ## Install
 
