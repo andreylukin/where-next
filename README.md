@@ -104,6 +104,14 @@ history replay, much of its gain can also be had from simple history and file-fr
   planned. See [NOTICE](NOTICE).
 - **Datasets:** published separately, each source under its original license.
 
+## Share stats to help improve wn
+
+`wn report` builds an anonymous usage report (numbers, fixed labels and buckets: no repository
+names, paths, file names, commit messages or queries), shows you **all of it**, and only if you
+answer `y` posts it as a GitHub issue from your account. `wn report --dry-run` just shows it.
+Aggregated results live in [`SUMMARY.md` on the `stats` branch](https://github.com/andreylukin/where-next/blob/stats/SUMMARY.md).
+Every field is listed in [privacy and licensing](docs/privacy-and-licensing.md#exactly-what-a-report-contains).
+
 ## Documentation
 
 [Quickstart](docs/quickstart.md) · [How it works](docs/how-it-works.md) ·

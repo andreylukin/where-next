@@ -4,6 +4,7 @@
 //! a process. Every report has a JSON form (`--json`) for agents and a short text form for people.
 
 pub mod bench;
+pub mod report;
 pub mod update;
 
 use std::io::Read as _;
@@ -85,6 +86,9 @@ pub enum Command {
         /// Minimum source files for --start hints.
         #[arg(long, default_value_t = wn_core::rank::START_HINT_MIN_FILES)]
         start_min_files: usize,
+        /// Do not record this query in the local usage log (see `wn report`).
+        #[arg(long)]
+        no_log: bool,
     },
     /// Show the index, coverage and adapter state.
     Status,
@@ -132,6 +136,19 @@ pub enum Command {
         /// Rebuild even when already up to date.
         #[arg(long)]
         force: bool,
+    },
+    /// Show an anonymous usage report (numbers and buckets only) and, if you confirm, post it as
+    /// a GitHub issue to help improve wn. Nothing is sent without your confirmation.
+    Report {
+        /// Show the report and the issue link without posting.
+        #[arg(long)]
+        dry_run: bool,
+        /// Maintainers: validate a posted report (JSON file, or an issue body with a JSON block).
+        #[arg(long, value_name = "FILE", hide = true)]
+        validate: Option<PathBuf>,
+        /// Maintainers: summarise a JSONL file of validated reports as Markdown.
+        #[arg(long, value_name = "FILE", hide = true)]
+        summarize: Option<PathBuf>,
     },
     /// Install, list or remove models.
     #[cfg(feature = "onnx")]
@@ -520,6 +537,45 @@ pub fn run(cli: Cli) -> (String, i32) {
         };
         return (text, code);
     }
+    if let Command::Report {
+        validate: Some(file),
+        ..
+    } = &cli.command
+    {
+        let text = std::fs::read_to_string(file).unwrap_or_default();
+        let json = report::extract_json(&text).unwrap_or(text.trim());
+        return match report::validate(json) {
+            Ok(r) => (serde_json::to_string(&r).unwrap_or_default(), 0),
+            Err(e) => (format!("invalid report: {e}"), 1),
+        };
+    }
+    if let Command::Report {
+        summarize: Some(file),
+        ..
+    } = &cli.command
+    {
+        let reports: Vec<report::UsageReport> = std::fs::read_to_string(file)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| {
+                let v: serde_json::Value = serde_json::from_str(l).ok()?;
+                report::validate(&v.get("report").unwrap_or(&v).to_string()).ok()
+            })
+            .collect();
+        return (report::summarize(&reports), 0);
+    }
+    if let Command::Report { dry_run, .. } = cli.command {
+        let model = resolve_model(cli.model.as_deref());
+        let system = report::System::detect(model.as_deref());
+        let collected = report::collect_from(&home(), &system, wn_daemon::usage::now());
+        let opts = report::ReportOptions {
+            json: cli.json,
+            dry_run,
+        };
+        let state = report::run_flow(&collected, opts, &mut report::TerminalIo);
+        let code = i32::from(state == report::ReportState::Failed);
+        return (String::new(), code);
+    }
     #[cfg(feature = "onnx")]
     if let Command::Model { action } = cli.command {
         let (report, code) = models::run(action, &models_home());
@@ -536,9 +592,11 @@ pub fn run(cli: Cli) -> (String, i32) {
     match cli.command {
         Command::Init | Command::Status | Command::Train => {
             let mut note = None;
+            let started = std::time::Instant::now();
             if let Err(e) = ws.refresh(false) {
                 note = Some(format!("index failed: {e}"));
             }
+            let index_ms = started.elapsed().as_millis();
             let should_fit = match cli.command {
                 Command::Train => true,
                 Command::Init => ws.needs_fit(),
@@ -546,6 +604,9 @@ pub fn run(cli: Cli) -> (String, i32) {
             };
             if should_fit && ws.index.state() == IndexState::Ready {
                 note = Some(ws.fit().unwrap_or_else(|e| e));
+            }
+            if matches!(cli.command, Command::Init) && ws.index.state() == IndexState::Ready {
+                record_index(&ws, u64::try_from(index_ms).unwrap_or(u64::MAX));
             }
             let report = status_of(&ws, note);
             let text = render_status(&report);
@@ -561,8 +622,10 @@ pub fn run(cli: Cli) -> (String, i32) {
             no_abstain,
             start,
             start_min_files,
+            no_log,
         } => {
             let context = read_context(&context_file);
+            let started = std::time::Instant::now();
             let refresh = ws.refresh(functions);
             if refresh.is_ok()
                 && !no_adapter
@@ -593,6 +656,15 @@ pub fn run(cli: Cli) -> (String, i32) {
                 &context,
                 opts,
             );
+            if !no_log {
+                record_query(
+                    &ws,
+                    &query,
+                    &context,
+                    &outcome,
+                    started.elapsed().as_millis(),
+                );
+            }
             let text = render(&outcome);
             (out(&outcome, text), 0)
         }
@@ -615,11 +687,106 @@ pub fn run(cli: Cli) -> (String, i32) {
             let value = serde_json::json!({ "message": msg });
             (out(&value, msg.clone()), 0)
         }
-        Command::Mcp | Command::Bench { .. } | Command::Update { .. } => {
+        Command::Mcp | Command::Bench { .. } | Command::Update { .. } | Command::Report { .. } => {
             unreachable!("handled above")
         }
         #[cfg(feature = "onnx")]
         Command::Model { .. } => unreachable!("handled above"),
+    }
+}
+
+/// The repository's cache directory (holds the usage log shared by all models).
+fn usage_dir(ws: &Workspace) -> Option<&Path> {
+    ws.dir.parent()
+}
+
+fn record_query(ws: &Workspace, query: &str, context: &str, outcome: &Outcome, ms: u128) {
+    let Some(dir) = usage_dir(ws) else { return };
+    let event = wn_daemon::usage::QueryEvent {
+        ts: wn_daemon::usage::now(),
+        kind: wn_core::rank::QueryKind::classify(query, context)
+            .as_str()
+            .to_string(),
+        state: wn_daemon::daemon::state_label(outcome.state).to_string(),
+        ms: u64::try_from(ms).unwrap_or(u64::MAX),
+        model: ws.info.fingerprint.clone(),
+        adapter: outcome.adapter.applied,
+        files: ws.index.count(EntryKind::File),
+        hinted: outcome.hints.files.iter().map(|h| h.path.clone()).collect(),
+    };
+    let _ = wn_daemon::usage::record_query(dir, &ws.root, &event);
+}
+
+fn record_index(ws: &Workspace, ms: u64) {
+    let Some(dir) = usage_dir(ws) else { return };
+    let mut extensions = std::collections::BTreeMap::new();
+    for entry in ws.index.matrix(EntryKind::File).0 {
+        let ext = Path::new(&entry.path)
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        *extensions.entry(ext).or_insert(0usize) += 1;
+    }
+    let event = wn_daemon::usage::IndexEvent {
+        ts: wn_daemon::usage::now(),
+        ms,
+        files: ws.index.count(EntryKind::File),
+        configs: ws.index.count(EntryKind::Config),
+        extensions,
+        history_commits: ws.adapter.as_ref().map_or(0, |a| a.meta.n_train),
+        peak_mb: peak_memory_mb(),
+        model: ws.info.fingerprint.clone(),
+    };
+    let _ = wn_daemon::usage::record_index(dir, &ws.root, &event);
+}
+
+fn record_bench(ws: &Workspace, report: &bench::Report) {
+    let Some(dir) = usage_dir(ws) else { return };
+    let find = |rows: &[bench::Score], prefix: &str| {
+        rows.iter()
+            .find(|s| s.method.starts_with(prefix))
+            .map(|s| [s.hit1, s.hit3, s.hit10])
+    };
+    let rows = if report.matched.is_empty() {
+        &report.all
+    } else {
+        &report.matched
+    };
+    let (Some(lexical), Some(model_hits)) = (find(rows, "lexical"), find(rows, "model")) else {
+        return;
+    };
+    let event = wn_daemon::usage::BenchEvent {
+        ts: wn_daemon::usage::now(),
+        model: ws.info.fingerprint.clone(),
+        files_median: report.files_median,
+        lexical,
+        model_hits,
+        adapter_hits: find(&report.matched, "model + adapter"),
+    };
+    let _ = wn_daemon::usage::record_bench(dir, &ws.root, &event);
+}
+
+/// Peak (Linux: high-water mark) or current (macOS) resident memory of this process, in MB.
+fn peak_memory_mb() -> Option<u64> {
+    if cfg!(target_os = "linux") {
+        let status = std::fs::read_to_string("/proc/self/status").ok()?;
+        let kb: u64 = status
+            .lines()
+            .find(|l| l.starts_with("VmHWM:"))?
+            .split_whitespace()
+            .nth(1)?
+            .parse()
+            .ok()?;
+        Some(kb / 1024)
+    } else if cfg!(target_os = "macos") {
+        let out = std::process::Command::new("ps")
+            .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+            .output()
+            .ok()?;
+        let kb: u64 = String::from_utf8_lossy(&out.stdout).trim().parse().ok()?;
+        Some(kb / 1024)
+    } else {
+        None
     }
 }
 
@@ -676,6 +843,9 @@ fn run_bench(cli: Cli) -> (String, i32) {
     };
     match result {
         Ok(report) => {
+            if contextbench.is_none() {
+                record_bench(&ws, &report);
+            }
             let text = if cli.json {
                 serde_json::to_string_pretty(&report).unwrap_or_default()
             } else {

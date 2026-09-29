@@ -29,6 +29,18 @@ pub struct Status {
     pub provenance: Provenance,
 }
 
+/// Stable label of an answer state (the same names as its JSON form).
+pub fn state_label(state: AnswerState) -> &'static str {
+    match state {
+        AnswerState::Ok => "ok",
+        AnswerState::Abstain => "abstain",
+        AnswerState::EmptyIndex => "empty_index",
+        AnswerState::UnsupportedScope => "unsupported_scope",
+        AnswerState::StaleIndex => "stale_index",
+        AnswerState::Error => "error",
+    }
+}
+
 pub struct Daemon {
     session: SessionLifecycle,
     workspace: Workspace,
@@ -97,12 +109,40 @@ impl Daemon {
                 ..Outcome::default()
             }
         };
-        Reply {
+        let reply = Reply {
             outcome,
             session: format!("{:?}", self.session.state()),
             provenance: self.workspace.provenance(),
             ms: start.elapsed().as_millis(),
-        }
+        };
+        self.log(query, context, &reply);
+        reply
+    }
+
+    /// Appends this answer to the local usage log (see [`crate::usage`]); failures are ignored.
+    fn log(&self, query: &str, context: &str, reply: &Reply) {
+        let Some(dir) = self.workspace.repo_dir() else {
+            return;
+        };
+        let event = crate::usage::QueryEvent {
+            ts: crate::usage::now(),
+            kind: wn_core::rank::QueryKind::classify(query, context)
+                .as_str()
+                .to_string(),
+            state: state_label(reply.outcome.state).to_string(),
+            ms: u64::try_from(reply.ms).unwrap_or(u64::MAX),
+            model: self.workspace.fingerprint(),
+            adapter: reply.outcome.adapter.applied,
+            files: reply.provenance.files_indexed,
+            hinted: reply
+                .outcome
+                .hints
+                .files
+                .iter()
+                .map(|h| h.path.clone())
+                .collect(),
+        };
+        let _ = crate::usage::record_query(dir, self.workspace.root(), &event);
     }
 
     /// Applies a scan taken outside the lock. Success clears a `Degraded` session; failure while

@@ -6,7 +6,9 @@
 //!   `wn-git` scanner; scans run without holding locks.
 //! - [`daemon`]: the session machine around a workspace, the object-safe [`daemon::Service`]
 //!   for transports, and the background warm-up / refresh thread.
+//! - [`usage`]: the local usage log that `wn report` summarises (never sent anywhere by itself).
 
 pub mod daemon;
 pub mod session;
+pub mod usage;
 pub mod workspace;

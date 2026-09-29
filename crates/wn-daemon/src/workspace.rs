@@ -148,6 +148,16 @@ impl Workspace {
         &self.root
     }
 
+    /// This repository's cache directory (shared by all models; holds the usage log).
+    pub fn repo_dir(&self) -> Option<&Path> {
+        self.dir.parent()
+    }
+
+    /// Encoder fingerprint.
+    pub fn fingerprint(&self) -> String {
+        self.encoder.fingerprint()
+    }
+
     pub fn index_state(&self) -> IndexState {
         self.index.state()
     }

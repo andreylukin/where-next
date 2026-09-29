@@ -16,6 +16,16 @@ explicitly.
 - `wn update` (`--check` exits 10 when an update is available, `--ref`, `--yes`, `--force`):
   fetches the source clone and rebuilds, as an explicit state machine with exhaustive and
   model-based tests. `wn --version` now includes the commit and date it was built from.
+- `wn report`: an opt-in, anonymous usage report. It is built from the local usage log as numbers,
+  fixed labels and buckets only (no repository names, paths, messages or queries), shown in full,
+  and posted as a GitHub issue only after an explicit `y` (via `gh` or a pre-filled browser form).
+  `--json` and `--dry-run` never post. The flow is a state machine; canary, property and snapshot
+  tests guard the privacy promise. An issue form and an Action validate posted reports and
+  aggregate them on the `stats` branch.
+- Local usage log (`wn-daemon::usage`): `wn ask`, `wn mcp`, `wn init` and `wn bench` record answer
+  states, latencies, index stats and bench hit rates under the cache directory; `wn ask --no-log`
+  and `WN_NO_LOG` turn it off; query events expire after 30 days; query text is never stored.
+
 - `wn bench` (`--history`, the default): replays the repository's own commits against their parent
   trees and reports hit@1/3/10 and MRR for lexical BM25, the model and the rolling, ancestry-safe
   personal adapter, by repository size and era; vectors cached between runs. `wn bench --contextbench
