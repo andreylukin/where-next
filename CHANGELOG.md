@@ -93,6 +93,11 @@ explicitly.
 
 ### Changed
 
+- Docs: the confirmatory agent trial (pre-declared, 58 tasks in repositories with 3,000+ files) found no
+  cost or success benefit from automatic start hints (cost per resolved task 1.05×, 0.82–1.37). README,
+  LAUNCH, FAQ and the agent-trial write-up now say so; the start hint is described as opt-in, and the
+  pilot's "2.6 steps sooner" figure is corrected.
+
 - README, LAUNCH.md and FAQ now report the agent-trial pilot honestly: hints got a cheap, capable
   agent to the right file sooner, but did not reduce cost or change success, so we make no
   agent-savings claim. The pitch is fast local navigation for people and agents.

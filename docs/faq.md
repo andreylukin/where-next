@@ -27,13 +27,15 @@ it isn't confident.
 
 ## Does it help agents in practice?
 
-Not measurably, in the one setting we have tested. In a controlled pilot on 50 SWE-bench Pro tasks with
-a cheap, capable agent, hints got the agent to a correct file about 2.6 steps sooner, but success was
-unchanged and cost per resolved task was slightly higher (within noise). Finding the file wasn't where
-that agent spent its budget. The full numbers are in [benchmarks/agent-trial.md](../benchmarks/agent-trial.md).
+Not measurably, for a cheap, capable agent. Three controlled trials (a pilot, a large-repository trial,
+and a pre-declared confirmatory trial on repositories with 3,000–13,600 files) found that automatic
+start hints didn't lower cost per resolved task or raise success. In the confirmatory trial the hint
+roughly halved the tokens spent before the agent first read a right file, but finding the file wasn't
+where that agent spent its budget. The full numbers are in
+[benchmarks/agent-trial.md](../benchmarks/agent-trial.md).
 
-Still open: more expensive agents, very large repositories, and people navigating by hand. Until one of
-those shows a real benefit, treat where-next as fast local navigation, not a cost saver.
+Still open: people navigating by hand, and more expensive agents. Until one of those shows a real
+benefit, treat where-next as fast local navigation, with the start hint as an opt-in for agents.
 
 ## What does it do badly?
 
