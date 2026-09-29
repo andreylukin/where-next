@@ -289,8 +289,12 @@ fn first_run_clones_builds_and_installs() {
     assert!(log.contains("install --path") && log.contains("--locked") && log.contains("--root"));
     assert_eq!(
         f.wn_calls(),
-        ["daemon stop", "skill sync --yes --from-state"],
-        "the new binary stops the old daemon and re-syncs skills"
+        [
+            "daemon stop",
+            "skill sync --yes --from-state",
+            "model pull --check"
+        ],
+        "the new binary stops the old daemon, re-syncs skills and checks the default model"
     );
     assert!(r.message.is_empty(), "{}", r.message);
 }

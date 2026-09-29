@@ -5,6 +5,8 @@
 # Source mode (the default), against a local upstream repository and a fake cargo: first run
 # installs, a rerun is a no-op, a new upstream commit updates, --ref pins, --dry-run changes
 # nothing, a missing cargo is refused without --yes, --uninstall removes the binary and clone.
+# Model step: --yes pulls the default model once, a rerun keeps a current model, a moved source is
+# pulled again, --no-model never downloads.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -69,16 +71,36 @@ path=""; root=""
 while [ $# -gt 0 ]; do case "$1" in --path) path="$2"; shift ;; --root) root="$2"; shift ;; esac; shift; done
 sha="$(git -C "$path" rev-parse --short=7 HEAD)"
 mkdir -p "$root/bin"
-printf '#!/bin/sh\necho "wn 0.0.1 (%s 2026-01-01)"\n' "$sha" > "$root/bin/wn"
+printf '#!/bin/sh\nWN_SHA=%s exec "$FAKE_WN" "$@"\n' "$sha" > "$root/bin/wn"
 chmod +x "$root/bin/wn"
 CARGO
 chmod +x "$fake/cargo"
 
-export FAKE_CARGO_LOG="$work/cargo.log" FAKE_ROOT="$work/wnroot"
-src_install() { # extra args...
+# Fake wn: prints its version; `model pull [--check] [--source S]` records/compares the source.
+cat > "$fake/wn-impl" <<'WN'
+#!/bin/sh
+if [ "${1:-} ${2:-}" = "model pull" ]; then
+  shift 2; check=""; src="pinned"
+  while [ $# -gt 0 ]; do case "$1" in --check) check=1 ;; --source) src="$2"; shift ;; esac; shift; done
+  m="$FAKE_ROOT/model-source"
+  if [ -n "$check" ]; then
+    if [ -f "$m" ] && [ "$(cat "$m")" = "$src" ]; then exit 0; fi
+    exit 10
+  fi
+  echo "$src" > "$m"; echo "$src" >> "$FAKE_MODEL_LOG"; echo "installed gemma-xl1"; exit 0
+fi
+case "${1:-}" in daemon | skill) exit 0 ;; esac
+echo "wn 0.0.1 ($WN_SHA 2026-01-01)"
+WN
+chmod +x "$fake/wn-impl"
+
+export FAKE_CARGO_LOG="$work/cargo.log" FAKE_ROOT="$work/wnroot" FAKE_WN="$fake/wn-impl" \
+  FAKE_MODEL_LOG="$work/model.log"
+src_install() { # extra args... (no model unless a test asks: the prompt would read /dev/tty)
   HOME="$work/home" PATH="$fake:$PATH" WN_HOME="$work/wnhome" WN_BIN_ROOT="$FAKE_ROOT" \
-    WN_REPO_URL="$up" sh "$root/install.sh" "$@"
+    WN_REPO_URL="$up" WN_NO_MODEL="${WN_NO_MODEL-1}" sh "$root/install.sh" "$@"
 }
+pulls() { if [ -f "$FAKE_MODEL_LOG" ]; then wc -l < "$FAKE_MODEL_LOG" | tr -d ' '; else echo 0; fi; }
 calls() { if [ -f "$FAKE_CARGO_LOG" ]; then wc -l < "$FAKE_CARGO_LOG" | tr -d ' '; else echo 0; fi; }
 short() { printf '%s' "$1" | cut -c1-7; }
 
@@ -118,9 +140,30 @@ fi
 grep -q "rustup" "$work/nocargo.err" || fail "missing cargo did not print the rustup command"
 [ "$(calls)" = "$before" ] || fail "built without cargo"
 
-# 10. --uninstall removes the binary and the clone.
+# 10. With --yes the default model is pulled (from WN_MODEL_SOURCE here: no network in tests).
+models="$work/models-fixture"; mkdir -p "$models"
+WN_NO_MODEL="" WN_MODEL_SOURCE="$models" src_install --yes 2>"$work/model.err"
+[ "$(pulls)" = 1 ] || fail "model was not pulled ($(pulls) pulls)"
+grep -q "Gemma Terms of Use" "$work/model.err" || fail "model prompt did not mention the Gemma Terms"
+
+# 11. Rerun with the model current: no second download.
+WN_NO_MODEL="" WN_MODEL_SOURCE="$models" src_install --yes 2>"$work/model2.err"
+[ "$(pulls)" = 1 ] || fail "current model was downloaded again"
+grep -q "installed and current" "$work/model2.err" || fail "rerun did not report the model current"
+
+# 12. The model source moved (a new pin): the rerun pulls it, even with wn itself up to date.
+WN_NO_MODEL="" WN_MODEL_SOURCE="$models-v2" src_install --yes 2>/dev/null
+[ "$(pulls)" = 2 ] || fail "moved model source was not pulled"
+
+# 13. --no-model never downloads.
+rm -f "$FAKE_ROOT/model-source"
+WN_NO_MODEL="" WN_MODEL_SOURCE="$models" src_install --yes --no-model 2>"$work/nomodel.err"
+[ "$(pulls)" = 2 ] || fail "--no-model downloaded"
+grep -q "wn model pull" "$work/nomodel.err" || fail "--no-model did not say how to install later"
+
+# 14. --uninstall removes the binary and the clone.
 src_install --uninstall 2>/dev/null
 [ ! -e "$FAKE_ROOT/bin/wn" ] || fail "uninstall left the binary"
 [ ! -e "$work/wnhome/src" ] || fail "uninstall left the clone"
 
-echo "install.sh: 7 source-mode tests passed"
+echo "install.sh: 11 source-mode tests passed"

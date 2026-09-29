@@ -1,9 +1,9 @@
 # Quickstart
 
-> **Early.** `wn` builds and runs from source today; there are no release binaries yet. Without a
-> model installed, `wn` uses a much weaker lexical fallback and says so (`wn status` shows
-> `lexical fallback: no model installed`); install one with `wn model pull` (see
-> [install.md](install.md)).
+> **Early.** `wn` builds from source today (no release binaries yet). The installer downloads the
+> default model, [gemma-xl1](https://huggingface.co/lukandrey/where-next-gemma-xl1) (~1.2 GB,
+> Gemma Terms of Use), after asking; `wn model pull` installs it later. Without a model, `wn` uses a
+> lexical fallback and says so.
 
 ## Install
 

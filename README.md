@@ -4,10 +4,9 @@ A fast, local "where next" model for coding agents and developers. Given what yo
 `wn` ranks the files, functions and configs you are most likely to need next, and it learns
 your repositories from their git history, on your machine.
 
-> **Status: early.** This repository is the new home of a research prototype. `wn` works end to end
-> when built from source (the one-line installer below does that); there are no release binaries yet.
-> Without a model installed, `wn` answers with a weaker lexical fallback (see
-> [About models](#quick-start)). See [PLAN.md](PLAN.md) and
+> **Status: early.** This repository is the new home of a research prototype. `wn init`, `wn ask`
+> and `wn mcp` work end to end when built from source; the one-line installer below does that and
+> downloads the default model. There are no release binaries yet. See [PLAN.md](PLAN.md) and
 > [docs/building.md](docs/building.md).
 
 ## What it does
@@ -34,16 +33,18 @@ wn bench                                 # try it on your repo: replay its histo
 wn skill sync                            # teach Claude Code / Codex / Cursor when to call `wn`
 ```
 
-**About models.** Without a model installed, `wn` answers with a **lexical fallback** (keyword
-matching), which is much weaker than the model; `wn status` and `wn init` say which one is in use:
+**About models.** The installer downloads the default model,
+[gemma-xl1](https://huggingface.co/lukandrey/where-next-gemma-xl1) (~1.2 GB, Gemma Terms of Use),
+after asking. Without a model, `wn` answers with a **lexical fallback** (keyword matching), which is
+much weaker; `wn status` and `wn init` say which one is in use:
 
 ```text
 model: gemma-xl1 (gemma-xl1-30ae960f08a8d9e8-model-wn-sources-v1)      # a model is installed
-model: hash-bow2-1024 (lexical fallback: no model installed)           # no model
+model: hash-bow2-1024 (no model installed → run `wn model pull` …)     # no model
 ```
 
-Install a model with `wn model pull` (see [Install](#install) and
-[docs/install.md](docs/install.md)); `wn` then uses it automatically.
+`wn model pull` installs (or upgrades) the default model; `wn` then uses it automatically. See
+[Install](#install) and [docs/install.md](docs/install.md).
 
 A real answer, on a clone of [ripgrep](https://github.com/BurntSushi/ripgrep) with the default model:
 
@@ -115,9 +116,11 @@ wn --version         # wn 0.0.1 (abc1234 2026-09-29): the commit it was built fr
 ```
 
 Options: `--ref <branch|tag|sha>`, `--yes`, `--dry-run`, `--uninstall`
-(`curl -fsSL …/install.sh | sh -s -- --uninstall`). Models are separate: there are no public
-weights yet, so without a model `wn` uses a lexical fallback; install one with
-`wn model pull <name> --source <path|url|hf:owner/repo>`. Prebuilt, checksum-verified release
+(`curl -fsSL …/install.sh | sh -s -- --uninstall`). The installer then offers the default model,
+[gemma-xl1](https://huggingface.co/lukandrey/where-next-gemma-xl1) (~1.2 GB, fine-tuned from
+EmbeddingGemma, Gemma Terms of Use), and verifies it against its SHA-256 manifest. `--yes` accepts,
+`--no-model` skips; install or upgrade it later with `wn model pull`. Without a model `wn` uses a
+lexical fallback and says so. Prebuilt, checksum-verified release
 binaries, Homebrew and crates.io are set up but not published yet. Details:
 [docs/install.md](docs/install.md).
 
@@ -125,7 +128,7 @@ binaries, Homebrew and crates.io are set up but not published yet. Details:
 
 | Symptom | What to do |
 |---|---|
-| Answers look like keyword matches | `wn status`: `lexical fallback: no model installed` means no model is in use (see "About models" above). |
+| Answers look like keyword matches | `wn status`: `no model installed` means no model is in use; run `wn model pull` (see "About models" above). |
 | Files you just added or changed are missing | Normally picked up in the background; `wn status` shows the index state, and `wn init` re-indexes now. |
 | Something about the daemon seems off | `wn daemon status`; `wn daemon stop` (it restarts on the next call); `--no-daemon` or `WN_NO_DAEMON=1` answers in-process. Log: `~/.cache/where-next/daemon.log`. |
 | You don't want queries logged locally | `wn ask --no-log`, or set `WN_NO_LOG=1` (the log feeds `wn report`; query text is never stored). |
@@ -182,8 +185,9 @@ history replay, much of its gain can also be had from simple history and file-fr
 ## Licensing
 
 - **Code:** Apache-2.0 ([LICENSE](LICENSE)).
-- **Model weights:** distributed separately, not in this repository. The default model is fine-tuned
-  from `google/embeddinggemma-300m` and is subject to the
+- **Model weights:** distributed separately, not in this repository. The default model,
+  [lukandrey/where-next-gemma-xl1](https://huggingface.co/lukandrey/where-next-gemma-xl1), is
+  fine-tuned from `google/embeddinggemma-300m` and is subject to the
   [Gemma Terms of Use](https://ai.google.dev/gemma/terms). A fully Apache-licensed alternative model is
   planned. See [NOTICE](NOTICE).
 - **Datasets:** published separately, each source under its original license.

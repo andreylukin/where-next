@@ -6,7 +6,8 @@
 # Default (source): clones https://github.com/andreylukin/where-next into $WN_HOME/src (a private
 # clone; your other checkouts are never touched), checks out --ref (default: main) and builds it
 # with `cargo install --path crates/wn-cli --locked`. Later runs fetch, and rebuild only when the
-# ref moved. `wn update` does the same from inside wn.
+# ref moved. `wn update` does the same from inside wn. Then it offers the default model
+# (gemma-xl1, ~1.2 GB from Hugging Face, Gemma Terms of Use) if it is missing or its pin moved.
 #
 # Options:
 #   --ref <branch|tag|sha>  what to build (default: main)
@@ -14,12 +15,15 @@
 #   --force                 rebuild even if already up to date
 #   --dry-run               print what would happen, change nothing
 #   --uninstall             remove the wn binary and the private clone (keeps caches and models)
+#   --no-model              do not download the default model (wn then uses a lexical fallback)
 #
 # Environment:
 #   WN_HOME       private clone lives in $WN_HOME/src (default: ~/.local/share/where-next)
 #   WN_BIN_ROOT   cargo install --root (default: cargo's default, usually ~/.cargo -> ~/.cargo/bin/wn)
 #   WN_REPO_URL   source repository (default: https://github.com/andreylukin/where-next)
 #   WN_YES=1      same as --yes
+#   WN_NO_MODEL=1 same as --no-model
+#   WN_MODEL_SOURCE  pull the model from here instead (local dir, https:// URL, hf:owner/repo[@rev])
 #   WN_FROM=release  install a prebuilt, checksum-verified release binary instead (no releases yet):
 #     WN_VERSION (default: latest), WN_INSTALL_DIR (default: ~/.local/bin), WN_DOWNLOAD_BASE, WN_TARGET
 set -eu
@@ -110,6 +114,7 @@ yes="${WN_YES:-}"
 force=""
 dry_run=""
 uninstall=""
+no_model="${WN_NO_MODEL:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -119,6 +124,7 @@ while [ $# -gt 0 ]; do
     --force) force=1 ;;
     --dry-run) dry_run=1 ;;
     --uninstall) uninstall=1 ;;
+    --no-model) no_model=1 ;;
     -h | --help) sed -n '2,28p' "$0" 2>/dev/null || say "see https://github.com/$repo/blob/main/install.sh"; exit 0 ;;
     *) die "unknown option: $1 (try --help)" ;;
   esac
@@ -154,6 +160,40 @@ ask() { # question -> 0 yes / 1 no; reads the terminal even when this script is 
     case "$answer" in y | Y | yes | Yes) return 0 ;; esac
   fi
   return 1
+}
+
+model_pull() { # extra args... ; honours WN_MODEL_SOURCE
+  if [ -n "${WN_MODEL_SOURCE:-}" ]; then
+    "$bin_dir/wn" model pull "$@" --source "$WN_MODEL_SOURCE"
+  else
+    "$bin_dir/wn" model pull "$@"
+  fi
+}
+
+ensure_model() { # offer the default model when it is missing or its pinned source moved
+  if [ -n "$no_model" ]; then
+    say "skipping the model (--no-model); install it later with: wn model pull"
+    return 0
+  fi
+  if [ -n "$dry_run" ]; then
+    say "would check the default model (wn model pull --check) and offer to download it"
+    return 0
+  fi
+  status=0
+  model_pull --check >/dev/null 2>&1 || status=$?
+  case "$status" in
+    0) say "model: gemma-xl1 is installed and current"; return 0 ;;
+    10) ;;
+    *) say "note: could not check the model (exit $status); install it with: wn model pull"; return 0 ;;
+  esac
+  say "wn needs a model for good hints: gemma-xl1 (~1.2 GB) from ${WN_MODEL_SOURCE:-huggingface.co/lukandrey/where-next-gemma-xl1},"
+  say "  fine-tuned from Google's EmbeddingGemma and provided under the Gemma Terms of Use"
+  say "  (https://ai.google.dev/gemma/terms). Without it, wn uses a lexical fallback."
+  if ask "download the model now?"; then
+    model_pull || say "model download failed; retry with: wn model pull"
+  else
+    say "skipped the model; install it later with: wn model pull   (or re-run with --yes)"
+  fi
 }
 
 installed_commit() { # short sha from `wn --version`, if an installed wn reports one
@@ -228,6 +268,7 @@ current="$(installed_commit)"
 [ -n "$current" ] || current="$(printf '%s' "$old" | cut -c1-7)"
 if [ -z "$force" ] && [ -n "$current" ] && [ "$current" = "$short_target" ] && [ -x "$bin_dir/wn" ]; then
   say "wn is up to date ($short_target on $git_ref)"
+  ensure_model
   exit 0
 fi
 
@@ -240,6 +281,7 @@ else
 fi
 
 if [ -n "$dry_run" ]; then
+  ensure_model
   say "dry run: nothing was changed"
   exit 0
 fi
@@ -256,10 +298,9 @@ case ":$PATH:" in
   *":$bin_dir:"*) ;;
   *) say "add $bin_dir to your PATH (e.g. export PATH=\"$bin_dir:\$PATH\")" ;;
 esac
+ensure_model
 say "update later with: wn update   (or re-run this installer)"
 say "next steps:"
 say "  cd your-repo && wn init        # index + learn from this repo's git history"
 say "  wn ask \"where is X handled?\"   # ranked files to open next"
 say "  wn skill sync                  # teach Claude Code / Codex / Cursor when to call wn"
-say "models: there are no public model weights yet. Without a model wn uses a lexical fallback;"
-say "  install one with: wn model pull <name> --source <path|https-url|hf-repo-id>"

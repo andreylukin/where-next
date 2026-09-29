@@ -83,17 +83,25 @@ need ONNX Runtime built from source.
 ## Models
 
 The binary does not include model weights. Models are downloaded separately, verified against a
-SHA-256 manifest, and stored under `~/.cache/where-next-models`:
+SHA-256 manifest, and stored under `~/.cache/where-next-models` (`$WN_MODELS_HOME`).
+
+The default model is **gemma-xl1**, published at
+[huggingface.co/lukandrey/where-next-gemma-xl1](https://huggingface.co/lukandrey/where-next-gemma-xl1)
+(~1.2 GB; `wn` pins a revision). `install.sh` offers it after building (`--yes` accepts,
+`--no-model` or `WN_NO_MODEL=1` skips, `WN_MODEL_SOURCE=<dir|url|hf:owner/repo>` pulls from
+elsewhere) and offers it again on a later run if it is missing or the pin moved. `wn update` says
+when the model has an update but never downloads it unasked.
 
 ```sh
-wn model pull gemma-xl1 --source <path | https://… | hf:owner/repo[@revision]>
-wn model list
+wn model pull                  # install or upgrade the default model; a no-op when current
+wn model pull --check          # exit 0 if installed and current, 10 if a download is needed
+wn model pull gemma-xl1 --source <path | https://… | hf:owner/repo[@revision]>   # another source
+wn model list                  # installed models, and known models you can pull
 wn model remove gemma-xl1 --yes
 ```
 
-There is no default model source until hosting is decided, so `--source` is required. Models
-fine-tuned from EmbeddingGemma are distributed under the Gemma Terms of Use; `wn` shows that
-notice the first time such a model is pulled. See
+Models fine-tuned from EmbeddingGemma are distributed under the Gemma Terms of Use; `wn` shows
+that notice the first time such a model is installed. See
 [privacy-and-licensing.md](privacy-and-licensing.md).
 
 Without a model, `wn` still works with a lexical fallback and says so.

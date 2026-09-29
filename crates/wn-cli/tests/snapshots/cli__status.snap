@@ -5,4 +5,4 @@ expression: "redact(&status, r)"
 where-next: 3 source files, 1 config files indexed in [repo] (ready)
 not indexed: 1 files (.md 1)
 adapter: active, fitted on 25 commits (revision [rev])
-model: hash-bow2-1024 (lexical fallback: no model installed)
+model: hash-bow2-1024 (no model installed → run `wn model pull` (hints use the lexical fallback until then))
