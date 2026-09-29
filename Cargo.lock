@@ -547,7 +547,9 @@ dependencies = [
 name = "wn-git"
 version = "0.0.1"
 dependencies = [
- "wn-core",
+ "serde",
+ "tempfile",
+ "wn-sources",
 ]
 
 [[package]]
