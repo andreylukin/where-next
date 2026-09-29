@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use wn_core::encoder::{EncodeError, Encoder, QueryInput};
+use wn_core::rank::Calibration;
 use wn_core::text::{
     fit_query, query_text_for, QueryFormat, TokenCounter, INSTRUCT_FILE, INSTRUCT_FUNCTION,
 };
@@ -20,14 +21,28 @@ use crate::store::{ModelSource, ModelStore};
 /// documents are built must invalidate stored vectors.
 pub const DOC_REVISION: &str = "wn-sources-v1";
 
-/// Model whose abstain thresholds were calibrated (see `wn_core::rank`).
-pub const CALIBRATED_MODEL: &str = "v2b";
+/// Abstain calibration shipped next to a model (see [`wn_core::rank::Calibration`]).
+pub const CALIBRATION_FILE: &str = "calibration.json";
 
 pub struct OnnxEncoder {
     embedder: Mutex<Embedder>,
     spec: ModelSpec,
     fingerprint: String,
     batch: usize,
+    calibration: Option<Calibration>,
+}
+
+/// The calibration for the model in `dir`: its `calibration.json`, else the built-in one for
+/// the reference model `v2b`, else none (the model never abstains).
+pub fn load_calibration(dir: &Path, spec: &ModelSpec) -> Result<Option<Calibration>, String> {
+    let path = dir.join(CALIBRATION_FILE);
+    if path.is_file() {
+        let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let c: Calibration =
+            serde_json::from_str(&text).map_err(|e| format!("{CALIBRATION_FILE}: {e}"))?;
+        return Ok(Some(c));
+    }
+    Ok((spec.name == "v2b").then(Calibration::v2b))
 }
 
 /// The text a model of `spec`'s family embeds for `item` (no token budget applied).
@@ -67,6 +82,7 @@ impl OnnxEncoder {
             .ok_or("model not verified")?;
         let embedder = Embedder::load(dir, graph).map_err(|e| e.to_string())?;
         let spec = embedder.spec().clone();
+        let calibration = load_calibration(dir, &spec)?;
         let fingerprint = format!(
             "{}-{manifest}-{}-{DOC_REVISION}",
             spec.name,
@@ -77,6 +93,7 @@ impl OnnxEncoder {
             spec,
             fingerprint,
             batch: 16,
+            calibration,
         })
     }
 
@@ -120,8 +137,8 @@ impl Encoder for OnnxEncoder {
         self.fingerprint.clone()
     }
 
-    fn calibrated(&self) -> bool {
-        self.spec.name == CALIBRATED_MODEL
+    fn calibration(&self) -> Option<Calibration> {
+        self.calibration.clone()
     }
 
     fn documents(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EncodeError> {
@@ -173,6 +190,27 @@ mod tests {
             ..q
         };
         assert_eq!(query_for(&s, &f), format!("{INSTRUCT_FUNCTION}fix retry"));
+    }
+
+    #[test]
+    fn calibration_file_wins_and_v2b_has_a_builtin() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = spec(Family::Gemma, "p");
+        assert_eq!(load_calibration(dir.path(), &s).unwrap(), None);
+        s.name = "v2b".into();
+        assert_eq!(
+            load_calibration(dir.path(), &s).unwrap(),
+            Some(Calibration::v2b())
+        );
+        std::fs::write(
+            dir.path().join(CALIBRATION_FILE),
+            r#"{"model": "v2b", "kinds": {}}"#,
+        )
+        .unwrap();
+        let c = load_calibration(dir.path(), &s).unwrap().unwrap();
+        assert!(c.kinds.is_empty());
+        std::fs::write(dir.path().join(CALIBRATION_FILE), "not json").unwrap();
+        assert!(load_calibration(dir.path(), &s).is_err());
     }
 
     #[test]

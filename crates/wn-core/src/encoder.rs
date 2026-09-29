@@ -45,9 +45,9 @@ impl std::error::Error for EncodeError {}
 pub trait Encoder {
     /// Stable identifier of the model and document builder; the vector cache is keyed by it.
     fn fingerprint(&self) -> String;
-    /// Whether this is the pinned, calibrated model (abstain thresholds only apply to it).
-    fn calibrated(&self) -> bool {
-        false
+    /// This model's abstain calibration; `None` (the default) never abstains.
+    fn calibration(&self) -> Option<crate::rank::Calibration> {
+        None
     }
     /// Embeds document texts.
     fn documents(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EncodeError>;
