@@ -4,11 +4,13 @@
 //! a process. Every report has a JSON form (`--json`) for agents and a short text form for people.
 
 pub mod bench;
+pub mod daemon;
 pub mod report;
 pub mod update;
 
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 use serde::Serialize;
@@ -48,6 +50,9 @@ pub struct Cli {
     /// Model directory (default: `$WN_MODEL_DIR`, else the best installed model).
     #[arg(long, global = true)]
     pub model: Option<PathBuf>,
+    /// Answer in this process instead of the background daemon (also `WN_NO_DAEMON=1`).
+    #[arg(long, global = true)]
+    pub no_daemon: bool,
     /// What to do.
     #[command(subcommand)]
     pub command: Command,
@@ -150,6 +155,11 @@ pub enum Command {
         #[arg(long, value_name = "FILE", hide = true)]
         summarize: Option<PathBuf>,
     },
+    /// Start, stop or inspect the background daemon that keeps models and indexes warm.
+    Daemon {
+        #[command(subcommand)]
+        action: daemon::DaemonAction,
+    },
     /// Install, list or remove models.
     #[cfg(feature = "onnx")]
     Model {
@@ -222,9 +232,17 @@ pub struct EncoderInfo {
     pub reason: Option<String>,
 }
 
+/// A shareable encoder (the daemon reuses one per model across repositories).
+pub type SharedEncoder = Arc<dyn Encoder + Send + Sync>;
+
 /// The encoder to use: the verified model from [`resolve_model`], or the lexical fallback
 /// when no model is installed or it fails verification (hints still work, and say so).
-pub fn encoder(model: Option<&Path>) -> (Box<dyn Encoder + Send + Sync>, EncoderInfo) {
+pub fn encoder(model: Option<&Path>) -> (SharedEncoder, EncoderInfo) {
+    encoder_for(resolve_model(model).as_deref())
+}
+
+/// The encoder for an already resolved model directory (`None`: no model installed).
+pub fn encoder_for(dir: Option<&Path>) -> (SharedEncoder, EncoderInfo) {
     let fallback = |reason: String| {
         let e = HashEncoder::default();
         let info = EncoderInfo {
@@ -233,16 +251,16 @@ pub fn encoder(model: Option<&Path>) -> (Box<dyn Encoder + Send + Sync>, Encoder
             model: None,
             reason: Some(reason),
         };
-        (Box::new(e) as Box<dyn Encoder + Send + Sync>, info)
+        (Arc::new(e) as SharedEncoder, info)
     };
-    let Some(dir) = resolve_model(model) else {
+    let Some(dir) = dir else {
         return fallback("no model installed".into());
     };
-    open_model(&dir).unwrap_or_else(|e| fallback(format!("model unavailable: {e}")))
+    open_model(dir).unwrap_or_else(|e| fallback(format!("model unavailable: {e}")))
 }
 
 #[cfg(feature = "onnx")]
-fn open_model(dir: &Path) -> Result<(Box<dyn Encoder + Send + Sync>, EncoderInfo), String> {
+fn open_model(dir: &Path) -> Result<(SharedEncoder, EncoderInfo), String> {
     let e = wn_embed::core_encoder::OnnxEncoder::open(dir, None)?;
     let info = EncoderInfo {
         fingerprint: e.fingerprint(),
@@ -250,11 +268,11 @@ fn open_model(dir: &Path) -> Result<(Box<dyn Encoder + Send + Sync>, EncoderInfo
         model: Some(e.spec().name.clone()),
         reason: None,
     };
-    Ok((Box::new(e), info))
+    Ok((Arc::new(e), info))
 }
 
 #[cfg(not(feature = "onnx"))]
-fn open_model(_dir: &Path) -> Result<(Box<dyn Encoder + Send + Sync>, EncoderInfo), String> {
+fn open_model(_dir: &Path) -> Result<(SharedEncoder, EncoderInfo), String> {
     Err("built without the onnx feature".into())
 }
 
@@ -265,7 +283,7 @@ pub struct Workspace {
     /// Cache directory for this repository and model.
     pub dir: PathBuf,
     /// Encoder.
-    pub encoder: Box<dyn Encoder + Send + Sync>,
+    pub encoder: SharedEncoder,
     /// Encoder description.
     pub info: EncoderInfo,
     /// Vector index.
@@ -281,8 +299,13 @@ pub struct Workspace {
 impl Workspace {
     /// Opens the repository containing `path` with the model from [`resolve_model`].
     pub fn open(path: &Path, model: Option<&Path>) -> Workspace {
-        let root = repo_root(path);
         let (encoder, info) = encoder(model);
+        Workspace::open_with(path, encoder, info)
+    }
+
+    /// Opens the repository containing `path` with an already loaded encoder.
+    pub fn open_with(path: &Path, encoder: SharedEncoder, info: EncoderInfo) -> Workspace {
+        let root = repo_root(path);
         let dir = repo_dir(&root, &info.fingerprint);
         let index = Index::open(&dir.join("index"), &info.fingerprint);
         let adapter = load_adapter(&dir.join("adapter"));
@@ -586,35 +609,30 @@ pub fn run(cli: Cli) -> (String, i32) {
         };
         return (text, code);
     }
-    let mut ws = Workspace::open(&cli.path, cli.model.as_deref());
+    if let Command::Daemon { action } = &cli.command {
+        return daemon::run_action(action, &cli);
+    }
     let json = cli.json;
+    // `ask` and `status` go through the background daemon (warm model and index) when it is
+    // available; any failure falls back to answering in this process with identical output.
+    let context = match &cli.command {
+        Command::Ask { context_file, .. } => read_context(context_file),
+        _ => String::new(),
+    };
+    if let Some(op) = daemon::op_for(&cli.command) {
+        if let Some(out) = daemon::client::call(&cli, op, &context) {
+            return out;
+        }
+    }
+    let mut ws = Workspace::open(&cli.path, cli.model.as_deref());
     let out = |value: &dyn erased::Json, text: String| if json { value.to_json() } else { text };
     match cli.command {
-        Command::Init | Command::Status | Command::Train => {
-            let mut note = None;
-            let started = std::time::Instant::now();
-            if let Err(e) = ws.refresh(false) {
-                note = Some(format!("index failed: {e}"));
-            }
-            let index_ms = started.elapsed().as_millis();
-            let should_fit = match cli.command {
-                Command::Train => true,
-                Command::Init => ws.needs_fit(),
-                _ => false,
-            };
-            if should_fit && ws.index.state() == IndexState::Ready {
-                note = Some(ws.fit().unwrap_or_else(|e| e));
-            }
-            if matches!(cli.command, Command::Init) && ws.index.state() == IndexState::Ready {
-                record_index(&ws, u64::try_from(index_ms).unwrap_or(u64::MAX));
-            }
-            let report = status_of(&ws, note);
-            let text = render_status(&report);
-            (out(&report, text), 0)
-        }
+        Command::Init => status_command(&mut ws, StatusKind::Init, json),
+        Command::Status => status_command(&mut ws, StatusKind::Status, json),
+        Command::Train => status_command(&mut ws, StatusKind::Train, json),
         Command::Ask {
             query,
-            context_file,
+            context_file: _,
             functions,
             k,
             no_adapter,
@@ -624,49 +642,18 @@ pub fn run(cli: Cli) -> (String, i32) {
             start_min_files,
             no_log,
         } => {
-            let context = read_context(&context_file);
-            let started = std::time::Instant::now();
-            let refresh = ws.refresh(functions);
-            if refresh.is_ok()
-                && !no_adapter
-                && ws.needs_fit()
-                && ws.adapter_life.state() != AdapterState::Active
-            {
-                let _ = ws.fit();
-            }
-            let opts = SuggestOptions {
-                k: k.max(1),
-                with_functions: functions,
-                adapt: !no_adapter,
-                strict_abstain: strict,
+            let args = AskArgs {
+                query,
+                functions,
+                k,
+                no_adapter,
+                strict,
                 no_abstain,
-                unsupported_only: ws.coverage.unsupported > 0,
-                start_min_files: start.then_some(start_min_files),
+                start,
+                start_min_files,
+                no_log,
             };
-            let adapter = if ws.adapter_life.state().applies() {
-                ws.adapter.as_ref()
-            } else {
-                None
-            };
-            let outcome: Outcome = suggest(
-                &ws.index,
-                adapter,
-                ws.encoder.as_ref(),
-                &query,
-                &context,
-                opts,
-            );
-            if !no_log {
-                record_query(
-                    &ws,
-                    &query,
-                    &context,
-                    &outcome,
-                    started.elapsed().as_millis(),
-                );
-            }
-            let text = render(&outcome);
-            (out(&outcome, text), 0)
+            ask_command(&mut ws, &args, &context, json)
         }
         Command::Rollback => {
             let dir = ws.dir.join("adapter");
@@ -687,7 +674,11 @@ pub fn run(cli: Cli) -> (String, i32) {
             let value = serde_json::json!({ "message": msg });
             (out(&value, msg.clone()), 0)
         }
-        Command::Mcp | Command::Bench { .. } | Command::Update { .. } | Command::Report { .. } => {
+        Command::Mcp
+        | Command::Bench { .. }
+        | Command::Update { .. }
+        | Command::Report { .. }
+        | Command::Daemon { .. } => {
             unreachable!("handled above")
         }
         #[cfg(feature = "onnx")]
@@ -787,6 +778,109 @@ fn peak_memory_mb() -> Option<u64> {
         Some(kb / 1024)
     } else {
         None
+    }
+}
+
+/// Which status-style command runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub enum StatusKind {
+    /// Index and fit the adapter when it is missing or stale.
+    Init,
+    /// Index and report.
+    Status,
+    /// Index and refit the adapter now.
+    Train,
+}
+
+/// `wn init | status | train` on an opened workspace: text or JSON, and the exit code. Shared by
+/// the in-process path and the daemon so both print the same thing.
+pub fn status_command(ws: &mut Workspace, kind: StatusKind, json: bool) -> (String, i32) {
+    let mut note = None;
+    let started = std::time::Instant::now();
+    if let Err(e) = ws.refresh(false) {
+        note = Some(format!("index failed: {e}"));
+    }
+    let index_ms = started.elapsed().as_millis();
+    let should_fit = match kind {
+        StatusKind::Train => true,
+        StatusKind::Init => ws.needs_fit(),
+        StatusKind::Status => false,
+    };
+    if should_fit && ws.index.state() == IndexState::Ready {
+        note = Some(ws.fit().unwrap_or_else(|e| e));
+    }
+    if kind == StatusKind::Init && ws.index.state() == IndexState::Ready {
+        record_index(ws, u64::try_from(index_ms).unwrap_or(u64::MAX));
+    }
+    let report = status_of(ws, note);
+    if json {
+        (erased::Json::to_json(&report), 0)
+    } else {
+        (render_status(&report), 0)
+    }
+}
+
+/// Arguments of `wn ask` (without the context, which is read once by the caller).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct AskArgs {
+    pub query: String,
+    pub functions: bool,
+    pub k: usize,
+    pub no_adapter: bool,
+    pub strict: bool,
+    pub no_abstain: bool,
+    pub start: bool,
+    pub start_min_files: usize,
+    pub no_log: bool,
+}
+
+/// `wn ask` on an opened workspace: text or JSON, and the exit code. Shared by the in-process
+/// path and the daemon so both print the same thing.
+pub fn ask_command(ws: &mut Workspace, args: &AskArgs, context: &str, json: bool) -> (String, i32) {
+    let started = std::time::Instant::now();
+    let refresh = ws.refresh(args.functions);
+    if refresh.is_ok()
+        && !args.no_adapter
+        && ws.needs_fit()
+        && ws.adapter_life.state() != AdapterState::Active
+    {
+        let _ = ws.fit();
+    }
+    let opts = SuggestOptions {
+        k: args.k.max(1),
+        with_functions: args.functions,
+        adapt: !args.no_adapter,
+        strict_abstain: args.strict,
+        no_abstain: args.no_abstain,
+        unsupported_only: ws.coverage.unsupported > 0,
+        start_min_files: args.start.then_some(args.start_min_files),
+    };
+    let adapter = if ws.adapter_life.state().applies() {
+        ws.adapter.as_ref()
+    } else {
+        None
+    };
+    let outcome: Outcome = suggest(
+        &ws.index,
+        adapter,
+        ws.encoder.as_ref(),
+        &args.query,
+        context,
+        opts,
+    );
+    if !args.no_log {
+        record_query(
+            ws,
+            &args.query,
+            context,
+            &outcome,
+            started.elapsed().as_millis(),
+        );
+    }
+    if json {
+        (erased::Json::to_json(&outcome), 0)
+    } else {
+        (render(&outcome), 0)
     }
 }
 

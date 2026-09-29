@@ -49,7 +49,13 @@ fn machine_in(target: ConnectState) -> Connection {
         S::Waiting => &[E::Connect, E::Refused, E::Spawned],
         S::Restarting => &[E::Connect, E::Connected, E::Mismatch],
         S::Respawning => &[E::Connect, E::Connected, E::Mismatch, E::Stopped],
-        S::Rewaiting => &[E::Connect, E::Connected, E::Mismatch, E::Stopped, E::Spawned],
+        S::Rewaiting => &[
+            E::Connect,
+            E::Connected,
+            E::Mismatch,
+            E::Stopped,
+            E::Spawned,
+        ],
         S::Rehandshaking => &[
             E::Connect,
             E::Connected,

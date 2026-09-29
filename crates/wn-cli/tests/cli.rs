@@ -74,6 +74,7 @@ fn wn_command(repo: &Path, home: &Path) -> Command {
         .arg(repo)
         .env("WHERE_NEXT_HOME", home)
         .env("WN_MODELS_HOME", home.join("no-models"))
+        .env("WN_NO_DAEMON", "1")
         .env_remove("WN_MODEL_DIR");
     c
 }
