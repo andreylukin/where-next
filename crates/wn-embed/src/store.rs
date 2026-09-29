@@ -7,14 +7,8 @@ use std::path::{Path, PathBuf};
 use crate::lifecycle::{ModelEvent, ModelLifecycle, ModelState};
 use crate::verify::{Manifest, VerifyError, MANIFEST_FILE};
 
-/// Where model files come from.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ModelSource {
-    /// A local directory containing the model files and a `wn-manifest.json`.
-    LocalDir(PathBuf),
-    /// A remote base URL (for example a Hugging Face repo). Not implemented yet.
-    Url(String),
-}
+use crate::source::safe_file_name;
+pub use crate::source::ModelSource;
 
 /// Why the store could not produce a verified model.
 #[derive(Debug)]
@@ -139,6 +133,7 @@ impl ModelStore {
             ModelSource::LocalDir(src) => {
                 let manifest = read_manifest(src)
                     .ok_or_else(|| StoreError::Fetch(format!("no {MANIFEST_FILE} in {src:?}")))?;
+                check_names(&manifest)?;
                 fs::create_dir_all(&self.dir).map_err(|e| StoreError::Fetch(e.to_string()))?;
                 for file in manifest
                     .files
@@ -146,16 +141,75 @@ impl ModelStore {
                     .map(String::as_str)
                     .chain([MANIFEST_FILE])
                 {
-                    fs::copy(src.join(file), self.dir.join(file))
+                    let dest = self.dir.join(file);
+                    if let Some(parent) = dest.parent() {
+                        fs::create_dir_all(parent).map_err(|e| StoreError::Fetch(e.to_string()))?;
+                    }
+                    fs::copy(src.join(file), dest)
                         .map_err(|e| StoreError::Fetch(format!("{file}: {e}")))?;
                 }
                 Ok(())
             }
-            ModelSource::Url(url) => Err(StoreError::Fetch(format!(
-                "remote model sources are not supported yet: {url}"
-            ))),
+            remote => self.fetch_remote(remote),
         }
     }
+
+    /// Downloads the manifest, then every listed file, into a sibling `.download` directory and
+    /// renames it into place, so an interrupted download never leaves a half-filled model
+    /// directory. Checksums are verified afterwards by the lifecycle (`Verifying`).
+    #[cfg(feature = "remote")]
+    fn fetch_remote(&self, source: &ModelSource) -> Result<(), StoreError> {
+        let staging = staging_dir(&self.dir);
+        let _ = fs::remove_dir_all(&staging);
+        fs::create_dir_all(&staging).map_err(|e| StoreError::Fetch(e.to_string()))?;
+        let result = (|| {
+            crate::remote::download(source, MANIFEST_FILE, &staging.join(MANIFEST_FILE))?;
+            let manifest = read_manifest(&staging).ok_or_else(|| {
+                StoreError::Fetch(format!(
+                    "{MANIFEST_FILE} from {} is not valid",
+                    source.describe()
+                ))
+            })?;
+            check_names(&manifest)?;
+            for file in manifest.files.keys() {
+                crate::remote::download(source, file, &staging.join(file))?;
+            }
+            let _ = fs::remove_dir_all(&self.dir);
+            if let Some(parent) = self.dir.parent() {
+                fs::create_dir_all(parent).map_err(|e| StoreError::Fetch(e.to_string()))?;
+            }
+            fs::rename(&staging, &self.dir).map_err(|e| StoreError::Fetch(e.to_string()))
+        })();
+        if result.is_err() {
+            let _ = fs::remove_dir_all(&staging);
+        }
+        result
+    }
+
+    #[cfg(not(feature = "remote"))]
+    fn fetch_remote(&self, source: &ModelSource) -> Result<(), StoreError> {
+        Err(StoreError::Fetch(format!(
+            "remote model sources need the `remote` feature: {}",
+            source.describe()
+        )))
+    }
+}
+
+/// Rejects manifests that name files outside the model directory.
+fn check_names(manifest: &Manifest) -> Result<(), StoreError> {
+    match manifest.files.keys().find(|f| !safe_file_name(f)) {
+        Some(bad) => Err(StoreError::Fetch(format!(
+            "unsafe file name in manifest: {bad:?}"
+        ))),
+        None => Ok(()),
+    }
+}
+
+#[cfg(feature = "remote")]
+fn staging_dir(dir: &Path) -> PathBuf {
+    let mut name = dir.file_name().unwrap_or_default().to_os_string();
+    name.push(".download");
+    dir.with_file_name(name)
 }
 
 #[cfg(test)]
@@ -208,9 +262,12 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_url_fails_back_to_missing() {
+    fn unreachable_source_fails_back_to_missing() {
         let cache = tempfile::tempdir().unwrap();
-        let mut store = ModelStore::new(cache.path().join("m"), ModelSource::Url("hf://x".into()));
+        let mut store = ModelStore::new(
+            cache.path().join("m"),
+            ModelSource::Url("http://127.0.0.1:9/nothing".into()),
+        );
         assert!(matches!(store.ensure(), Err(StoreError::Fetch(_))));
         assert_eq!(store.state(), ModelState::Missing);
     }
@@ -226,5 +283,30 @@ mod tests {
         assert_eq!(store.ensure().unwrap(), ModelState::Loaded);
         store.files_changed().unwrap();
         assert_eq!(store.state(), ModelState::Loaded);
+    }
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::*;
+
+    #[test]
+    fn local_manifest_with_traversal_is_refused() {
+        let src = tempfile::tempdir().unwrap();
+        let mut files = std::collections::BTreeMap::new();
+        files.insert("../escape".to_string(), "00".repeat(32));
+        fs::write(
+            src.path().join(MANIFEST_FILE),
+            serde_json::to_string(&Manifest { files }).unwrap(),
+        )
+        .unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let mut store = ModelStore::new(
+            cache.path().join("m"),
+            ModelSource::LocalDir(src.path().into()),
+        );
+        let err = store.ensure().unwrap_err();
+        assert!(err.to_string().contains("unsafe file name"), "{err}");
+        assert_eq!(store.state(), ModelState::Missing);
     }
 }

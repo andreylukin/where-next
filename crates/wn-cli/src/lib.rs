@@ -23,6 +23,9 @@ use wn_core::runtime::{
 use wn_git::{commits_since, history, repo_root, scan, Coverage};
 use wn_sources::{read_text, Kind, MAX_CONFIG_BYTES, MAX_SOURCE_BYTES};
 
+#[cfg(feature = "onnx")]
+pub mod models;
+
 /// Command-line interface.
 #[derive(Debug, Parser)]
 #[command(
@@ -110,6 +113,12 @@ pub enum Command {
         /// Skip the personal adapter.
         #[arg(long)]
         no_adapter: bool,
+    },
+    /// Install, list or remove models.
+    #[cfg(feature = "onnx")]
+    Model {
+        #[command(subcommand)]
+        action: models::ModelAction,
     },
 }
 
@@ -472,6 +481,16 @@ pub fn run(cli: Cli) -> (String, i32) {
     if let Command::Bench { .. } = cli.command {
         return run_bench(cli);
     }
+    #[cfg(feature = "onnx")]
+    if let Command::Model { action } = cli.command {
+        let (report, code) = models::run(action, &models_home());
+        let text = if cli.json {
+            erased::Json::to_json(&report)
+        } else {
+            models::render(&report)
+        };
+        return (text, code);
+    }
     let mut ws = Workspace::open(&cli.path, cli.model.as_deref());
     let json = cli.json;
     let out = |value: &dyn erased::Json, text: String| if json { value.to_json() } else { text };
@@ -558,6 +577,8 @@ pub fn run(cli: Cli) -> (String, i32) {
             (out(&value, msg.clone()), 0)
         }
         Command::Mcp | Command::Bench { .. } => unreachable!("handled above"),
+        #[cfg(feature = "onnx")]
+        Command::Model { .. } => unreachable!("handled above"),
     }
 }
 
