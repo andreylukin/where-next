@@ -13,7 +13,7 @@ headed, see [PLAN.md](../PLAN.md).
 | `wn-embed` | ONNX Runtime inference: loads a model directory, verifies every file against its manifest, and embeds queries and documents. Model lifecycle state machine: `Missing → Downloading → Verifying → Loaded / Corrupt`. See [crates/wn-embed/README.md](../crates/wn-embed/README.md). |
 | `wn-daemon` | The resident session: keeps model and index warm, refreshes in the background, and fails open. Session lifecycle state machine: `Starting → Warming → Serving / Degraded → ShuttingDown → Stopped`. |
 | `wn-mcp` | MCP server over stdio with three tools: `where_next(query, context?)` (at most 3 paths, or a fail-open state), `refresh_index()` and `status()`. Ships the `wn-mcp-server` binary. If the model is missing or fails verification, it falls back to a lexical encoder and says so. |
-| `wn-cli` | The `wn` command. **Not wired up yet**: it prints a placeholder. `init`, `ask`, `status` and `mcp` arrive with milestone M1. |
+| `wn-cli` | The `wn` command: `init` (index + fit the adapter from git history), `ask` (at most k hints, `--json` for agents), `status`, `train`, `rollback` and `mcp` (the MCP server over stdio). Uses the model from `--model`, `$WN_MODEL_DIR`, or the best installed one under `~/.cache/where-next-models` (`gemma-g2r`, then `v2b`); without one it falls back to a lexical encoder and says so. The CLI and MCP server share one index per repository and model. |
 
 Model weights are not in this repository. Tests that need a real model skip unless you point them at one.
 
@@ -56,7 +56,11 @@ This checks Rust embeddings and text builders against the Python reference.
 
 ## Run the MCP server
 
-Until `wn mcp` exists, run the server binary directly:
+```sh
+wn mcp --path <repo>            # what agents should run, e.g. claude mcp add where-next -- wn mcp
+```
+
+Or run the standalone server binary:
 
 ```sh
 cargo build --release -p wn-mcp --bin wn-mcp-server

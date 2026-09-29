@@ -66,14 +66,20 @@ fn project() -> tempfile::TempDir {
     t
 }
 
-fn wn(repo: &Path, home: &Path, args: &[&str]) -> (String, i32) {
-    let out = Command::new(env!("CARGO_BIN_EXE_wn"))
-        .args(args)
-        .arg("--path")
+/// `wn` with an isolated cache and no installed models (the lexical fallback answers), so
+/// results do not depend on what the developer has downloaded.
+fn wn_command(repo: &Path, home: &Path) -> Command {
+    let mut c = Command::new(env!("CARGO_BIN_EXE_wn"));
+    c.arg("--path")
         .arg(repo)
         .env("WHERE_NEXT_HOME", home)
-        .output()
-        .unwrap();
+        .env("WN_MODELS_HOME", home.join("no-models"))
+        .env_remove("WN_MODEL_DIR");
+    c
+}
+
+fn wn(repo: &Path, home: &Path, args: &[&str]) -> (String, i32) {
+    let out = wn_command(repo, home).args(args).output().unwrap();
     let text = if out.status.success() {
         out.stdout
     } else {
@@ -152,10 +158,60 @@ fn init_status_ask_train_rollback() {
     assert!(rb2.starts_with("adapter: removed"), "{rb2}");
     let (rb3, _) = wn(r, home.path(), &["rollback"]);
     assert_eq!(rb3, "adapter: nothing to roll back");
+}
 
-    let (mcp, code) = wn(r, home.path(), &["mcp"]);
-    assert_eq!(code, 2);
-    assert!(mcp.contains("wn-mcp"));
+/// `wn mcp` speaks MCP over stdio: initialize, list tools, call where_next, exit on EOF.
+#[test]
+fn mcp_serves_tools_over_stdio() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+
+    let repo = project();
+    let home = tempfile::tempdir().unwrap();
+    let mut child = wn_command(repo.path(), home.path())
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut send = |v: serde_json::Value| writeln!(stdin, "{v}").unwrap();
+    let mut read_id = |id: i64| loop {
+        let line = lines.next().expect("server closed stdout").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        if v["id"] == id {
+            return v;
+        }
+    };
+    send(
+        serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+        "protocolVersion": "2025-06-18", "capabilities": {},
+        "clientInfo": {"name": "test", "version": "0"}}}),
+    );
+    let init = read_id(1);
+    assert!(init["result"]["serverInfo"].is_object(), "{init}");
+    send(serde_json::json!({"jsonrpc": "2.0", "method": "notifications/initialized"}));
+    send(serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
+    let tools = read_id(2);
+    let names: Vec<&str> = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"where_next"), "{names:?}");
+    send(
+        serde_json::json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
+        "name": "where_next", "arguments": {"query": "storage upload timeout"}}}),
+    );
+    let call = read_id(3);
+    let body: serde_json::Value =
+        serde_json::from_str(call["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(body["state"].is_string(), "{body}");
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
 }
 
 #[test]

@@ -15,14 +15,21 @@ path = "src/lib.rs"
 name = "wn"
 path = "src/main.rs"
 
+[features]
+default = ["onnx"]
+onnx = ["dep:wn-embed", "wn-mcp/onnx"]
+
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha1_smol = "1"
 wn-core.workspace = true
 wn-git = { path = "../wn-git" }
 wn-sources = { path = "../wn-sources" }
+wn-daemon = { path = "../wn-daemon" }
+wn-embed = { path = "../wn-embed", optional = true }
+wn-mcp = { path = "../wn-mcp", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [dev-dependencies]
 insta = { version = "1.48", features = ["filters"] }

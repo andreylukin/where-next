@@ -2303,10 +2303,13 @@ dependencies = [
  "insta",
  "serde",
  "serde_json",
- "sha1_smol",
  "tempfile",
+ "tokio",
  "wn-core",
+ "wn-daemon",
+ "wn-embed",
  "wn-git",
+ "wn-mcp",
  "wn-sources",
 ]
 

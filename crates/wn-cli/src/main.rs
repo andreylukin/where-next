@@ -4,7 +4,9 @@ use clap::Parser;
 
 fn main() {
     let (text, code) = wn_cli::run(wn_cli::Cli::parse());
-    if code == 0 {
+    if text.is_empty() {
+        // `wn mcp` already used stdout for the protocol.
+    } else if code == 0 {
         println!("{text}");
     } else {
         eprintln!("{text}");

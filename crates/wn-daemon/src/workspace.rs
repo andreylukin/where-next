@@ -75,6 +75,23 @@ pub fn repo_cache_dir(cache_home: &Path, root: &Path) -> PathBuf {
     cache_home.join(format!("{name}-{h:016x}"))
 }
 
+/// Directory for one model's index and adapter for a repository: [`repo_cache_dir`] plus the
+/// encoder fingerprint made path-safe, so switching models never mixes vectors. The `wn` CLI
+/// and the MCP server both use this layout and therefore share one index.
+pub fn model_cache_dir(cache_home: &Path, root: &Path, fingerprint: &str) -> PathBuf {
+    let tag: String = fingerprint
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    repo_cache_dir(cache_home, root).join(tag)
+}
+
 /// Where an answer came from.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Provenance {
@@ -109,7 +126,7 @@ impl Workspace {
     /// Opens the stored index and adapter for this repository and model (nothing is embedded
     /// yet; call [`Workspace::apply`] with a scan).
     pub fn open(root: &Path, cache_home: &Path, encoder: SharedEncoder) -> Self {
-        let dir = repo_cache_dir(cache_home, root);
+        let dir = model_cache_dir(cache_home, root, &encoder.fingerprint());
         let index = Index::open(&dir.join("index"), &encoder.fingerprint());
         let adapter =
             load_adapter(&dir.join("adapter")).filter(|a| a.meta.base == encoder.fingerprint());
@@ -234,5 +251,22 @@ impl Workspace {
                 .map(|s| s.coverage.clone())
                 .unwrap_or_default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod cache_dir_tests {
+    use super::*;
+
+    #[test]
+    fn model_dirs_are_per_repo_and_per_model() {
+        let home = Path::new("/tmp/wn-home");
+        let a = model_cache_dir(home, Path::new("/nonexistent/proj"), "gemma-g2r-abc/q8");
+        let b = model_cache_dir(home, Path::new("/nonexistent/proj"), "v2b-abc");
+        let c = model_cache_dir(home, Path::new("/nonexistent/other/proj"), "v2b-abc");
+        assert_eq!(a.parent(), b.parent());
+        assert_ne!(a, b);
+        assert_ne!(b.parent(), c.parent());
+        assert!(a.ends_with("gemma-g2r-abc_q8"));
     }
 }

@@ -35,6 +35,9 @@ pub struct Cli {
     /// Print JSON instead of text.
     #[arg(long, global = true)]
     pub json: bool,
+    /// Model directory (default: `$WN_MODEL_DIR`, else the best installed model).
+    #[arg(long, global = true)]
+    pub model: Option<PathBuf>,
     /// What to do.
     #[command(subcommand)]
     pub command: Command,
@@ -83,32 +86,50 @@ pub fn home() -> PathBuf {
     if let Some(h) = std::env::var_os("WHERE_NEXT_HOME") {
         return PathBuf::from(h);
     }
-    let base = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    base.join(".cache").join("where-next")
+    user_cache().join("where-next")
 }
 
-/// Per-repository, per-model cache directory.
+fn user_cache() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join(".cache")
+}
+
+/// Where installed models live: `$WN_MODELS_HOME`, else `~/.cache/where-next-models`.
+pub fn models_home() -> PathBuf {
+    std::env::var_os("WN_MODELS_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| user_cache().join("where-next-models"))
+}
+
+/// Models tried in order when none is named: the best measured first.
+pub const DEFAULT_MODELS: &[&str] = &["gemma-g2r", "v2b"];
+
+/// The model directory to use: `--model`, else `$WN_MODEL_DIR`, else the first installed
+/// [`DEFAULT_MODELS`] entry under [`models_home`]. `None` means no model is installed.
+pub fn resolve_model(explicit: Option<&Path>) -> Option<PathBuf> {
+    let env = std::env::var_os("WN_MODEL_DIR").map(PathBuf::from);
+    resolve_model_in(explicit, env.as_deref(), &models_home())
+}
+
+/// [`resolve_model`] with its inputs made explicit (for tests).
+pub fn resolve_model_in(
+    explicit: Option<&Path>,
+    env_dir: Option<&Path>,
+    models: &Path,
+) -> Option<PathBuf> {
+    explicit.or(env_dir).map(Path::to_path_buf).or_else(|| {
+        DEFAULT_MODELS
+            .iter()
+            .map(|name| models.join(name))
+            .find(|dir| dir.join("wn-model.json").is_file())
+    })
+}
+
+/// Per-repository, per-model cache directory (shared with `wn mcp` and the MCP server).
 pub fn repo_dir(root: &Path, fingerprint: &str) -> PathBuf {
-    let rid = sha1_smol::Sha1::from(root.to_string_lossy().as_bytes())
-        .digest()
-        .to_string();
-    let name = root
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "repo".into());
-    let tag: String = fingerprint
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    home().join(format!("{name}-{}", &rid[..12])).join(tag)
+    wn_daemon::workspace::model_cache_dir(&home(), root, fingerprint)
 }
 
 /// Which encoder is in use.
@@ -116,18 +137,48 @@ pub fn repo_dir(root: &Path, fingerprint: &str) -> PathBuf {
 pub struct EncoderInfo {
     /// Fingerprint of the encoder (vector cache key).
     pub fingerprint: String,
-    /// True when no model is installed and the lexical fallback is used.
+    /// True when the lexical fallback answers instead of a model.
     pub fallback: bool,
+    /// Model name (from `wn-model.json`) when a model is loaded.
+    pub model: Option<String>,
+    /// Why the fallback is in use.
+    pub reason: Option<String>,
 }
 
-/// The encoder to use. Until a model backend is installed this is the lexical fallback.
-pub fn encoder() -> (Box<dyn Encoder>, EncoderInfo) {
-    let e = HashEncoder::default();
+/// The encoder to use: the verified model from [`resolve_model`], or the lexical fallback
+/// when no model is installed or it fails verification (hints still work, and say so).
+pub fn encoder(model: Option<&Path>) -> (Box<dyn Encoder + Send + Sync>, EncoderInfo) {
+    let fallback = |reason: String| {
+        let e = HashEncoder::default();
+        let info = EncoderInfo {
+            fingerprint: e.fingerprint(),
+            fallback: true,
+            model: None,
+            reason: Some(reason),
+        };
+        (Box::new(e) as Box<dyn Encoder + Send + Sync>, info)
+    };
+    let Some(dir) = resolve_model(model) else {
+        return fallback("no model installed".into());
+    };
+    open_model(&dir).unwrap_or_else(|e| fallback(format!("model unavailable: {e}")))
+}
+
+#[cfg(feature = "onnx")]
+fn open_model(dir: &Path) -> Result<(Box<dyn Encoder + Send + Sync>, EncoderInfo), String> {
+    let e = wn_embed::core_encoder::OnnxEncoder::open(dir, None)?;
     let info = EncoderInfo {
         fingerprint: e.fingerprint(),
-        fallback: true,
+        fallback: false,
+        model: Some(e.spec().name.clone()),
+        reason: None,
     };
-    (Box::new(e), info)
+    Ok((Box::new(e), info))
+}
+
+#[cfg(not(feature = "onnx"))]
+fn open_model(_dir: &Path) -> Result<(Box<dyn Encoder + Send + Sync>, EncoderInfo), String> {
+    Err("built without the onnx feature".into())
 }
 
 /// A repository opened for one command.
@@ -137,7 +188,7 @@ pub struct Workspace {
     /// Cache directory for this repository and model.
     pub dir: PathBuf,
     /// Encoder.
-    pub encoder: Box<dyn Encoder>,
+    pub encoder: Box<dyn Encoder + Send + Sync>,
     /// Encoder description.
     pub info: EncoderInfo,
     /// Vector index.
@@ -151,10 +202,10 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    /// Opens the repository containing `path`.
-    pub fn open(path: &Path) -> Workspace {
+    /// Opens the repository containing `path` with the model from [`resolve_model`].
+    pub fn open(path: &Path, model: Option<&Path>) -> Workspace {
         let root = repo_root(path);
-        let (encoder, info) = encoder();
+        let (encoder, info) = encoder(model);
         let dir = repo_dir(&root, &info.fingerprint);
         let index = Index::open(&dir.join("index"), &info.fingerprint);
         let adapter = load_adapter(&dir.join("adapter"));
@@ -358,15 +409,14 @@ pub fn render_status(s: &StatusReport) -> String {
         Some(note) if s.adapter_revision.is_none() => format!("{adapter} ({note})"),
         _ => adapter,
     });
-    lines.push(format!(
-        "model: {}{}",
-        s.encoder.fingerprint,
-        if s.encoder.fallback {
-            " (lexical fallback: no model installed)"
-        } else {
-            ""
-        }
-    ));
+    lines.push(match (&s.encoder.model, &s.encoder.reason) {
+        (Some(name), _) => format!("model: {name} ({})", s.encoder.fingerprint),
+        (None, reason) => format!(
+            "model: {} (lexical fallback: {})",
+            s.encoder.fingerprint,
+            reason.as_deref().unwrap_or("no model installed")
+        ),
+    });
     lines.join("\n")
 }
 
@@ -384,7 +434,10 @@ fn read_context(path: &Option<PathBuf>) -> String {
 
 /// Runs a parsed command, returning the text to print and the exit code.
 pub fn run(cli: Cli) -> (String, i32) {
-    let mut ws = Workspace::open(&cli.path);
+    if let Command::Mcp = cli.command {
+        return serve_mcp(&cli);
+    }
+    let mut ws = Workspace::open(&cli.path, cli.model.as_deref());
     let json = cli.json;
     let out = |value: &dyn erased::Json, text: String| if json { value.to_json() } else { text };
     match cli.command {
@@ -466,11 +519,41 @@ pub fn run(cli: Cli) -> (String, i32) {
             let value = serde_json::json!({ "message": msg });
             (out(&value, msg.clone()), 0)
         }
-        Command::Mcp => (
-            "wn mcp: the MCP server lands with the wn-mcp crate; use `wn ask --json` meanwhile."
-                .to_string(),
-            2,
-        ),
+        Command::Mcp => unreachable!("handled above"),
+    }
+}
+
+#[cfg(not(feature = "onnx"))]
+fn serve_mcp(_cli: &Cli) -> (String, i32) {
+    (
+        "wn mcp: this build has no onnx feature; rebuild with default features".into(),
+        2,
+    )
+}
+
+/// `wn mcp`: serves the MCP tools over stdio until the client disconnects. Uses the same model
+/// resolution and cache layout as the other commands, so `wn init` warms the server's index.
+/// Diagnostics go to stderr; stdout carries MCP. Returns an empty text so nothing else prints.
+#[cfg(feature = "onnx")]
+fn serve_mcp(cli: &Cli) -> (String, i32) {
+    let root = repo_root(&cli.path);
+    // `open_repo` falls back to the lexical encoder when this path has no verified model.
+    let model =
+        resolve_model(cli.model.as_deref()).unwrap_or_else(|| models_home().join("none-installed"));
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(r) => r,
+        Err(e) => return (format!("wn mcp: cannot start runtime: {e}"), 1),
+    };
+    let (service, refresher, choice) =
+        wn_mcp::open_repo(&root, &model, &home(), std::time::Duration::from_secs(10));
+    if let wn_mcp::EncoderChoice::LexicalFallback(reason) = &choice {
+        eprintln!("where-next: model unavailable ({reason}); using the lexical fallback");
+    }
+    let result = runtime.block_on(wn_mcp::serve_stdio(service));
+    refresher.stop();
+    match result {
+        Ok(()) => (String::new(), 0),
+        Err(e) => (format!("wn mcp: {e}"), 1),
     }
 }
 
@@ -484,5 +567,30 @@ mod erased {
         fn to_json(&self) -> String {
             serde_json::to_string_pretty(self).unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_resolution_prefers_flag_then_env_then_best_installed() {
+        let models = tempfile::tempdir().unwrap();
+        let m = models.path();
+        assert_eq!(resolve_model_in(None, None, m), None);
+        std::fs::create_dir_all(m.join("v2b")).unwrap();
+        std::fs::write(m.join("v2b/wn-model.json"), "{}").unwrap();
+        assert_eq!(resolve_model_in(None, None, m), Some(m.join("v2b")));
+        std::fs::create_dir_all(m.join("gemma-g2r")).unwrap();
+        std::fs::write(m.join("gemma-g2r/wn-model.json"), "{}").unwrap();
+        assert_eq!(resolve_model_in(None, None, m), Some(m.join("gemma-g2r")));
+        let env = Path::new("/env/model");
+        assert_eq!(resolve_model_in(None, Some(env), m), Some(env.into()));
+        let flag = Path::new("/flag/model");
+        assert_eq!(
+            resolve_model_in(Some(flag), Some(env), m),
+            Some(flag.into())
+        );
     }
 }
