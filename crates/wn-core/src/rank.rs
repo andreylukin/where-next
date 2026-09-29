@@ -48,6 +48,28 @@ pub const ABSTAIN_STRICT_PLAIN: Thresholds = Thresholds {
     min_margin: 0.0333,
 };
 
+/// v2b thresholds for error queries, fitted on a held-out eval of ~1.2k error-carrying queries
+/// (SWE-bench Verified, SWE-PolyBench, Multi-SWE-bench, LCA, ContextBench, SWE-Gym mid-trajectory)
+/// on dev repositories and checked on test repositories (answered hit@3 target 0.85 / 0.92 strict).
+pub const V2B_ERROR: KindThresholds = KindThresholds {
+    adapter: Thresholds {
+        min_top: 0.5193,
+        min_margin: 0.002,
+    },
+    plain: Thresholds {
+        min_top: 0.5138,
+        min_margin: 0.0409,
+    },
+    strict_adapter: Thresholds {
+        min_top: 0.5193,
+        min_margin: 0.0227,
+    },
+    strict_plain: Thresholds {
+        min_top: 0.6539,
+        min_margin: 0.065,
+    },
+};
+
 /// What kind of query this is; each kind can have its own abstain thresholds, because
 /// similarities run lower for long issue text than for short requests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -193,10 +215,12 @@ impl Calibration {
         };
         Calibration {
             model: "v2b".into(),
-            calibrated_on: "repository history (commit-message queries)".into(),
+            calibrated_on:
+                "repository history (commit-message queries); error: held-out benchmark eval".into(),
             kinds: BTreeMap::from([
                 ("default".to_string(), Some(default)),
                 ("issue".to_string(), None),
+                ("error".to_string(), Some(V2B_ERROR)),
             ]),
         }
     }

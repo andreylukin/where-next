@@ -1,6 +1,6 @@
 {
  "model": "gemma-g2r",
- "calibrated_on": "a private multi-language repository's history: 1,510 commit-message queries, thresholds fitted on the older half (answered hit@3 >= 0.75 default, >= 0.9 strict) and checked on the newer half",
+ "calibrated_on": "a private multi-language repository's history: 1,510 commit-message queries, thresholds fitted on the older half (answered hit@3 >= 0.75 default, >= 0.9 strict) and checked on the newer half | error, issue: held-out eval (SWE-bench Verified, SWE-PolyBench, Multi-SWE-bench, LCA bug localization, ContextBench, SWE-Gym mid-trajectory; ~2.2k error / 1.9k issue queries), fitted on dev repos (answered hit@3 >= 0.85 default, >= 0.92 strict), checked on test repos; issue never abstains by default",
  "kinds": {
   "default": {
    "adapter": {
@@ -20,6 +20,41 @@
     "min_margin": 0.0595
    }
   },
-  "issue": null
+  "issue": {
+   "adapter": {
+    "min_top": -1.0,
+    "min_margin": 0.0
+   },
+   "plain": {
+    "min_top": -1.0,
+    "min_margin": 0.0
+   },
+   "strict_adapter": {
+    "min_top": 0.5507,
+    "min_margin": 0.0245
+   },
+   "strict_plain": {
+    "min_top": 0.7064,
+    "min_margin": 0.0321
+   }
+  },
+  "error": {
+   "adapter": {
+    "min_top": 0.5066,
+    "min_margin": 0.0058
+   },
+   "plain": {
+    "min_top": 0.567,
+    "min_margin": 0.0335
+   },
+   "strict_adapter": {
+    "min_top": 0.4498,
+    "min_margin": 0.0502
+   },
+   "strict_plain": {
+    "min_top": 0.5859,
+    "min_margin": 0.0385
+   }
+  }
  }
 }
