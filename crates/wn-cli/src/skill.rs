@@ -696,6 +696,12 @@ pub fn run(action: &SkillAction, cli: &crate::Cli) -> (String, i32) {
     let home = user_home();
     let root = project.then(|| wn_git::repo_root(&cli.path));
     let state = from_state.then(|| load_state(&wn_home));
+    if state
+        .as_ref()
+        .is_some_and(|s| s.targets.is_empty() && s.hook_settings.is_none())
+    {
+        return ("no synced skills recorded; nothing to do".into(), 0);
+    }
     let targets = targets(agents, root.as_deref(), &home, state.as_ref());
     let hook_settings = if *from_state {
         state.as_ref().and_then(|s| s.hook_settings.clone())

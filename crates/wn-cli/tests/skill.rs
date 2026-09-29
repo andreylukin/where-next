@@ -155,6 +155,15 @@ fn from_state_resyncs_exactly_the_recorded_targets() {
 }
 
 #[test]
+fn from_state_without_recorded_syncs_writes_nothing() {
+    let env = Env::new(&[".claude"]);
+    let (out, code) = env.wn(&["skill", "sync", "--yes", "--from-state"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(!env.skill(".claude").exists());
+    assert!(!env.wn_home.path().join("skills.json").exists());
+}
+
+#[test]
 fn project_scope_installs_into_the_repository() {
     let env = Env::new(&[".claude"]);
     let repo = tempfile::tempdir().unwrap();

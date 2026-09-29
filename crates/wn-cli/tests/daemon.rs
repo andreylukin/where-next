@@ -80,6 +80,7 @@ fn wn_env(repo: &Path, home: &Path, env: &[(&str, &str)], args: &[&str]) -> (Str
         .env("WN_MODELS_HOME", home.join("no-models"))
         .env("WN_DAEMON_IDLE_SECS", "60")
         .env_remove("WN_NO_DAEMON")
+        .env_remove("WN_NO_LOG")
         .env_remove("WN_MODEL_DIR")
         .env_remove("WN_DAEMON_BINARY_ID");
     for (k, v) in env {
@@ -100,6 +101,16 @@ fn daemon_status(home: &Path, env: &[(&str, &str)]) -> serde_json::Value {
     let (out, code) = wn_env(home, home, env, &["daemon", "status", "--json"]);
     assert_eq!(code, 0, "{out}");
     serde_json::from_str(&out).unwrap()
+}
+
+/// Lines across every repository's `usage.jsonl` under `home`.
+fn logged_queries(home: &Path) -> usize {
+    fs::read_dir(home)
+        .unwrap()
+        .flatten()
+        .filter_map(|e| fs::read_to_string(e.path().join("usage.jsonl")).ok())
+        .map(|s| s.lines().count())
+        .sum()
 }
 
 const QUERY: &str = "retry uploads when storage times out";
@@ -128,6 +139,11 @@ fn daemon_answers_exactly_like_the_in_process_path() {
     assert_eq!(first, local, "daemon and in-process answers differ");
     assert!(first.0.contains("src/upload.go"), "{}", first.0);
     assert_eq!(daemon_status(&h, &[])["stats"]["requests"], 2);
+    assert_eq!(
+        logged_queries(&h),
+        3,
+        "daemon answers are logged like local ones"
+    );
 
     let text_daemon = wn(r, &h, &["status"]);
     let text_local = wn(r, &h, &["status", "--no-daemon"]);
