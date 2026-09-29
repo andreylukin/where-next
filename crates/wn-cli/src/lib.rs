@@ -3,6 +3,8 @@
 //! Commands are thin wrappers over reports defined here so they can be tested without spawning
 //! a process. Every report has a JSON form (`--json`) for agents and a short text form for people.
 
+pub mod bench;
+
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
@@ -85,6 +87,30 @@ pub enum Command {
     Rollback,
     /// Serve hints over MCP (stdio).
     Mcp,
+    /// Measure hit@k on this repository's own history (default) or on ContextBench.
+    Bench {
+        /// Replay this repository's past commits (the default).
+        #[arg(long)]
+        history: bool,
+        /// Run ContextBench tasks from `<dir>/tasks.jsonl` instead (see benchmarks/contextbench.md).
+        #[arg(long, value_name = "DIR")]
+        contextbench: Option<PathBuf>,
+        /// Newest eligible commits to score.
+        #[arg(long, default_value_t = 300)]
+        commits: usize,
+        /// Earlier commits each adapter is fitted on.
+        #[arg(long, default_value_t = 200)]
+        train: usize,
+        /// Commits scored per adapter fit.
+        #[arg(long, default_value_t = 100)]
+        step: usize,
+        /// Count test files as gold too.
+        #[arg(long)]
+        with_tests: bool,
+        /// Skip the personal adapter.
+        #[arg(long)]
+        no_adapter: bool,
+    },
 }
 
 /// Cache root: `$WHERE_NEXT_HOME`, else `~/.cache/where-next`.
@@ -443,6 +469,9 @@ pub fn run(cli: Cli) -> (String, i32) {
     if let Command::Mcp = cli.command {
         return serve_mcp(&cli);
     }
+    if let Command::Bench { .. } = cli.command {
+        return run_bench(cli);
+    }
     let mut ws = Workspace::open(&cli.path, cli.model.as_deref());
     let json = cli.json;
     let out = |value: &dyn erased::Json, text: String| if json { value.to_json() } else { text };
@@ -528,7 +557,71 @@ pub fn run(cli: Cli) -> (String, i32) {
             let value = serde_json::json!({ "message": msg });
             (out(&value, msg.clone()), 0)
         }
-        Command::Mcp => unreachable!("handled above"),
+        Command::Mcp | Command::Bench { .. } => unreachable!("handled above"),
+    }
+}
+
+fn run_bench(cli: Cli) -> (String, i32) {
+    let Command::Bench {
+        history: _,
+        contextbench,
+        commits,
+        train,
+        step,
+        with_tests,
+        no_adapter,
+    } = cli.command
+    else {
+        unreachable!("called for bench only");
+    };
+    let ws = Workspace::open(&cli.path, cli.model.as_deref());
+    let opts = bench::BenchOptions {
+        commits: commits.max(1),
+        train: train.max(1),
+        step: step.max(1),
+        with_tests,
+        adapter: !no_adapter,
+        ..bench::BenchOptions::default()
+    };
+    let model_name = ws
+        .info
+        .model
+        .clone()
+        .unwrap_or_else(|| "lexical fallback (no model installed)".into());
+    let mut log = |m: &str| bench::stderr_log(m);
+    let result = match &contextbench {
+        Some(dir) => {
+            let fingerprint = ws.info.fingerprint.clone();
+            let cache = move |root: &Path| repo_dir(root, &fingerprint).join("bench");
+            bench::contextbench(
+                dir,
+                ws.encoder.as_ref(),
+                &model_name,
+                &cache,
+                &opts,
+                &mut log,
+            )
+        }
+        None => bench::history(
+            &ws.root,
+            ws.encoder.as_ref(),
+            &model_name,
+            Some(&ws.index),
+            &ws.dir.join("bench"),
+            &opts,
+            &mut log,
+        ),
+    };
+    match result {
+        Ok(report) => {
+            let text = if cli.json {
+                serde_json::to_string_pretty(&report).unwrap_or_default()
+            } else {
+                bench::render(&report)
+            };
+            (text, 0)
+        }
+        Err(e) => (format!("wn bench: {e}"), 1),
     }
 }
 

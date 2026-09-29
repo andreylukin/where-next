@@ -36,6 +36,7 @@ wn-mcp = { version = "0.0.1", path = "../wn-mcp", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [dev-dependencies]
+proptest.workspace = true
 insta = { version = "1.48", features = ["filters"] }
 tempfile = "3"
 
