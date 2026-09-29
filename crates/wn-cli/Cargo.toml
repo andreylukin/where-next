@@ -20,8 +20,10 @@ name = "wn"
 path = "src/main.rs"
 
 [features]
-default = ["onnx"]
+default = ["onnx", "remote"]
 onnx = ["dep:wn-embed", "wn-mcp/onnx"]
+# `wn model pull` from https:// URLs and Hugging Face repos.
+remote = ["onnx", "wn-embed/remote"]
 
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }

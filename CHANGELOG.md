@@ -16,6 +16,12 @@ explicitly.
   model exactly, adapter within 0.3 points).
 - `wn-git`: read-only history plumbing for replay (commits with parents, source trees, batched blob
   reads, ancestry among commits).
+- `wn model pull | list | remove`: install models from a local directory, an `https://` base URL or
+  `hf:owner/repo[@revision]`, verified against their SHA-256 manifest before use; shows the Gemma
+  Terms of Use notice on first install. No default source yet (`--source` is required).
+- Release pipeline in dry-run form: signed-provenance (on tags), checksummed binaries for macOS
+  (Apple silicon), Linux (x86_64, arm64) and Windows, SBOMs, `install.sh` with checksum
+  verification, a Homebrew formula template, and crates publishable as `where-next`.
 - Rust workspace skeleton with seven crates and a `wn` binary placeholder.
 - Index lifecycle state machine with exhaustive transition tests and model-based tests.
 - Documentation: quickstart, how it works, privacy and licensing, adding a source, FAQ.
