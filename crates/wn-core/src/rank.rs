@@ -127,11 +127,16 @@ pub struct Outcome {
 /// first; ties keep index order. Returns `(row, score)`.
 pub fn top_k(mat: &[f32], d: usize, q: &[f32], k: usize) -> Vec<(usize, f32)> {
     assert_eq!(q.len(), d);
-    let mut scored: Vec<(usize, f32)> = mat
+    let scored: Vec<(usize, f32)> = mat
         .chunks_exact(d)
         .enumerate()
         .map(|(i, row)| (i, row.iter().zip(q).map(|(a, b)| a * b).sum()))
         .collect();
+    select_top(scored, k)
+}
+
+/// The `k` highest-scoring `(id, score)` pairs, best first; ties go to the smaller id.
+pub fn select_top(mut scored: Vec<(usize, f32)>, k: usize) -> Vec<(usize, f32)> {
     let k = k.min(scored.len());
     if k == 0 {
         return Vec::new();
