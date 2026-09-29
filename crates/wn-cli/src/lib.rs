@@ -276,6 +276,21 @@ fn open_model(_dir: &Path) -> Result<(SharedEncoder, EncoderInfo), String> {
     Err("built without the onnx feature".into())
 }
 
+/// Lists the repository's indexable files with their version ids (git listing and stat calls
+/// only; safe to run without holding any lock).
+pub fn scan_repo(root: &Path) -> (Vec<IndexedFile>, Coverage) {
+    let (files, coverage) = scan(root);
+    let list = files
+        .into_iter()
+        .map(|(path, f)| IndexedFile {
+            path,
+            cid: f.id.as_str().to_string(),
+            kind: f.kind,
+        })
+        .collect();
+    (list, coverage)
+}
+
 /// A repository opened for one command.
 pub struct Workspace {
     /// Repository root.
@@ -328,16 +343,18 @@ impl Workspace {
 
     /// Scans the repository and brings the index up to date.
     pub fn refresh(&mut self, with_functions: bool) -> Result<RefreshStats, String> {
-        let (files, coverage) = scan(&self.root);
+        let (list, coverage) = scan_repo(&self.root);
+        self.apply_scan(list, coverage, with_functions)
+    }
+
+    /// Brings the index up to date with a scan taken earlier (possibly without any lock held).
+    pub fn apply_scan(
+        &mut self,
+        list: Vec<IndexedFile>,
+        coverage: Coverage,
+        with_functions: bool,
+    ) -> Result<RefreshStats, String> {
         self.coverage = coverage;
-        let list: Vec<IndexedFile> = files
-            .into_iter()
-            .map(|(path, f)| IndexedFile {
-                path,
-                cid: f.id.as_str().to_string(),
-                kind: f.kind,
-            })
-            .collect();
         let root = self.root.clone();
         let read = move |p: &str, kind: Kind| {
             let max = if kind == Kind::Source {
@@ -837,12 +854,29 @@ pub struct AskArgs {
 /// `wn ask` on an opened workspace: text or JSON, and the exit code. Shared by the in-process
 /// path and the daemon so both print the same thing.
 pub fn ask_command(ws: &mut Workspace, args: &AskArgs, context: &str, json: bool) -> (String, i32) {
+    ask_command_with(ws, args, context, json, true)
+}
+
+/// [`ask_command`]; `rescan: false` answers from the current index without rescanning the
+/// repository (the daemon rescans at most every few hundred milliseconds).
+pub fn ask_command_with(
+    ws: &mut Workspace,
+    args: &AskArgs,
+    context: &str,
+    json: bool,
+    rescan: bool,
+) -> (String, i32) {
     let started = std::time::Instant::now();
-    let refresh = ws.refresh(args.functions);
+    let refresh = if rescan {
+        ws.refresh(args.functions).map(|_| ())
+    } else {
+        Ok(())
+    };
+    // Check the adapter state first: `needs_fit` runs git, which an active adapter never needs.
     if refresh.is_ok()
         && !args.no_adapter
-        && ws.needs_fit()
         && ws.adapter_life.state() != AdapterState::Active
+        && ws.needs_fit()
     {
         let _ = ws.fit();
     }

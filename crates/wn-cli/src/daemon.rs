@@ -343,11 +343,15 @@ pub fn run_action(action: &DaemonAction, cli: &Cli) -> (String, i32) {
 pub mod handler {
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
-    use std::time::SystemTime;
+    use std::time::{Duration, Instant, SystemTime};
+
+    use wn_core::index::IndexedFile;
+    use wn_git::Coverage;
 
     use super::{Op, Request, Response, PROTOCOL};
     use crate::{
-        ask_command, encoder_for, status_command, EncoderInfo, SharedEncoder, StatusKind, Workspace,
+        ask_command_with, encoder_for, status_command, EncoderInfo, SharedEncoder, StatusKind,
+        Workspace,
     };
 
     /// Loaded encoders and open workspaces.
@@ -355,6 +359,23 @@ pub mod handler {
     pub struct Warm {
         encoders: HashMap<(Option<PathBuf>, Option<SystemTime>), (SharedEncoder, EncoderInfo)>,
         workspaces: HashMap<(PathBuf, String), Workspace>,
+        scanned: HashMap<(PathBuf, String), Instant>,
+    }
+
+    /// Minimum pause between background rescans of warm workspaces (`WN_DAEMON_RESCAN_MS`,
+    /// default 2000). The rescanner also waits at least ten times its last scan's duration, so a
+    /// large repository never keeps a core busy. Between rescans, answers use the current index.
+    pub fn rescan_every() -> Duration {
+        let ms = std::env::var("WN_DAEMON_RESCAN_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(2000);
+        Duration::from_millis(ms)
+    }
+
+    /// Pause before the next background rescan, given how long the last one took.
+    pub fn next_pause(last_scan: Duration) -> Duration {
+        rescan_every().max(last_scan * 10)
     }
 
     impl Warm {
@@ -394,15 +415,42 @@ pub mod handler {
                 .or_insert_with(|| Workspace::open_with(repo, encoder, info))
         }
 
+        /// Workspaces the background rescanner should refresh: key and repository root.
+        pub fn targets(&self) -> Vec<((PathBuf, String), PathBuf)> {
+            self.workspaces
+                .iter()
+                .filter(|(k, _)| self.scanned.contains_key(*k))
+                .map(|(k, ws)| (k.clone(), ws.root.clone()))
+                .collect()
+        }
+
+        /// Applies a scan taken without the lock (only changed files are embedded).
+        pub fn apply(&mut self, key: &(PathBuf, String), scan: (Vec<IndexedFile>, Coverage)) {
+            if let Some(ws) = self.workspaces.get_mut(key) {
+                let _ = ws.apply_scan(scan.0, scan.1, false);
+                self.scanned.insert(key.clone(), Instant::now());
+            }
+        }
+
         /// Answers `ask` and `status`; other ops are handled by the server loop.
         pub fn serve(&mut self, req: &Request) -> Response {
             let Some(repo) = req.repo.as_deref() else {
                 return failure("bad_request: no repository");
             };
             let model = req.model.as_deref().map(Path::new);
+            let fingerprint = self.encoder(model).1.fingerprint;
+            let key = (PathBuf::from(repo), fingerprint);
+            // The first request for a repository scans synchronously; after that the background
+            // rescanner keeps the index current and requests answer from it directly.
+            let first = !self.scanned.contains_key(&key);
+            if first {
+                self.scanned.insert(key, Instant::now());
+            }
             let ws = self.workspace(Path::new(repo), model);
             let (text, code) = match &req.op {
-                Op::Ask { args, context } => ask_command(ws, args, context, req.json),
+                Op::Ask { args, context } => {
+                    ask_command_with(ws, args, context, req.json, first || args.functions)
+                }
                 Op::Status => status_command(ws, StatusKind::Status, req.json),
                 _ => return failure("bad_request: not a repository operation"),
             };
@@ -494,6 +542,29 @@ pub mod server {
                 if s.life.state().accepts() && s.in_flight == 0 && s.last.elapsed() >= idle {
                     let _ = s.life.handle(ResidentEvent::IdleTimeout);
                     finish(&mut s, &socket, "idle timeout");
+                }
+            });
+        }
+
+        // Background rescanner: keeps warm indexes current without scanning on the request path.
+        // The scan (git listing, stat calls) runs without the lock; only changes are applied.
+        {
+            let shared = shared.clone();
+            std::thread::spawn(move || {
+                let mut pause = super::handler::rescan_every();
+                loop {
+                    std::thread::sleep(pause);
+                    let targets = match shared.lock() {
+                        Ok(s) => s.warm.targets(),
+                        Err(_) => return,
+                    };
+                    let started = Instant::now();
+                    for (key, root) in targets {
+                        let scan = crate::scan_repo(&root);
+                        let Ok(mut s) = shared.lock() else { return };
+                        s.warm.apply(&key, scan);
+                    }
+                    pause = super::handler::next_pause(started.elapsed());
                 }
             });
         }
@@ -856,6 +927,16 @@ pub mod client {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rescans_back_off_to_ten_times_the_scan_cost() {
+        let floor = handler::rescan_every();
+        assert_eq!(handler::next_pause(Duration::from_millis(1)), floor);
+        assert_eq!(
+            handler::next_pause(Duration::from_secs(2)),
+            Duration::from_secs(20).max(floor)
+        );
+    }
 
     #[test]
     fn long_homes_get_a_short_hashed_socket() {
