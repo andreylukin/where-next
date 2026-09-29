@@ -2,7 +2,7 @@
 source: crates/wn-cli/tests/help.rs
 expression: help(path)
 ---
-Show an anonymous usage report (numbers and buckets only) and, if you confirm, post it as a GitHub issue to help improve wn. Nothing is sent without your confirmation
+Share an anonymous usage report as a GitHub issue (shown first; asks before sending)
 
 Usage: wn report [OPTIONS]
 

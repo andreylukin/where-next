@@ -296,3 +296,65 @@ fn model_list_offers_the_default_model() {
         "{out}"
     );
 }
+
+#[test]
+fn a_path_that_does_not_exist_is_an_error() {
+    let home = tempfile::tempdir().unwrap();
+    let missing = home.path().join("no-such-dir");
+    for args in [&["status"][..], &["init"], &["ask", "anything"]] {
+        let (out, code) = wn(&missing, home.path(), args);
+        assert_eq!(code, 2, "{args:?}: {out}");
+        assert!(out.contains("does not exist"), "{args:?}: {out}");
+    }
+    assert!(!home.path().join("repos").exists());
+}
+
+#[test]
+fn an_unusable_model_directory_is_reported_not_silent() {
+    let home = tempfile::tempdir().unwrap();
+    let repo = project();
+    let empty_model = tempfile::tempdir().unwrap();
+    let model = empty_model.path().to_str().unwrap();
+    let (out, code) = wn(
+        repo.path(),
+        home.path(),
+        &["--model", model, "ask", "where is the upload retried"],
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("note: model unavailable"), "{out}");
+    let (out, _) = wn(repo.path(), home.path(), &["--model", model, "status"]);
+    assert!(
+        out.contains("model: lexical fallback (model unavailable"),
+        "{out}"
+    );
+}
+
+#[test]
+fn nothing_to_rank_says_what_to_do_next() {
+    let home = tempfile::tempdir().unwrap();
+    let empty = tempfile::tempdir().unwrap();
+    let (out, code) = wn(empty.path(), home.path(), &["ask", "anything"]);
+    assert_eq!(code, 0);
+    assert!(
+        out.starts_with("where-next: empty_index; use normal search."),
+        "{out}"
+    );
+    assert!(out.contains("note: no source files found here"), "{out}");
+}
+
+#[test]
+fn status_reads_naturally_for_single_files() {
+    let home = tempfile::tempdir().unwrap();
+    let t = tempfile::tempdir().unwrap();
+    write(t.path(), "main.rs", "fn main() {}\n");
+    write(t.path(), "Cargo.toml", "[package]\nname = \"x\"\n");
+    let (out, _) = wn(t.path(), home.path(), &["status"]);
+    assert!(
+        out.contains("1 source file, 1 config file indexed"),
+        "{out}"
+    );
+    assert!(
+        out.contains("model: lexical fallback (no model installed; run `wn model pull`)"),
+        "{out}"
+    );
+}
