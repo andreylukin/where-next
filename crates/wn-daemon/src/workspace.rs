@@ -120,6 +120,8 @@ pub struct Workspace {
     adapter: Option<StoredAdapter>,
     last_scan: Option<Scan>,
     pub options: SuggestOptions,
+    /// Minimum source files for task-start hints (see [`Workspace::ask_as`]).
+    pub start_min_files: usize,
 }
 
 impl Workspace {
@@ -138,6 +140,7 @@ impl Workspace {
             adapter,
             last_scan: None,
             options: SuggestOptions::default(),
+            start_min_files: wn_core::rank::START_HINT_MIN_FILES,
         }
     }
 
@@ -224,7 +227,16 @@ impl Workspace {
 
     /// Answers a query. Operational problems come back as fail-open outcome states.
     pub fn ask(&self, query: &str, context: &str) -> Outcome {
+        self.ask_as(query, context, false)
+    }
+
+    /// [`Workspace::ask`]; a task-start query (`start`) is skipped in repositories with fewer
+    /// than [`Workspace::start_min_files`] source files.
+    pub fn ask_as(&self, query: &str, context: &str, start: bool) -> Outcome {
         let mut opts = self.options;
+        if start {
+            opts.start_min_files = Some(self.start_min_files);
+        }
         opts.unsupported_only = self
             .last_scan
             .as_ref()

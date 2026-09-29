@@ -79,9 +79,14 @@ impl Daemon {
 
     /// Answers a query, or fails open.
     pub fn ask(&self, query: &str, context: &str) -> Reply {
+        self.ask_as(query, context, false)
+    }
+
+    /// [`Daemon::ask`]; `task_start` marks a hint requested at the start of a task.
+    pub fn ask_as(&self, query: &str, context: &str, task_start: bool) -> Reply {
         let start = Instant::now();
         let outcome = if self.session.state().can_answer() {
-            self.workspace.ask(query, context)
+            self.workspace.ask_as(query, context, task_start)
         } else {
             Outcome {
                 state: AnswerState::Error,
@@ -155,6 +160,11 @@ impl Daemon {
 /// Object-safe interface for transports (MCP, CLI).
 pub trait Service: Send {
     fn ask(&self, query: &str, context: &str) -> Reply;
+    /// [`Service::ask`] for a task-start hint (skipped in small repositories).
+    fn ask_as(&self, query: &str, context: &str, task_start: bool) -> Reply {
+        let _ = task_start;
+        self.ask(query, context)
+    }
     fn refresh(&mut self) -> Result<Refreshed, String>;
     fn status(&self) -> Status;
 }
@@ -162,6 +172,10 @@ pub trait Service: Send {
 impl Service for Daemon {
     fn ask(&self, query: &str, context: &str) -> Reply {
         Daemon::ask(self, query, context)
+    }
+
+    fn ask_as(&self, query: &str, context: &str, task_start: bool) -> Reply {
+        Daemon::ask_as(self, query, context, task_start)
     }
 
     fn refresh(&mut self) -> Result<Refreshed, String> {

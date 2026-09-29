@@ -1,18 +1,24 @@
 //! Ranking, abstaining and the hint budget.
 //!
 //! where-next is a search accelerator, not an oracle: it returns at most three short hints, and
-//! when the top result is not clearly better than chance for the pinned model it abstains so the
-//! agent falls back to its normal search.
+//! when the top result is not clearly better than chance it abstains so the agent falls back to
+//! its normal search. Abstain thresholds come from the model's [`Calibration`], per
+//! [`QueryKind`]; a model without one never abstains.
+
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
 /// Maximum paths returned per answer (files, functions and configs together).
 pub const MAX_HINTS: usize = 3;
+/// Default minimum source files for automatic task-start hints: in the agent trials the start
+/// hint paid off only in large repositories.
+pub const START_HINT_MIN_FILES: usize = 3000;
 /// Approximate token budget for the hint text.
 pub const TOKEN_BUDGET: usize = 250;
 
 /// Abstain thresholds on the top cosine similarity and its margin over the second result.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Thresholds {
     /// Minimum similarity of the top result.
     pub min_top: f64,
@@ -41,6 +47,130 @@ pub const ABSTAIN_STRICT_PLAIN: Thresholds = Thresholds {
     min_top: 0.5629,
     min_margin: 0.0333,
 };
+
+/// What kind of query this is; each kind can have its own abstain thresholds, because
+/// similarities run lower for long issue text than for short requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryKind {
+    /// A short request with no context (like a commit message).
+    Request,
+    /// An issue or task description: long, or multi-line, with no context.
+    Issue,
+    /// Anything carrying an error, stack trace or failing test.
+    Error,
+    /// A follow-up in a conversation: recent turns as context, no error.
+    Conversational,
+}
+
+/// Words that mark an error or failing test (case-sensitive, as tools print them).
+const ERROR_MARKERS: &[&str] = &[
+    "Traceback",
+    "Error",
+    "error:",
+    "error[",
+    "Exception",
+    "exception",
+    "panic",
+    "FAILED",
+    "FAIL:",
+    "fatal:",
+    "Segmentation fault",
+    "stack trace",
+    "undefined reference",
+];
+
+impl QueryKind {
+    /// Classifies a query from its request and context text.
+    pub fn classify(query: &str, context: &str) -> QueryKind {
+        let has_error = |t: &str| ERROR_MARKERS.iter().any(|m| t.contains(m));
+        if has_error(query) || has_error(context) {
+            return QueryKind::Error;
+        }
+        if !context.trim().is_empty() {
+            return QueryKind::Conversational;
+        }
+        let q = query.trim();
+        if q.contains('\n') || q.chars().count() >= 200 {
+            QueryKind::Issue
+        } else {
+            QueryKind::Request
+        }
+    }
+
+    /// Name used in calibration files and reasons.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            QueryKind::Request => "request",
+            QueryKind::Issue => "issue",
+            QueryKind::Error => "error",
+            QueryKind::Conversational => "conversational",
+        }
+    }
+}
+
+/// Thresholds for one query kind, with and without the adapter, default and strict.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct KindThresholds {
+    /// Adapter applied.
+    pub adapter: Thresholds,
+    /// No adapter.
+    pub plain: Thresholds,
+    /// Adapter applied, strict (fewer, more precise answers).
+    pub strict_adapter: Thresholds,
+    /// No adapter, strict.
+    pub strict_plain: Thresholds,
+}
+
+/// A model's abstain calibration (`calibration.json` next to the model). `kinds` maps a
+/// [`QueryKind`] name (or `default`) to thresholds; `null` means that kind never abstains.
+/// Kinds not listed use `default`; without `default` they never abstain.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Calibration {
+    /// Model the thresholds were fitted for.
+    pub model: String,
+    /// Data the thresholds were fitted on.
+    #[serde(default)]
+    pub calibrated_on: String,
+    /// Thresholds per kind.
+    pub kinds: BTreeMap<String, Option<KindThresholds>>,
+}
+
+impl Calibration {
+    /// The reference model's calibration: the research thresholds for requests (fitted on a
+    /// real repository history), no abstaining on issue-style starts (the agent trial showed
+    /// those thresholds withhold mostly-correct hints on issue text).
+    pub fn v2b() -> Calibration {
+        let default = KindThresholds {
+            adapter: ABSTAIN_ADAPTER,
+            plain: ABSTAIN_PLAIN,
+            strict_adapter: ABSTAIN_STRICT_ADAPTER,
+            strict_plain: ABSTAIN_STRICT_PLAIN,
+        };
+        Calibration {
+            model: "v2b".into(),
+            calibrated_on: "repository history (commit-message queries)".into(),
+            kinds: BTreeMap::from([
+                ("default".to_string(), Some(default)),
+                ("issue".to_string(), None),
+            ]),
+        }
+    }
+
+    /// Thresholds for a query, or `None` when this kind never abstains.
+    pub fn thresholds(&self, kind: QueryKind, adapted: bool, strict: bool) -> Option<Thresholds> {
+        let entry = match self.kinds.get(kind.as_str()) {
+            Some(listed) => *listed,
+            None => self.kinds.get("default").copied().flatten(),
+        }?;
+        Some(match (strict, adapted) {
+            (false, true) => entry.adapter,
+            (false, false) => entry.plain,
+            (true, true) => entry.strict_adapter,
+            (true, false) => entry.strict_plain,
+        })
+    }
+}
 
 /// One ranked location.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -159,23 +289,26 @@ pub fn round4(x: f32) -> f64 {
     (x as f64 * 10_000.0).round() / 10_000.0
 }
 
-/// Why an answer should abstain, or `None` to answer. Thresholds are calibrated for the pinned
-/// model only: other (`fallback`) models never abstain.
+/// Why an answer should abstain under the reference model's request thresholds, or `None` to
+/// answer; `fallback` models never abstain. (Kept to pin behaviour to the reference.)
 pub fn abstain_reason(
     files: &[Hint],
     adapted: bool,
     strict: bool,
     fallback: bool,
 ) -> Option<String> {
-    if files.is_empty() || fallback {
+    if fallback {
         return None;
     }
-    let th = match (strict, adapted) {
-        (false, true) => ABSTAIN_ADAPTER,
-        (false, false) => ABSTAIN_PLAIN,
-        (true, true) => ABSTAIN_STRICT_ADAPTER,
-        (true, false) => ABSTAIN_STRICT_PLAIN,
-    };
+    let th = Calibration::v2b().thresholds(QueryKind::Request, adapted, strict)?;
+    abstain_with(files, th)
+}
+
+/// Why `files` should abstain under `th`, or `None` to answer.
+pub fn abstain_with(files: &[Hint], th: Thresholds) -> Option<String> {
+    if files.is_empty() {
+        return None;
+    }
     let top = files[0].similarity;
     let margin = top - files.get(1).map(|h| h.similarity).unwrap_or(0.0);
     if top < th.min_top {

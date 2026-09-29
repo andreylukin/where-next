@@ -44,6 +44,8 @@ fn rt<E: std::fmt::Display>(e: E) -> EmbedError {
 pub struct Embedder {
     spec: ModelSpec,
     tokenizer: Tokenizer,
+    /// Same tokenizer without truncation, to measure how long a text really is.
+    counter: Tokenizer,
     pad_id: u32,
     session: Session,
     graph: String,
@@ -57,6 +59,10 @@ impl Embedder {
             .map_err(|e| EmbedError::Spec(e.to_string()))?;
         let spec = ModelSpec::from_json(&spec_text).map_err(|e| EmbedError::Spec(e.to_string()))?;
         let mut tokenizer = Tokenizer::from_file(dir.join("tokenizer.json"))
+            .map_err(|e| EmbedError::Tokenizer(e.to_string()))?;
+        let mut counter = tokenizer.clone();
+        counter
+            .with_truncation(None)
             .map_err(|e| EmbedError::Tokenizer(e.to_string()))?;
         tokenizer
             .with_truncation(Some(TruncationParams {
@@ -87,6 +93,7 @@ impl Embedder {
         Ok(Self {
             spec,
             tokenizer,
+            counter,
             pad_id,
             session,
             graph,
@@ -95,6 +102,14 @@ impl Embedder {
 
     pub fn spec(&self) -> &ModelSpec {
         &self.spec
+    }
+
+    /// Tokens `text` really has (special tokens included; no truncation).
+    pub fn count_tokens(&self, text: &str) -> usize {
+        self.counter
+            .encode(text, true)
+            .map(|e| e.len())
+            .unwrap_or(usize::MAX)
     }
 
     /// The graph file in use (`model.q8.onnx` or `model.onnx`).

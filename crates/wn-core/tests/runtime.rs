@@ -39,8 +39,8 @@ impl Encoder for Probe {
     fn fingerprint(&self) -> String {
         self.fingerprint.to_string()
     }
-    fn calibrated(&self) -> bool {
-        self.calibrated
+    fn calibration(&self) -> Option<wn_core::rank::Calibration> {
+        self.calibrated.then(wn_core::rank::Calibration::v2b)
     }
     fn documents(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EncodeError> {
         if self.fail {
@@ -187,7 +187,7 @@ fn ranking_and_answers() {
     );
     assert_eq!(out.state, AnswerState::Abstain);
     assert!(out.hints.files.is_empty());
-    assert!(out.abstain.unwrap().starts_with("top similarity"));
+    assert!(out.abstain.unwrap().starts_with("request: top similarity"));
 }
 
 #[test]
@@ -331,4 +331,33 @@ fn adapter_fits_from_history_roundtrips_and_applies() {
     );
     assert!(!out.adapter.applied);
     assert!(out.adapter.reason.unwrap().contains("another model"));
+}
+
+/// Start-of-task hints only help in large repositories (the agent trials): with a minimum file
+/// count set, a smaller repository gets an explicit skip instead of hints.
+#[test]
+fn start_hints_are_skipped_in_small_repositories() {
+    let dir = tempfile::tempdir().unwrap();
+    let r = repo();
+    let enc = Probe::new();
+    let mut index = Index::open(dir.path(), "probe-a");
+    index
+        .refresh(&files_of(&r, "v1"), &reader(&r), &enc, false)
+        .unwrap();
+    let start = SuggestOptions {
+        start_min_files: Some(3000),
+        ..Default::default()
+    };
+    let out = suggest(&index, None, &enc, "fix the login token", "", start);
+    assert_eq!(out.state, AnswerState::Abstain);
+    assert_eq!(
+        out.abstain.as_deref(),
+        Some("start: 4 files < 3000; start hints help in large repositories")
+    );
+    let small_ok = SuggestOptions {
+        start_min_files: Some(4),
+        ..Default::default()
+    };
+    let out = suggest(&index, None, &enc, "fix the login token", "", small_ok);
+    assert_eq!(out.state, AnswerState::Ok);
 }

@@ -14,7 +14,9 @@ use crate::adapter::{
 use crate::encoder::{EncodeError, Encoder, QueryInput};
 use crate::index::{EntryKind, Index};
 use crate::query_lifecycle::{QueryEvent, QueryLifecycle, QueryState};
-use crate::rank::{abstain_reason, budget, AdapterUse, AnswerState, Hints, Outcome, MAX_HINTS};
+use crate::rank::{
+    abstain_with, budget, AdapterUse, AnswerState, Hints, Outcome, QueryKind, MAX_HINTS,
+};
 use crate::text::{history_body, Granularity};
 
 /// A past commit, as used to fit the adapter.
@@ -218,6 +220,8 @@ pub struct SuggestOptions {
     pub no_abstain: bool,
     /// The repository has files, but none of an indexable kind.
     pub unsupported_only: bool,
+    /// A task-start hint: skip (abstain) when the index has fewer source files than this.
+    pub start_min_files: Option<usize>,
 }
 
 impl Default for SuggestOptions {
@@ -229,6 +233,7 @@ impl Default for SuggestOptions {
             strict_abstain: false,
             no_abstain: false,
             unsupported_only: false,
+            start_min_files: None,
         }
     }
 }
@@ -321,15 +326,21 @@ pub fn suggest(
         Vec::new()
     };
     step(&mut life, QueryEvent::Ranked);
-    let reason = if opts.no_abstain {
+    let n_files = index.count(EntryKind::File);
+    let small = opts.start_min_files.filter(|&min| n_files < min);
+    let reason = if let Some(min) = small {
+        Some(format!(
+            "start: {n_files} files < {min}; start hints help in large repositories"
+        ))
+    } else if opts.no_abstain {
         None
     } else {
-        abstain_reason(
-            &files,
-            adapter_use.applied,
-            opts.strict_abstain,
-            !encoder.calibrated(),
-        )
+        let kind = QueryKind::classify(query, context);
+        encoder
+            .calibration()
+            .and_then(|c| c.thresholds(kind, adapter_use.applied, opts.strict_abstain))
+            .and_then(|th| abstain_with(&files, th))
+            .map(|why| format!("{}: {why}", kind.as_str()))
     };
     if let Some(reason) = reason {
         step(&mut life, QueryEvent::NotConfident);

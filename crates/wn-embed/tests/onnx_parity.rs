@@ -72,7 +72,8 @@ fn text_builders_match_python() {
     for case in &cases {
         if case.kind == "query" {
             // The export fixture embedded prefix + raw text; production strips surrounding
-            // whitespace and keeps 2400 characters (wn_core::text, same as Python nav2.query_text).
+            // whitespace and keeps the format's request length (v1: 2400 characters as in
+            // Python nav2.query_text; v2: 900 as in nav2.query_text_v2).
             let built = query_for(&spec, &QueryInput::file(case.text.clone()));
             let body = built
                 .strip_prefix(spec.query_prefix.as_str())
@@ -81,13 +82,41 @@ fn text_builders_match_python() {
                 .formatted
                 .strip_prefix(spec.query_prefix.as_str())
                 .expect("fixture prefix");
-            let expected: String = raw.trim().chars().take(2400).collect();
+            let keep = match spec.query_format {
+                wn_embed::spec::QueryFormat::V1 => wn_core::text::QUERY_LIMIT,
+                wn_embed::spec::QueryFormat::V2 => wn_core::text::QUERY_REQUEST_CHARS_V2,
+            };
+            let expected: String = raw.trim().chars().take(keep).collect();
             assert_eq!(body, expected, "query body differs");
         } else {
             let built = spec.format_document(&format!("file: {}", case.text));
             assert_eq!(built, case.formatted, "document text differs");
         }
     }
+}
+
+/// A long context never pushes the newest tool output out of the model's window.
+#[test]
+fn long_context_keeps_the_newest_output() {
+    use wn_core::encoder::QueryInput;
+    use wn_embed::core_encoder::OnnxEncoder;
+    let Some(dir) = model_dir() else {
+        eprintln!("skipped: set WN_TEST_MODEL_DIR to run ONNX parity");
+        return;
+    };
+    let enc = OnnxEncoder::open(&dir, None).unwrap();
+    let old = "earlier turn about unrelated refactoring. ".repeat(400);
+    let item = QueryInput {
+        query: "the upload keeps timing out".into(),
+        context: format!("{old}\nLast tool output:\nTimeoutError: storage PUT exceeded 30s"),
+        granularity: wn_core::text::Granularity::File,
+    };
+    let text = enc.query_text(&item);
+    assert!(
+        text.contains("TimeoutError: storage PUT exceeded 30s"),
+        "{text}"
+    );
+    assert!(text.contains("the upload keeps timing out"));
 }
 
 #[test]

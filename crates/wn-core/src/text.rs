@@ -61,6 +61,74 @@ pub fn query_text(query: &str, context: &str, granularity: Granularity) -> Strin
     format!("{}{text}", granularity.instruction())
 }
 
+/// Characters kept by [`query_text_v2`] (models trained on it use a longer token window).
+pub const QUERY_LIMIT_V2: usize = 3200;
+/// Characters of the request kept by [`query_text_v2`].
+pub const QUERY_REQUEST_CHARS_V2: usize = 900;
+
+/// How a model expects its query laid out (`query_format` in `wn-model.json`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QueryFormat {
+    /// [`query_text`]: task, then the tail of the whole context.
+    #[default]
+    V1,
+    /// [`query_text_v2`]: fields ordered by value so truncation cuts the least useful part.
+    V2,
+}
+
+/// The query text a model with `format` was trained on.
+pub fn query_text_for(
+    format: QueryFormat,
+    query: &str,
+    context: &str,
+    granularity: Granularity,
+) -> String {
+    match format {
+        QueryFormat::V1 => query_text(query, context, granularity),
+        QueryFormat::V2 => query_text_v2(query, context, granularity),
+    }
+}
+
+const LAST_OUTPUT_MARKERS: [&str; 2] = ["\nLast tool output:\n", "\nLast output:\n"];
+
+/// Splits context into (earlier turns / files opened, last tool output), on the first
+/// `Last tool output:` (or `Last output:`) line. Without a marker everything is earlier.
+pub fn split_context(context: &str) -> (String, String) {
+    let context = py_strip(context);
+    let framed = format!("\n{context}");
+    for marker in LAST_OUTPUT_MARKERS {
+        if let Some(at) = framed.find(marker) {
+            let head = &framed[..at];
+            let last = &framed[at + marker.len()..];
+            return (py_strip(head).to_string(), py_strip(last).to_string());
+        }
+    }
+    (context.to_string(), String::new())
+}
+
+/// The v2 query layout: the request, then the tail of the last tool output (errors, stack
+/// traces), then the newest earlier context, within [`QUERY_LIMIT_V2`] characters.
+pub fn query_text_v2(query: &str, context: &str, granularity: Granularity) -> String {
+    let query = take_chars(py_strip(query), QUERY_REQUEST_CHARS_V2);
+    let (earlier, last) = split_context(context);
+    let mut parts = vec![query.to_string()];
+    let mut room = QUERY_LIMIT_V2 as i64 - query.chars().count() as i64;
+    if !last.is_empty() && room > 0 {
+        let n = last.chars().count().min(400.max(room * 3 / 5) as usize);
+        let take = last_chars(&last, n);
+        room -= take.chars().count() as i64;
+        parts.push(format!("Last tool output:\n{take}"));
+    }
+    if !earlier.is_empty() && room > 100 {
+        parts.push(format!(
+            "Earlier context:\n{}",
+            last_chars(&earlier, room as usize)
+        ));
+    }
+    format!("{}{}", granularity.instruction(), parts.join("\n"))
+}
+
 /// The task text for a past commit when fitting the personal adapter: the subject plus the
 /// first body line when it is short, as evaluated on real repository histories.
 pub fn history_body(subject: &str, body: &str) -> String {

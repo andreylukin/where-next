@@ -30,6 +30,11 @@ pub struct WhereNextArgs {
     )]
     #[serde(default)]
     pub context: Option<String>,
+    #[schemars(
+        description = "True when asking at the start of a task, before any search: small repositories (under 3,000 source files) then get a skip, since start hints only pay off in large ones."
+    )]
+    #[serde(default)]
+    pub start: Option<bool>,
 }
 
 /// The MCP server.
@@ -70,7 +75,8 @@ impl WhereNextServer {
         Parameters(args): Parameters<WhereNextArgs>,
     ) -> Result<CallToolResult, McpError> {
         let context = args.context.unwrap_or_default();
-        let answer = self.with_service(|s| s.ask(&args.query, &context))?;
+        let start = args.start.unwrap_or(false);
+        let answer = self.with_service(|s| s.ask_as(&args.query, &context, start))?;
         json_result(&answer)
     }
 

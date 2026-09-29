@@ -184,3 +184,42 @@ fn history_query_is_query_text_of_history_body() {
         );
     }
 }
+
+#[derive(Deserialize)]
+struct QueryV2Case {
+    query: String,
+    context: String,
+    granularity: String,
+    text: String,
+    split: (String, String),
+}
+
+/// `query_text_v2` (request, then the last tool output's tail, then earlier context) and
+/// `split_context` match `harness_router.nav2`, including non-ASCII text and long inputs.
+#[test]
+fn query_text_v2_matches_reference() {
+    use wn_core::text::{query_text_v2, split_context};
+    let raw = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/query_v2.json"),
+    )
+    .unwrap();
+    let cases: Vec<QueryV2Case> = serde_json::from_str(&raw).unwrap();
+    assert!(cases.len() > 40);
+    for c in cases {
+        let g = match c.granularity.as_str() {
+            "function" => Granularity::Function,
+            _ => Granularity::File,
+        };
+        let (earlier, last) = split_context(&c.context);
+        assert_eq!(
+            (earlier.as_str(), last.as_str()),
+            (c.split.0.as_str(), c.split.1.as_str())
+        );
+        assert_eq!(
+            query_text_v2(&c.query, &c.context, g),
+            c.text,
+            "{:?}",
+            c.query
+        );
+    }
+}
