@@ -227,18 +227,33 @@ impl Nested {
     }
 
     fn uninstall(&self, var: &str, value: &Path) -> (String, i32) {
-        let out = Command::new(&self.exe)
-            .args(["uninstall", "--yes"])
-            .current_dir(&self.home)
-            .env("HOME", &self.home)
-            .env_remove("WHERE_NEXT_HOME")
-            .env_remove("WN_MODELS_HOME")
-            .env_remove("WN_HOME")
-            .env_remove("XDG_DATA_HOME")
-            .env("WN_NO_DAEMON", "1")
-            .env(var, value)
-            .output()
-            .unwrap();
+        let run = || {
+            Command::new(&self.exe)
+                .args(["uninstall", "--yes"])
+                .current_dir(&self.home)
+                .env("HOME", &self.home)
+                .env_remove("WHERE_NEXT_HOME")
+                .env_remove("WN_MODELS_HOME")
+                .env_remove("WN_HOME")
+                .env_remove("XDG_DATA_HOME")
+                .env("WN_NO_DAEMON", "1")
+                .env(var, value)
+                .output()
+        };
+        let out = run();
+        #[cfg(target_os = "linux")]
+        let out = {
+            let mut out = out;
+            for _ in 0..3 {
+                if !out.as_ref().is_err_and(|e| e.raw_os_error() == Some(26)) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                out = run();
+            }
+            out
+        };
+        let out = out.unwrap();
         let mut text = String::from_utf8_lossy(&out.stdout).to_string();
         text.push_str(&String::from_utf8_lossy(&out.stderr));
         (text, out.status.code().unwrap_or(-1))
@@ -290,6 +305,40 @@ fn a_shared_directory_keeps_what_is_not_wns() {
         "keep me"
     );
     assert!(out.contains("not wn's and stay"), "{out}");
+}
+
+#[cfg(unix)]
+#[test]
+fn uninstall_removes_empty_fallback_socket_directory() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let n = Nested::new();
+    let cache = n.home.join("x".repeat(120));
+    fs::create_dir(&cache).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let fallback = wn_cli::daemon::socket_path(&cache);
+    let socket = tmp
+        .path()
+        .join(fallback.strip_prefix(std::env::temp_dir()).unwrap());
+    let dir = socket.parent().unwrap();
+    fs::create_dir(dir).unwrap();
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::write(&socket, "stale socket").unwrap();
+    let out = Command::new(&n.exe)
+        .args(["uninstall", "--yes"])
+        .env("HOME", &n.home)
+        .env("WHERE_NEXT_HOME", &cache)
+        .env("TMPDIR", tmp.path())
+        .env("WN_NO_DAEMON", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!socket.exists());
+    assert!(!dir.exists(), "empty fallback socket directory left behind");
 }
 
 #[test]

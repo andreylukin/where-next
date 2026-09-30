@@ -143,7 +143,7 @@ pub fn binary_id() -> String {
 }
 
 /// Socket path for a cache home. Unix socket paths are limited to about 104 bytes, so long homes
-/// use a hashed name under `/tmp`.
+/// use a hashed name in a per-user temporary directory.
 pub fn socket_path(home: &Path) -> PathBuf {
     let direct = home.join("daemon.sock");
     if direct.as_os_str().len() <= 100 {
@@ -153,7 +153,70 @@ pub fn socket_path(home: &Path) -> PathBuf {
     for b in home.to_string_lossy().bytes() {
         h = (h ^ b as u64).wrapping_mul(1099511628211);
     }
-    PathBuf::from(format!("/tmp/wn-{h:016x}.sock"))
+    #[cfg(unix)]
+    {
+        let uid = current_uid().expect("current uid");
+        std::env::temp_dir().join(format!("wn-{uid}/wn-{h:016x}.sock"))
+    }
+    #[cfg(not(unix))]
+    {
+        std::env::temp_dir().join(format!("wn-{h:016x}.sock"))
+    }
+}
+
+#[cfg(unix)]
+fn current_uid() -> std::io::Result<u32> {
+    use std::os::unix::fs::MetadataExt;
+    use std::sync::OnceLock;
+
+    static UID: OnceLock<u32> = OnceLock::new();
+    if let Some(uid) = UID.get() {
+        return Ok(*uid);
+    }
+    let uid = tempfile::tempfile()?.metadata()?.uid();
+    Ok(*UID.get_or_init(|| uid))
+}
+
+#[cfg(unix)]
+fn ensure_private_socket_dir(dir: &Path) -> Result<(), String> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+
+    let uid = current_uid().map_err(|e| format!("cannot determine current uid: {e}"))?;
+    match std::fs::DirBuilder::new().mode(0o700).create(dir) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => {
+            return Err(format!(
+                "cannot create socket directory {}: {e}",
+                dir.display()
+            ))
+        }
+    }
+    let meta = std::fs::symlink_metadata(dir)
+        .map_err(|e| format!("cannot inspect socket directory {}: {e}", dir.display()))?;
+    if meta.file_type().is_symlink()
+        || !meta.is_dir()
+        || meta.uid() != uid
+        || meta.mode() & 0o077 != 0
+    {
+        return Err(format!(
+            "unsafe socket directory {}: it must be owned by this user, private (0700), and not a symlink",
+            dir.display()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn checked_socket_path(home: &Path) -> Result<PathBuf, String> {
+    let socket = socket_path(home);
+    if home.join("daemon.sock") != socket {
+        ensure_private_socket_dir(socket.parent().expect("socket has parent"))?;
+        if socket.as_os_str().len() > 100 {
+            return Err(format!("socket path {} is too long", socket.display()));
+        }
+    }
+    Ok(socket)
 }
 
 /// Idle timeout from `WN_DAEMON_IDLE_SECS`.
@@ -279,6 +342,12 @@ fn render_report(r: &DaemonReport) -> String {
 /// `wn daemon start | stop | status | serve`.
 pub fn run_action(action: &DaemonAction, cli: &Cli) -> (String, i32) {
     let home = crate::home();
+    #[cfg(unix)]
+    let socket = match checked_socket_path(&home) {
+        Ok(socket) => socket,
+        Err(e) => return (format!("wn daemon: {e}"), 1),
+    };
+    #[cfg(not(unix))]
     let socket = socket_path(&home);
     let report = |r: DaemonReport, code: i32| {
         let text = if cli.json {
@@ -621,7 +690,9 @@ pub mod server {
     use wn_daemon::resident::{ResidentEvent, ResidentLifecycle};
 
     use super::handler::{failure, Warm};
-    use super::{binary_id, socket_path, Op, Request, Response, Stats, PROTOCOL};
+    use super::{
+        binary_id, checked_socket_path, current_uid, Op, Request, Response, Stats, PROTOCOL,
+    };
     use crate::progress::Sink;
 
     /// Process-wide bookkeeping. Locked only briefly, never while a request is served.
@@ -640,15 +711,28 @@ pub mod server {
 
     /// Runs the daemon until idle timeout or a stop request.
     pub fn serve(home: &Path, idle: Duration) -> Result<(), String> {
-        std::fs::create_dir_all(home).map_err(|e| e.to_string())?;
-        let socket = socket_path(home);
+        wn_daemon::usage::prepare_home(home, std::env::var_os("WHERE_NEXT_HOME").is_none())
+            .map_err(|e| e.to_string())?;
+        let socket = checked_socket_path(home)?;
         let mut life = ResidentLifecycle::default();
         // Another live daemon owns the socket: nothing to do.
         if UnixStream::connect(&socket).is_ok() {
             let _ = life.handle(ResidentEvent::BindFailed);
             return Err("another daemon is already listening".into());
         }
-        let _ = std::fs::remove_file(&socket);
+        if let Ok(meta) = std::fs::symlink_metadata(&socket) {
+            use std::os::unix::fs::MetadataExt;
+            if meta.uid() != current_uid().map_err(|e| e.to_string())?
+                || meta.file_type().is_symlink()
+            {
+                let _ = life.handle(ResidentEvent::BindFailed);
+                return Err(format!(
+                    "unsafe daemon socket {}: wrong owner or symlink",
+                    socket.display()
+                ));
+            }
+            std::fs::remove_file(&socket).map_err(|e| e.to_string())?;
+        }
         let listener = match UnixListener::bind(&socket) {
             Ok(l) => l,
             Err(e) => {
@@ -892,7 +976,8 @@ pub mod client {
     use wn_daemon::connect::{ConnectEvent as E, ConnectState as S, Connection};
 
     use super::{
-        binary_id, disabled, request, socket_path, Op, OpKind, Request, Response, Stats, PROTOCOL,
+        binary_id, checked_socket_path, current_uid, disabled, request, Op, OpKind, Request,
+        Response, Stats, PROTOCOL,
     };
     use crate::progress::Sink as _;
     use crate::Cli;
@@ -901,7 +986,32 @@ pub mod client {
     const HANDSHAKE_WAIT: Duration = Duration::from_secs(5);
 
     fn connect(socket: &Path) -> std::io::Result<UnixStream> {
-        UnixStream::connect(socket)
+        use std::os::unix::fs::{FileTypeExt, MetadataExt};
+
+        let uid = current_uid()?;
+        let check = || -> std::io::Result<()> {
+            let meta = std::fs::symlink_metadata(socket)?;
+            if meta.uid() != uid || meta.file_type().is_symlink() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!(
+                        "unsafe daemon socket {}: wrong owner or symlink",
+                        socket.display()
+                    ),
+                ));
+            }
+            if !meta.file_type().is_socket() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionRefused,
+                    format!("stale daemon socket {}", socket.display()),
+                ));
+            }
+            Ok(())
+        };
+        check()?;
+        let stream = UnixStream::connect(socket)?;
+        check()?;
+        Ok(stream)
     }
 
     fn exchange(
@@ -953,7 +1063,11 @@ pub mod client {
         let Ok(exe) = std::env::current_exe() else {
             return false;
         };
-        let _ = std::fs::create_dir_all(home);
+        if wn_daemon::usage::prepare_home(home, std::env::var_os("WHERE_NEXT_HOME").is_none())
+            .is_err()
+        {
+            return false;
+        }
         let log = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -998,7 +1112,7 @@ pub mod client {
 
     /// Drives the [`Connection`] machine to `Ready` (returns the stream) or `InProcess` (`None`).
     fn establish(home: &Path) -> Option<UnixStream> {
-        let socket = socket_path(home);
+        let socket = checked_socket_path(home).ok()?;
         let mut c = Connection::default();
         let _ = c.handle(E::Connect);
         let mut stream: Option<UnixStream> = None;
@@ -1087,7 +1201,10 @@ pub mod client {
 
     /// Asks a running daemon for statistics (never starts one).
     pub fn probe(home: &Path) -> Probe {
-        let Ok(mut s) = connect(&socket_path(home)) else {
+        let Ok(socket) = checked_socket_path(home) else {
+            return Probe::Absent;
+        };
+        let Ok(mut s) = connect(&socket) else {
             return Probe::Absent;
         };
         match exchange(&mut s, &control(Op::Stats), Some(HANDSHAKE_WAIT)).and_then(|r| r.stats) {
@@ -1106,7 +1223,9 @@ pub mod client {
 
     /// Stops a running daemon. Returns whether one was running.
     pub fn stop(home: &Path) -> bool {
-        let socket = socket_path(home);
+        let Ok(socket) = checked_socket_path(home) else {
+            return false;
+        };
         let Ok(mut s) = connect(&socket) else {
             return false;
         };
@@ -1116,6 +1235,7 @@ pub mod client {
 
     /// Starts the daemon if needed (replacing one from another build) and returns its stats.
     pub fn ensure_started(home: &Path) -> Result<Stats, String> {
+        checked_socket_path(home)?;
         establish(home).ok_or_else(|| "the daemon did not come up (see daemon.log)".to_string())?;
         stats(home).ok_or_else(|| "the daemon did not answer".to_string())
     }
@@ -1176,10 +1296,48 @@ mod tests {
         assert_eq!(socket_path(short), short.join("daemon.sock"));
         let long = PathBuf::from(format!("/tmp/{}", "x".repeat(120)));
         let p = socket_path(&long);
-        assert!(p.starts_with("/tmp") && p.as_os_str().len() < 40, "{p:?}");
+        assert!(
+            p.starts_with(std::env::temp_dir()) && p.as_os_str().len() <= 100,
+            "{p:?}"
+        );
         assert_eq!(p, socket_path(&long), "stable");
         let other = PathBuf::from(format!("/tmp/{}", "y".repeat(120)));
         assert_ne!(socket_path(&other), p, "distinct homes, distinct sockets");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fallback_socket_uses_a_private_user_directory() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        let home = PathBuf::from(format!("/tmp/{}", "x".repeat(120)));
+        let socket = checked_socket_path(&home).unwrap();
+        let dir = socket.parent().unwrap();
+        let meta = std::fs::symlink_metadata(dir).unwrap();
+        assert!(meta.is_dir());
+        assert_eq!(meta.permissions().mode() & 0o777, 0o700);
+        assert_eq!(meta.uid(), super::current_uid().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fallback_rejects_accessible_or_symlinked_directories() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("wn-user");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(ensure_private_socket_dir(&dir)
+            .unwrap_err()
+            .contains("unsafe socket directory"));
+        std::fs::remove_dir(&dir).unwrap();
+        let target = temp.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &dir).unwrap();
+        assert!(ensure_private_socket_dir(&dir)
+            .unwrap_err()
+            .contains("unsafe socket directory"));
     }
 
     #[test]

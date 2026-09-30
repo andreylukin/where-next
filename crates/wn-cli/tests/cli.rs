@@ -529,6 +529,35 @@ fn an_unwritable_cache_directory_fails_init_with_a_plain_message() {
     assert_eq!(json_code, 1, "{json_out}");
 }
 
+#[cfg(unix)]
+#[test]
+fn status_tightens_the_default_cache_home() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo = project();
+    let user_home = tempfile::tempdir().unwrap();
+    let cache = user_home.path().join(".cache/where-next");
+    fs::create_dir_all(&cache).unwrap();
+    fs::set_permissions(&cache, fs::Permissions::from_mode(0o755)).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_wn"))
+        .args(["--path", repo.path().to_str().unwrap(), "status"])
+        .env("HOME", user_home.path())
+        .env_remove("WHERE_NEXT_HOME")
+        .env("WN_MODELS_HOME", user_home.path().join("no-models"))
+        .env("WN_NO_DAEMON", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        fs::metadata(&cache).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+}
+
 /// `wn mcp` outside a git repository (clients often start it in `~`) still starts and fails open
 /// on every call, saying why and what to do, instead of exiting or indexing the directory.
 #[test]
