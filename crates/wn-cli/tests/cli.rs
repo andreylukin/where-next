@@ -674,3 +674,41 @@ fn ask_colors_only_when_asked_or_on_a_terminal() {
     let json = ask(&["--json", "--color", "always"], &[]);
     assert!(!json.contains('\x1b'), "{json:?}");
 }
+
+#[test]
+fn ask_json_reports_lexical_fallback() {
+    let repo = project();
+    let home = tempfile::tempdir().unwrap();
+    for query in ["login session expiry", "unrelated quantum teapot"] {
+        let (out, code) = wn(repo.path(), home.path(), &["ask", query, "--json"]);
+        assert_eq!(code, 0, "{out}");
+        let answer: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(matches!(answer["state"].as_str(), Some("ok" | "abstain")));
+        assert_eq!(answer["fallback"], true, "{out}");
+    }
+}
+
+#[test]
+fn ask_colored_output_escapes_repository_filename_controls() {
+    let repo = project();
+    let home = tempfile::tempdir().unwrap();
+    write(
+        repo.path(),
+        "socket_\x1b[2J_INJECT.rs",
+        "// distinctive turbo socket injector\nfn injector() {}\n",
+    );
+    let (out, code) = wn(
+        repo.path(),
+        home.path(),
+        &[
+            "ask",
+            "distinctive turbo socket injector",
+            "--no-abstain",
+            "--color",
+            "always",
+        ],
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("socket_\\u{1b}[2J_INJECT.rs"), "{out:?}");
+    assert!(!out.contains("\x1b[2J"), "{out:?}");
+}

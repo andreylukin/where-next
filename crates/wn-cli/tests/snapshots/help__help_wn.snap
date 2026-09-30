@@ -1,5 +1,6 @@
 ---
 source: crates/wn-cli/tests/help.rs
+assertion_line: 30
 expression: help(path)
 ---
 Fast local "where next" hints for coding agents and developers
@@ -15,7 +16,7 @@ Commands:
   rollback   Restore the previous adapter (or remove the only one)
   mcp        Serve hints over MCP (stdio)
   bench      Measure hit@k on this repository's own history (default) or on ContextBench
-  update     Rebuild wn from the tip of main (or --ref) of its source repository
+  update     Update release installs from the latest release; rebuild source installs from main (or --ref)
   report     Share an anonymous usage report as a GitHub issue (shown first; asks before sending)
   stats      How wn is doing: whether agents acted on its hints, a replay against grep, speed
   daemon     Start, stop or inspect the background daemon that keeps models and indexes warm
