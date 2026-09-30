@@ -731,31 +731,43 @@ pub mod handler {
             let (encoder, info) = self.encoder(model);
             drop(loading);
             let once = workspace::OnceEncoder::new(encoder.as_ref());
-            let results: Vec<workspace::RepoResult> =
-                workspace::indexed(&crate::home(), dir, &info.fingerprint)
-                    .iter()
-                    .map(|root| {
-                        let slot = self.slot(root, model);
-                        let mut guard = match slot.ws.try_lock() {
-                            Ok(g) => g,
-                            Err(TryLockError::WouldBlock) => {
-                                return workspace::skipped(root, "busy: being indexed");
-                            }
-                            Err(TryLockError::Poisoned(e)) => e.into_inner(),
-                        };
-                        let ws = guard.get_or_insert_with(|| {
-                            Workspace::open_with(
-                                &slot.root,
-                                slot.encoder.clone(),
-                                slot.info.clone(),
-                            )
-                        });
-                        if let Ok(mut scanned) = slot.scanned.lock() {
-                            scanned.get_or_insert_with(Instant::now);
-                        }
-                        workspace::repo_result(ws, &once, args, context)
-                    })
-                    .collect();
+            let roots = workspace::indexed(&crate::home(), dir, &info.fingerprint);
+            let workers = roots.len().min(8);
+            let results: Vec<workspace::RepoResult> = std::thread::scope(|scope| {
+                let mut jobs = Vec::new();
+                for chunk in roots.chunks(roots.len().div_ceil(workers.max(1)).max(1)) {
+                    let once = &once;
+                    jobs.push(scope.spawn(move || {
+                        chunk
+                            .iter()
+                            .map(|root| {
+                                let slot = self.slot(root, model);
+                                let mut guard = match slot.ws.try_lock() {
+                                    Ok(g) => g,
+                                    Err(TryLockError::WouldBlock) => {
+                                        return workspace::skipped(root, "busy: being indexed");
+                                    }
+                                    Err(TryLockError::Poisoned(e)) => e.into_inner(),
+                                };
+                                let ws = guard.get_or_insert_with(|| {
+                                    Workspace::open_with(
+                                        &slot.root,
+                                        slot.encoder.clone(),
+                                        slot.info.clone(),
+                                    )
+                                });
+                                if let Ok(mut scanned) = slot.scanned.lock() {
+                                    scanned.get_or_insert_with(Instant::now);
+                                }
+                                workspace::repo_result(ws, once, args, context)
+                            })
+                            .collect::<Vec<_>>()
+                    }));
+                }
+                jobs.into_iter()
+                    .flat_map(|job| job.join().expect("workspace query worker panicked"))
+                    .collect()
+            });
             let (text, code) =
                 workspace::respond(dir, &results, &info, args, context, req.json, started);
             Response {

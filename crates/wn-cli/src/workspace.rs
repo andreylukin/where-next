@@ -12,7 +12,6 @@
 //!   adapters are never compared except to order equal ranks.
 //! - Paths are relative to the workspace directory, so they open from there as printed.
 
-use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
@@ -155,15 +154,15 @@ type Embedded = Vec<(Vec<QueryInput>, Vec<Vec<f32>>)>;
 
 /// Embeds each distinct query once, however many repositories rank it.
 pub struct OnceEncoder<'a> {
-    inner: &'a dyn Encoder,
-    seen: RefCell<Embedded>,
+    inner: &'a (dyn Encoder + Send + Sync),
+    seen: Mutex<Embedded>,
 }
 
 impl<'a> OnceEncoder<'a> {
-    pub fn new(inner: &'a dyn Encoder) -> Self {
+    pub fn new(inner: &'a (dyn Encoder + Send + Sync)) -> Self {
         Self {
             inner,
-            seen: RefCell::default(),
+            seen: Mutex::default(),
         }
     }
 }
@@ -182,11 +181,12 @@ impl Encoder for OnceEncoder<'_> {
     }
 
     fn queries(&self, items: &[QueryInput]) -> Result<Vec<Vec<f32>>, EncodeError> {
-        if let Some((_, v)) = self.seen.borrow().iter().find(|(q, _)| q == items) {
+        let mut seen = self.seen.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, v)) = seen.iter().find(|(q, _)| q == items) {
             return Ok(v.clone());
         }
         let v = self.inner.queries(items)?;
-        self.seen.borrow_mut().push((items.to_vec(), v.clone()));
+        seen.push((items.to_vec(), v.clone()));
         Ok(v)
     }
 }
@@ -1164,7 +1164,7 @@ mod tests {
 
     #[test]
     fn a_query_is_embedded_once_across_repositories() {
-        struct Counting(std::cell::Cell<usize>);
+        struct Counting(std::sync::atomic::AtomicUsize);
         impl Encoder for Counting {
             fn fingerprint(&self) -> String {
                 "c".into()
@@ -1173,16 +1173,23 @@ mod tests {
                 Ok(t.iter().map(|_| vec![1.0]).collect())
             }
             fn queries(&self, q: &[QueryInput]) -> Result<Vec<Vec<f32>>, EncodeError> {
-                self.0.set(self.0.get() + 1);
+                self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 Ok(q.iter().map(|_| vec![1.0]).collect())
             }
         }
-        let inner = Counting(std::cell::Cell::new(0));
+        let inner = Counting(std::sync::atomic::AtomicUsize::new(0));
         let once = OnceEncoder::new(&inner);
         for _ in 0..5 {
             once.queries(&[QueryInput::file("where is x")]).unwrap();
         }
+        std::thread::scope(|scope| {
+            for _ in 0..5 {
+                scope.spawn(|| {
+                    once.queries(&[QueryInput::file("where is x")]).unwrap();
+                });
+            }
+        });
         once.queries(&[QueryInput::file("other")]).unwrap();
-        assert_eq!(inner.0.get(), 2);
+        assert_eq!(inner.0.load(std::sync::atomic::Ordering::Relaxed), 2);
     }
 }
