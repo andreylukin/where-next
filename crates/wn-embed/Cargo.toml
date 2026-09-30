@@ -9,7 +9,7 @@ rust-version.workspace = true
 
 [features]
 default = ["onnx"]
-# ONNX Runtime backend. Downloads prebuilt ONNX Runtime binaries at build time.
+# ONNX Runtime backend. Linux loads a shared library; other targets link prebuilt binaries.
 onnx = ["dep:ort", "dep:tokenizers"]
 # HTTP(S) model downloads (`wn model pull` from a URL or Hugging Face repo).
 remote = ["dep:ureq"]
@@ -20,8 +20,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 ureq = { version = "2.12", optional = true, default-features = false, features = ["tls"] }
-ort = { version = "=2.0.0-rc.13", optional = true }
 tokenizers = { version = "0.23", optional = true, default-features = false, features = ["onig"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ort = { version = "=2.0.0-rc.13", optional = true, features = ["load-dynamic"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", optional = true }
 
 [dev-dependencies]
 wn-sources = { version = "0.0.1", path = "../wn-sources" }

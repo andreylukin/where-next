@@ -82,11 +82,11 @@ require_compatible_glibc() {
       ;;
     *) libc="unknown" ;;
   esac
-  if [ "$libc" = unknown ] || [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 39 ]; }; then
+  if [ "$libc" = unknown ] || [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 35 ]; }; then
     say "detected glibc version: $libc"
-    say "prebuilt binaries need glibc >= 2.39 (Ubuntu 24.04+, Debian 13+)"
-    say "a source build will also fail on this system (ONNX Runtime needs newer glibc/GCC)"
-    die "run in an ubuntu:24.04 container, or set WN_FROM=source to try anyway"
+    say "prebuilt binaries need glibc >= 2.35 (Ubuntu 22.04+, Debian 12+)"
+    say "a source build needs a compatible ONNX Runtime shared library"
+    die "run in an ubuntu:22.04 container, or set WN_FROM=source to try anyway"
   fi
 }
 
@@ -126,8 +126,14 @@ install_release() {
 
   tar -xzf "$tmp/$archive" -C "$tmp" || die "could not extract $archive"
   [ -f "$tmp/wn-$target/wn" ] || die "archive does not contain wn"
+  case "$target" in
+    *linux*) [ -f "$tmp/wn-$target/libonnxruntime.so" ] || die "archive does not contain libonnxruntime.so" ;;
+  esac
   mkdir -p "$install_dir" || die "could not create $install_dir"
   if [ -x "$install_dir/wn" ]; then "$install_dir/wn" daemon stop >/dev/null 2>&1 || true; fi
+  if [ -f "$tmp/wn-$target/libonnxruntime.so" ]; then
+    install -m 0644 "$tmp/wn-$target/libonnxruntime.so" "$install_dir/libonnxruntime.so" || die "could not install $install_dir/libonnxruntime.so"
+  fi
   install -m 0755 "$tmp/wn-$target/wn" "$install_dir/wn" || die "could not install $install_dir/wn"
   printf 'release\n' > "$install_dir/wn.install-method" || die "could not write install marker"
   bin_dir="$install_dir"
@@ -281,6 +287,7 @@ if [ -n "$uninstall" ]; then
     run rm -f "$bin_dir/wn"
   fi
   [ -e "$release_bin" ] && run rm -f "$release_bin"
+  [ -e "${release_bin%/*}/libonnxruntime.so" ] && run rm -f "${release_bin%/*}/libonnxruntime.so"
   [ -e "${release_bin}.install-method" ] && run rm -f "${release_bin}.install-method"
   [ -d "$src" ] && run rm -rf "$src"
   say "uninstalled wn (binary and $src)"
