@@ -20,12 +20,14 @@ curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install
 
 macOS on Apple silicon and Linux with glibc 2.35+. The ~1.2 GB model downloads after the installer
 asks. Read-first install, uninstall, Intel Mac and Windows status: [docs/install.md](docs/install.md).
+Uninstall everything: `wn uninstall`.
 
 ## Quick start
 
 ```sh
 cd your-repo
 wn init                                   # index the repo, learn from its git history
+wn setup                                  # connect Claude Code, Codex, Cursor: hints arrive automatically
 wn ask "where are gitignore rules matched against paths"
 wn bench                                  # optional: replay past commits, see how it does here
 ```
@@ -42,8 +44,8 @@ crates/ignore/src/overrides.rs  0.42
 Scores rank the files; they are not probabilities. When nothing clears a calibrated threshold, `wn`
 says "no confident hint". Query tips: [docs/quickstart.md](docs/quickstart.md#writing-good-queries).
 
-For agents, run `wn skill sync` (Claude Code, Codex, Cursor) or
-`claude mcp add -s user where-next -- wn mcp`. See [docs/skill.md](docs/skill.md).
+For agents, run `wn setup`: Claude Code, Codex and Cursor get the skill and hooks that add hints
+to their context. See [docs/skill.md](docs/skill.md); MCP (`wn mcp`) is there for other clients.
 
 ## Why not grep or plain embeddings?
 

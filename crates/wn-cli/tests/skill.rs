@@ -1,7 +1,7 @@
-//! `wn skill sync` end to end with a temporary HOME: installs for detected agents, is idempotent,
-//! shows a diff for outdated copies, never overwrites files it did not write, needs `--yes`
-//! without a terminal, re-syncs from recorded state, uninstalls, and merges the Claude Code hook
-//! into settings without touching other content.
+//! `wn setup` / `wn skill sync` end to end with a temporary HOME: installs for detected agents, is
+//! idempotent, shows a diff for outdated copies, never overwrites files it did not write, needs
+//! `--yes` without a terminal, re-syncs from recorded state, uninstalls, and merges the Claude
+//! Code, Codex and Cursor hooks into their settings without touching other content.
 
 use std::fs;
 use std::path::Path;
@@ -206,10 +206,13 @@ fn the_claude_hook_merges_into_settings_once_and_uninstalls_cleanly() {
     let entries = v["hooks"]["UserPromptSubmit"].as_array().unwrap();
     assert_eq!(entries.len(), 2, "ours added once next to the user's: {v}");
     assert_eq!(entries[0]["hooks"][0]["command"], "echo hi");
-    assert_eq!(
-        entries[1]["hooks"][0]["command"],
-        wn_cli::skill::HOOK_COMMAND
-    );
+    let ours = entries[1]["hooks"][0]["command"].as_str().unwrap();
+    assert!(ours.ends_with("wn hook claude-prompt"), "{ours}");
+    assert_eq!(v["hooks"]["PostToolUse"][0]["matcher"], "Grep|Glob|Bash");
+    assert!(v["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+        .as_str()
+        .unwrap()
+        .ends_with("wn hook claude-search"));
 
     let (out, code) = env.wn(&["skill", "sync", "--uninstall", "--yes"]);
     assert_eq!(code, 0, "{out}");
@@ -230,7 +233,7 @@ fn invalid_settings_are_left_alone() {
 }
 
 #[test]
-fn the_hook_is_silent_outside_indexed_repositories_and_after_the_first_prompt() {
+fn the_hook_is_silent_outside_indexed_repositories() {
     let env = Env::new(&[]);
     let cwd = env.home().to_str().unwrap().to_string();
     let run = |input: String| {
@@ -264,13 +267,265 @@ fn the_hook_is_silent_outside_indexed_repositories_and_after_the_first_prompt() 
 }
 
 #[test]
-fn edit_hook_is_reversible_on_arbitrary_other_hooks() {
-    use wn_cli::skill::edit_hook;
-    let mut v = serde_json::json!({ "hooks": { "Stop": [ { "hooks": [] } ] } });
-    let before = v.clone();
-    edit_hook(&mut v, true);
-    edit_hook(&mut v, true);
-    assert_eq!(v["hooks"]["UserPromptSubmit"].as_array().unwrap().len(), 1);
-    edit_hook(&mut v, false);
-    assert_eq!(v, before);
+fn edit_hooks_is_idempotent_and_reversible_on_arbitrary_other_hooks() {
+    use wn_cli::skill::{edit_hooks, Agent};
+    for agent in Agent::ALL {
+        // Other hooks, including an empty entry and an event we also use, stay as they are.
+        let mut v = serde_json::json!({
+            "hooks": {
+                "Stop": [ { "hooks": [] } ],
+                "UserPromptSubmit": [ { "hooks": [] } ],
+                "postToolUse": [ { "command": "./audit.sh" } ]
+            },
+            "other": 1
+        });
+        let before = v.clone();
+        edit_hooks(&mut v, agent, "wn", true);
+        let once = v.clone();
+        edit_hooks(&mut v, agent, "/usr/local/bin/wn", true);
+        edit_hooks(&mut v, agent, "wn", true);
+        assert_eq!(v, once, "{agent}: adding twice changes nothing");
+        edit_hooks(&mut v, agent, "wn", false);
+        assert_eq!(v, before, "{agent}");
+    }
+    // An empty file round-trips to an empty object.
+    let mut v = serde_json::json!({});
+    edit_hooks(&mut v, Agent::Codex, "wn", true);
+    edit_hooks(&mut v, Agent::Codex, "wn", false);
+    assert_eq!(v, serde_json::json!({}));
+}
+
+#[test]
+fn our_commands_are_recognised_by_name_only() {
+    use wn_cli::skill::is_our_command;
+    for ours in [
+        "wn hook claude-prompt",
+        "/Users/me/.local/bin/wn hook codex-search",
+        "'/Applications/My Tools/wn' hook cursor-search",
+    ] {
+        assert!(is_our_command(ours), "{ours}");
+    }
+    for theirs in [
+        "echo hi",
+        "wn ask foo",
+        "mywn hook claude-prompt",
+        "wn hook claude-prompt && rm -rf /",
+    ] {
+        assert!(!is_our_command(theirs), "{theirs}");
+    }
+}
+
+#[test]
+fn setup_connects_codex_and_cursor_hooks_and_uninstall_restores_everything() {
+    let env = Env::new(&[".codex", ".cursor"]);
+    // The user's own Cursor hook stays; Codex's hooks.json does not exist yet.
+    let cursor = env.home().join(".cursor/hooks.json");
+    let theirs = serde_json::json!({ "version": 1, "hooks": { "afterFileEdit": [ { "command": "./format.sh" } ] } });
+    fs::write(&cursor, serde_json::to_string_pretty(&theirs).unwrap()).unwrap();
+    let codex = env.home().join(".codex/hooks.json");
+
+    let (out, code) = env.wn(&["setup", "--dry-run"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("hook codex-prompt") && out.contains("hook cursor-search"),
+        "shows what it writes: {out}"
+    );
+    assert!(!codex.exists());
+
+    let (out, code) = env.wn(&["setup", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("/hooks"),
+        "tells how to trust Codex hooks: {out}"
+    );
+    let v: serde_json::Value = serde_json::from_str(&fs::read_to_string(&codex).unwrap()).unwrap();
+    assert!(v["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+        .as_str()
+        .unwrap()
+        .ends_with("wn hook codex-prompt"));
+    assert_eq!(v["hooks"]["PostToolUse"][0]["matcher"], "Bash");
+    let c: serde_json::Value = serde_json::from_str(&fs::read_to_string(&cursor).unwrap()).unwrap();
+    assert_eq!(
+        c["hooks"]["afterFileEdit"],
+        theirs["hooks"]["afterFileEdit"]
+    );
+    assert_eq!(c["hooks"]["postToolUse"][0]["matcher"], "Shell|Grep");
+    assert!(c["hooks"]["postToolUse"][0]["command"]
+        .as_str()
+        .unwrap()
+        .ends_with("wn hook cursor-search"));
+
+    let (out, _) = env.wn(&["skill", "sync", "--yes"]);
+    assert!(
+        out.contains("nothing to change"),
+        "`skill sync` is the same command: {out}"
+    );
+
+    let (out, code) = env.wn(&["setup", "--uninstall", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(!codex.exists(), "a file only wn wrote is deleted: {out}");
+    let c: serde_json::Value = serde_json::from_str(&fs::read_to_string(&cursor).unwrap()).unwrap();
+    assert_eq!(c, theirs);
+}
+
+#[test]
+fn no_hooks_installs_only_the_skill() {
+    let env = Env::new(&[".claude", ".cursor"]);
+    let (out, code) = env.wn(&["setup", "--yes", "--no-hooks"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(env.skill(".claude").exists());
+    assert!(!env.home().join(".claude/settings.json").exists());
+    assert!(!env.home().join(".cursor/hooks.json").exists());
+}
+
+#[test]
+fn codex_with_inline_hooks_in_config_toml_is_left_alone() {
+    let env = Env::new(&[".codex"]);
+    fs::write(
+        env.home().join(".codex/config.toml"),
+        "[[hooks.PreToolUse]]\nmatcher = \"Bash\"\n",
+    )
+    .unwrap();
+    let (out, code) = env.wn(&["setup", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("defines hooks inline"), "{out}");
+    assert!(!env.home().join(".codex/hooks.json").exists());
+}
+
+#[test]
+fn from_state_updates_recorded_hooks_including_the_old_claude_hook() {
+    let env = Env::new(&[".claude"]);
+    // An install from an older release: one first-prompt hook, recorded as `hook_settings`.
+    let settings = env.home().join(".claude/settings.json");
+    fs::write(
+        &settings,
+        r#"{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"wn hook claude-prompt","timeout":15}]}]}}"#,
+    )
+    .unwrap();
+    fs::write(
+        env.wn_home.path().join("skills.json"),
+        serde_json::json!({ "version": "0", "targets": [], "hook_settings": settings }).to_string(),
+    )
+    .unwrap();
+    let (out, code) = env.wn(&["skill", "sync", "--yes", "--from-state"]);
+    assert_eq!(code, 0, "{out}");
+    let v: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&settings).unwrap()).unwrap();
+    let prompt = v["hooks"]["UserPromptSubmit"].as_array().unwrap();
+    assert_eq!(
+        prompt.len(),
+        1,
+        "the old entry is replaced, not duplicated: {v}"
+    );
+    assert_eq!(prompt[0]["hooks"][0]["timeout"], 5);
+    assert!(v["hooks"]["PostToolUse"].is_array(), "{v}");
+    assert!(!env.skill(".claude").exists(), "only recorded targets");
+}
+
+#[test]
+fn init_suggests_setup_until_an_agent_is_connected() {
+    let env = Env::new(&[".claude"]);
+    let repo = tempfile::tempdir().unwrap();
+    let git = |args: &[&str]| {
+        let ok = Command::new("git")
+            .args(args)
+            .current_dir(repo.path())
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .output()
+            .unwrap()
+            .status
+            .success();
+        assert!(ok, "git {args:?}");
+    };
+    git(&["init", "-q", "-b", "main"]);
+    fs::write(repo.path().join("main.py"), "def main():\n    pass\n").unwrap();
+    git(&["add", "-A"]);
+    git(&["-c", "commit.gpgsign=false", "commit", "-qm", "first"]);
+    let init = || {
+        let out = Command::new(env!("CARGO_BIN_EXE_wn"))
+            .args(["init"])
+            .current_dir(repo.path())
+            .env("HOME", env.home())
+            .env("WHERE_NEXT_HOME", env.wn_home.path())
+            .env("WN_MODELS_HOME", env.home().join("no-models"))
+            .env("WN_NO_DAEMON", "1")
+            .env_remove("WN_MODEL_DIR")
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        String::from_utf8_lossy(&out.stderr).to_string()
+    };
+    assert!(init().contains(wn_cli::skill::CONNECT_HINT));
+    let (out, code) = env.wn(&["setup", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(!init().contains(wn_cli::skill::CONNECT_HINT));
+}
+
+#[test]
+fn settings_behind_a_symlink_keep_the_link_and_their_permissions() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let env = Env::new(&[".claude"]);
+    let real_dir = env.home().join("dotfiles");
+    fs::create_dir_all(&real_dir).unwrap();
+    let real = real_dir.join("claude-settings.json");
+    let original = "{\n  \"env\": { \"API_KEY\": \"sk-secret-canary\" }\n}\n";
+    fs::write(&real, original).unwrap();
+    fs::set_permissions(&real, fs::Permissions::from_mode(0o600)).unwrap();
+    let link = env.home().join(".claude/settings.json");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    let (out, code) = env.wn(&["setup", "--yes", "--agent", "claude"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(fs::symlink_metadata(&link)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert!(fs::read_to_string(&real)
+        .unwrap()
+        .contains("wn hook claude-prompt"));
+    assert_eq!(
+        fs::metadata(&real).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    // wn keeps no copy of the settings: only which files it touched, privately.
+    let state = env.wn_home.path().join("skills.json");
+    assert!(!fs::read_to_string(&state)
+        .unwrap()
+        .contains("sk-secret-canary"));
+    assert_eq!(
+        fs::metadata(&state).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let leftovers: Vec<_> = fs::read_dir(&real_dir).unwrap().flatten().collect();
+    assert_eq!(leftovers.len(), 1, "no temporary files left behind");
+
+    let (out, code) = env.wn(&["setup", "--uninstall", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(fs::symlink_metadata(&link)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(fs::read_to_string(&real).unwrap(), original);
+}
+
+#[test]
+fn a_file_edited_after_the_plan_is_not_overwritten() {
+    use wn_cli::skill::{apply, plan, Agent, HookRecord};
+    let env = Env::new(&[".claude"]);
+    let settings = env.home().join(".claude/settings.json");
+    fs::write(&settings, "{\"model\": \"opus\"}\n").unwrap();
+    let files: Vec<(Agent, std::path::PathBuf, Option<HookRecord>)> =
+        vec![(Agent::Claude, settings.clone(), None)];
+    let p = plan(&[], false, &files, "wn");
+    assert!(p.has_changes());
+    fs::write(&settings, "{\"model\": \"sonnet\"}\n").unwrap();
+    let err = apply(&p, env.wn_home.path(), false).unwrap_err();
+    assert!(err.contains("changed since the plan"), "{err}");
+    assert_eq!(
+        fs::read_to_string(&settings).unwrap(),
+        "{\"model\": \"sonnet\"}\n"
+    );
 }

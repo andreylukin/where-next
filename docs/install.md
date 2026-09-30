@@ -49,14 +49,20 @@ What it does:
    `cargo install --path crates/wn-cli --locked`, installing `wn` into `~/.cargo/bin`.
 4. Offers the default model (~1.2 GB), shows download progress, and verifies the model against
    its SHA-256 manifest. An interrupted download resumes on the next try.
-5. Prints the next steps.
+5. If Claude Code, Codex or Cursor is installed (`~/.claude`, `~/.codex` or `~/.agents`,
+   `~/.cursor`), shows what `wn setup` would write and asks "Connect wn to … (skill + hooks)?
+   [Y/n]" (Enter means yes; it reads the answer from your terminal, so it works under
+   `curl | sh`). With `--yes` it connects without asking. With no terminal and no `--yes` it skips
+   this and `wn setup` is the first next step. See [skill.md](skill.md).
+6. Prints the next steps.
 
 | option / variable | meaning |
 |---|---|
 | `--yes`, `WN_YES=1` | no prompts: downloads the model, and installs Rust with rustup if a source build needs it |
 | `--no-model`, `WN_NO_MODEL=1` | skip the model download |
 | `--dry-run` | print what would happen; no download, clone or build |
-| `--uninstall` | remove `wn` (and the bundled ONNX Runtime) and the private clone; caches and models are kept |
+| `--uninstall` | remove everything (runs `wn uninstall --yes`, see [Uninstall](#uninstall)); add `--keep-models` to keep the models |
+| `WN_SETUP_AGENTS=1` / `=0` | connect agents without asking / never connect them |
 | `WN_VERSION` | release to install (default: latest) |
 | `WN_INSTALL_DIR` | where the release binary goes (default `~/.local/bin`) |
 | `WN_MODEL_SOURCE` | pull the model from a local dir, an `https://` URL or `hf:owner/repo[@rev]` |
@@ -66,9 +72,49 @@ What it does:
 | `WN_BIN_ROOT` | source builds: `cargo install --root` (default: cargo's own, usually `~/.cargo`) |
 | `WN_REPO_URL` | source builds: source repository (default this repo; a local path works too) |
 
-Uninstall: `curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh -s -- --uninstall`.
-Caches (`~/.cache/where-next`) and models (`~/.cache/where-next-models`) are left in place; delete
-those directories to remove everything.
+## Uninstall
+
+```sh
+wn uninstall                 # shows the full list, asks once
+wn uninstall --yes           # no question
+wn uninstall --keep-models   # keep the ~1.2 GB model
+wn uninstall --dry-run       # only show the list
+```
+
+It removes, in this order:
+
+1. The running daemon (stopped).
+2. From Claude Code, Codex and Cursor: the where-next skill (`~/.claude/skills/where-next/`,
+   `~/.agents/skills/where-next/`, `~/.cursor/skills/where-next/`, plus `wn setup --project`
+   installs it recorded) and the where-next hook entries in `~/.claude/settings.json`,
+   `~/.codex/hooks.json` and `~/.cursor/hooks.json`. Only entries `wn setup` owns are removed;
+   your other settings and hooks stay, and a file restored to what it was before `wn setup` gets
+   its original bytes back. A hooks file that `wn setup` created and that holds nothing else is
+   deleted.
+3. In `~/.cache/where-next` (`$WHERE_NEXT_HOME`): the per-repository index directories
+   (`<name>-<16 hex digits>`), `daemon.log`, `daemon.sock`, `fingerprints.json`, `skills.json`,
+   `hook-log.jsonl`, `hook-sessions/`; then the directory if that left it empty.
+4. In `~/.cache/where-next-models` (`$WN_MODELS_HOME`), unless `--keep-models`: each model
+   directory with a `wn-model.json` and interrupted `.<name>.pulling` downloads; then the directory
+   if empty.
+5. In `~/.local/share/where-next` (`$WN_HOME`): `src/`, the source checkout used by `wn update`.
+6. The `wn` binary it runs as, and the files the release installer recorded beside it in
+   `wn.install-files` (`libonnxruntime.so` on Linux, `wn.install-method`); for installs from before
+   that file, `libonnxruntime.so` only when `wn.install-method` says `release`.
+
+Anything else in those directories stays. It refuses, before removing anything, when one of
+them is empty, relative, `/`, a top-level directory, your home directory or a directory above
+it, or holds files but nothing wn wrote.
+
+It says what it removed and what it could not remove. It never edits your shell profile: if you
+added the install directory to `PATH`, remove that line yourself. A `wn` binary inside a Homebrew
+or npm installation is left to that package manager. For a `cargo install`, `cargo uninstall
+where-next` also clears cargo's record.
+
+Without a working `wn`, the installer does the same file removals:
+`curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh -s -- --uninstall`
+(it runs `wn uninstall --yes` when `wn` is there, with the same refusals and the same list). Hook entries in agent settings can only be
+removed by `wn`; without it, delete the where-next entries (`… wn hook …`) by hand.
 
 ## Updating
 

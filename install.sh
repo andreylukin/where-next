@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or update `wn` from a checksum-verified release binary by default.
-# Usage: sh install.sh [--ref branch|tag|sha] [--yes] [--no-model] [--dry-run] [--uninstall]
+# Usage: sh install.sh [--ref branch|tag|sha] [--yes] [--no-model] [--dry-run] [--uninstall [--keep-models]]
 # --ref and WN_FROM=source build from source; source defaults to the latest release tag.
 # WN_RELEASE_BASE overrides the release download URL (useful for local mirrors/tests).
 # WN_GLIBC overrides detected glibc for installer tests.
@@ -136,6 +136,11 @@ install_release() {
   fi
   install -m 0755 "$tmp/wn-$target/wn" "$install_dir/wn" || die "could not install $install_dir/wn"
   printf 'release\n' > "$install_dir/wn.install-method" || die "could not write install marker"
+  # What this installer put here, so `wn uninstall` removes exactly these files.
+  {
+    printf '%s\n' "$install_dir/wn" "$install_dir/wn.install-method" "$install_dir/wn.install-files"
+    if [ -f "$install_dir/libonnxruntime.so" ]; then printf '%s\n' "$install_dir/libonnxruntime.so"; fi
+  } > "$install_dir/wn.install-files" || die "could not write $install_dir/wn.install-files"
   bin_dir="$install_dir"
   say "installed $install_dir/wn"
   case ":$PATH:" in
@@ -157,6 +162,8 @@ dry_run=""
 uninstall=""
 no_model="${WN_NO_MODEL:-}"
 model_skipped=""
+agents_connected=""
+keep_models=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -166,8 +173,9 @@ while [ $# -gt 0 ]; do
     --force) force=1 ;;
     --dry-run) dry_run=1 ;;
     --uninstall) uninstall=1 ;;
+    --keep-models) keep_models=1 ;;
     --no-model) no_model=1 ;;
-    -h | --help) say "usage: install.sh [--ref REF] [--yes] [--no-model] [--dry-run] [--uninstall]"; return 0 ;;
+    -h | --help) say "usage: install.sh [--ref REF] [--yes] [--no-model] [--dry-run] [--uninstall [--keep-models]]"; return 0 ;;
     *) die "unknown option: $1 (try --help)" ;;
   esac
   shift
@@ -189,11 +197,14 @@ find_cargo() {
   fi
 }
 
+tty="${WN_INSTALL_TTY:-/dev/tty}" # the terminal to ask on (tests point this at a file)
+has_tty() { [ -r "$tty" ] && [ -w "$tty" ] && (: < "$tty") 2>/dev/null; }
+
 ask() { # question -> 0 yes / 1 no; reads the terminal even when this script is piped to sh
   [ -n "$yes" ] && return 0
-  if [ -r /dev/tty ] && [ -w /dev/tty ] && (: < /dev/tty) 2>/dev/null; then
-    printf 'wn-install: %s [y/N] ' "$1" > /dev/tty
-    read -r answer < /dev/tty || answer=""
+  if has_tty; then
+    printf 'wn-install: %s [y/N] ' "$1" >> "$tty"
+    read -r answer < "$tty" || answer=""
     case "$answer" in y | Y | yes | Yes) return 0 ;; esac
   fi
   return 1
@@ -235,12 +246,42 @@ ensure_model() { # offer the default model when it is missing or its pinned sour
   fi
 }
 
+agents_found() { # prints "Claude Code / Codex / Cursor" for the agents configured in $HOME
+  found=""
+  if [ -d "$HOME/.claude" ]; then found="Claude Code"; fi
+  if [ -d "$HOME/.codex" ] || [ -d "$HOME/.agents" ]; then found="${found:+$found / }Codex"; fi
+  if [ -d "$HOME/.cursor" ]; then found="${found:+$found / }Cursor"; fi
+  printf '%s' "$found"
+}
+
+connect_agents() { # after the model step: connect detected agents (skill + hooks); default yes
+  found="$(agents_found)"
+  [ -n "$found" ] || return 0
+  if [ -n "$dry_run" ]; then say "would offer to connect wn to $found (wn setup)"; return 0; fi
+  setup_now="${WN_SETUP_AGENTS:-}"
+  if [ "$setup_now" = 0 ]; then say "not connecting agents (WN_SETUP_AGENTS=0); later: wn setup"; return 0; fi
+  if [ "$setup_now" != 1 ] && [ -z "$yes" ]; then
+    # Connecting is the default answer; only a run with no terminal to ask on (and no --yes) skips.
+    if ! has_tty; then
+      say "no terminal to ask on: agents not connected (--yes or WN_SETUP_AGENTS=1 connects them)"
+      return 0
+    fi
+    "$bin_dir/wn" setup --dry-run >&2 || { say "note: wn setup --dry-run failed; later: wn setup"; return 0; }
+    printf 'wn-install: Connect wn to %s (skill + hooks)? [Y/n] ' "$found" >> "$tty"
+    # Enter means yes; a failed read (no terminal after all, EOF) means no.
+    if ! read -r answer < "$tty"; then say "no answer; agents not connected (later: wn setup)"; return 0; fi
+    case "$answer" in n | N | no | No) say "skipped; later: wn setup"; return 0 ;; esac
+  fi
+  if "$bin_dir/wn" setup --yes >&2; then agents_connected=1; else say "note: wn setup failed; run it again: wn setup"; fi
+}
+
 next_steps() {
   say "next steps:"
+  if [ -z "$agents_connected" ]; then say "  wn setup                      # connect Claude Code / Codex / Cursor: hints arrive automatically"; fi
   if [ -n "$model_skipped" ]; then say "  wn model pull                 # download the default model for semantic hints"; fi
   say "  cd your-repo && wn init        # index and learn from git history"
   say "  wn ask \"where is X handled?\"   # ranked files to open next"
-  say "  wn skill sync                  # install agent skills"
+  say "  wn stats                       # did your agents use the hints?"
 }
 
 installed_commit() { # short sha from `wn --version`, if an installed wn reports one
@@ -262,6 +303,7 @@ if [ -z "$uninstall" ] && [ "$from" != source ]; then
     fi
     if install_release; then
       ensure_model
+      connect_agents
       say "update later with: wn update"
       next_steps
       return 0
@@ -272,8 +314,70 @@ if [ -z "$uninstall" ] && [ "$from" != source ]; then
   fi
 fi
 
+safe_root() { # dir -> 0 when it may hold wn files to remove: absolute, not /, top-level, $HOME or above
+  d="${1%/}"
+  case "$d" in /*) ;; *) return 1 ;; esac
+  [ "$(dirname "$d")" != / ] || return 1
+  h="${HOME%/}"
+  if [ -d "$d" ] && [ -d "$h" ]; then
+    d="$(cd "$d" && pwd -P)" || return 1
+    h="$(cd "$h" && pwd -P)" || return 1
+  fi
+  [ "$d" != "$h" ] || return 1
+  case "$h/" in "$d"/*) return 1 ;; esac
+  return 0
+}
+
+hex16='[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
+
+remove_cache() { # only what wn writes there, then the directory if that left it empty
+  for f in daemon.log daemon.sock skills.json hook-log.jsonl fingerprints.json; do
+    if [ -e "$1/$f" ]; then run rm -f "$1/$f" || die "could not remove $1/$f"; fi
+  done
+  for d in "$1"/*; do
+    [ -d "$d" ] || continue
+    # shellcheck disable=SC2254 # $hex16 is a pattern
+    case "${d##*/}" in
+      hook-sessions | *-$hex16) ;;
+      models) ls "$d"/*/wn-model.json "$d"/*/model.safetensors >/dev/null 2>&1 || continue ;;
+      *) continue ;;
+    esac
+    run rm -rf "$d" || die "could not remove $d"
+  done
+  rmdir "$1" 2>/dev/null || true
+}
+
+remove_models() {
+  for d in "$1"/* "$1"/.*.pulling; do
+    if [ -f "$d/wn-model.json" ] || { [ -d "$d" ] && case "$d" in *.pulling) true ;; *) false ;; esac; }; then
+      run rm -rf "$d" || die "could not remove $d"
+    fi
+  done
+  rmdir "$1" 2>/dev/null || true
+}
+
 if [ -n "$uninstall" ]; then
   release_bin="${WN_INSTALL_DIR:-$HOME/.local/bin}/wn"
+  cache_dir="${WHERE_NEXT_HOME:-$HOME/.cache/where-next}"
+  models_dir="${WN_MODELS_HOME:-$HOME/.cache/where-next-models}"
+  for root in "$cache_dir" "$models_dir" "$wn_home"; do
+    safe_root "$root" || die "refusing to remove files under '$root' (it is /, a top-level directory, your home or above it, or not absolute); nothing was removed"
+  done
+  # `wn uninstall` removes everything: agent skill and hooks, daemon, caches, models, the source
+  # checkout and the binary. The steps after it remove the same files when no wn is left to ask.
+  wn_bin=""
+  for bin in "$release_bin" "$bin_dir/wn"; do
+    if [ -x "$bin" ]; then wn_bin="$bin"; break; fi
+  done
+  if [ -n "$wn_bin" ]; then
+    if [ -n "$keep_models" ]; then
+      run "$wn_bin" uninstall --yes --keep-models >&2 || say "note: wn uninstall failed; removing files directly"
+    else
+      run "$wn_bin" uninstall --yes >&2 || say "note: wn uninstall failed; removing files directly"
+    fi
+  else
+    say "no wn binary found: remove where-next entries from agent hook settings by hand if any remain"
+  fi
   if [ -x "$release_bin" ]; then run "$release_bin" daemon stop || true; fi
   if [ -x "$bin_dir/wn" ] && [ "$bin_dir/wn" != "$release_bin" ]; then run "$bin_dir/wn" daemon stop || true; fi
   cargo_bin="$(find_cargo)"
@@ -286,13 +390,22 @@ if [ -n "$uninstall" ]; then
   elif [ -e "$bin_dir/wn" ]; then
     run rm -f "$bin_dir/wn"
   fi
-  [ -e "$release_bin" ] && run rm -f "$release_bin"
-  [ -e "${release_bin%/*}/libonnxruntime.so" ] && run rm -f "${release_bin%/*}/libonnxruntime.so"
-  [ -e "${release_bin}.install-method" ] && run rm -f "${release_bin}.install-method"
-  [ -d "$src" ] && run rm -rf "$src"
-  say "uninstalled wn (binary and $src)"
-  say "agent skill files remain in ~/.claude/skills/where-next, ~/.agents/skills/where-next, ~/.cursor/skills/where-next (and project equivalents); reinstall wn to run: wn skill sync --uninstall"
-  say "caches and models are kept: ~/.cache/where-next and ~/.cache/where-next-models (remove them yourself if you want)"
+  release_dir="${release_bin%/*}"
+  if [ -e "$release_dir/wn.install-method" ]; then
+    # The installer's own files, only where its marker says it installed a release.
+    for f in "$release_bin" "$release_dir/libonnxruntime.so" "$release_dir/wn.install-files" "$release_dir/wn.install-method"; do
+      if [ -e "$f" ]; then run rm -f "$f" || die "could not remove $f"; fi
+    done
+  elif [ -e "$release_bin" ]; then
+    run rm -f "$release_bin" || die "could not remove $release_bin"
+  fi
+  if [ -d "$src/.git" ] && [ -d "$src/crates/wn-cli" ]; then run rm -rf "$src" || die "could not remove $src"; fi
+  rmdir "$wn_home" 2>/dev/null || true
+  if [ -d "$cache_dir" ]; then remove_cache "$cache_dir"; fi
+  if [ -z "$keep_models" ] && [ -d "$models_dir" ]; then remove_models "$models_dir"; fi
+  say "uninstalled wn: binary, $src, $cache_dir$([ -n "$keep_models" ] || printf ', %s' "$models_dir"), and the where-next skill and hooks in your agents"
+  if [ -n "$keep_models" ]; then say "kept the models in $models_dir (--keep-models)"; fi
+  say "installs made with wn setup --project stay in those repositories"
   exit 0
 fi
 
@@ -372,12 +485,12 @@ if [ -n "$dry_run" ]; then
   exit 0
 fi
 
-rm -f "$bin_dir/wn.install-method"
+rm -f "$bin_dir/wn.install-method" "$bin_dir/wn.install-files"
 if [ -n "$current" ]; then
   say "updated wn: $current -> $short_target ($git_ref)"
-  # Replace a daemon from the old build and re-sync agent skills installed by `wn skill sync`.
+  # Replace a daemon from the old build and re-sync agent skills and hooks installed by `wn setup`.
   "$bin_dir/wn" daemon stop >/dev/null 2>&1 || true
-  "$bin_dir/wn" skill sync --yes --from-state >/dev/null 2>&1 || say "note: run 'wn skill sync' to update agent skills"
+  "$bin_dir/wn" setup --yes --from-state >/dev/null 2>&1 || say "note: run 'wn setup' to update agent skills and hooks"
 else
   say "installed wn $short_target ($git_ref) at $bin_dir/wn"
 fi
@@ -386,6 +499,7 @@ case ":$PATH:" in
   *) say "add $bin_dir to your PATH (e.g. export PATH=\"$bin_dir:\$PATH\")" ;;
 esac
 ensure_model
+connect_agents
 say "update later with: wn update   (or re-run this installer)"
 next_steps
 

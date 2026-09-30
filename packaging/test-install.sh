@@ -7,7 +7,12 @@
 # nothing, a missing cargo is refused without --yes, --uninstall removes the binary and clone.
 # Model step: --yes pulls the default model once, a rerun keeps a current model, a moved source is
 # pulled again, --no-model never downloads.
+# Agents step: when an agent is detected, `wn setup` runs after its dry run and a [Y/n] question
+# (default yes); --yes or WN_SETUP_AGENTS=1 connect without asking; with no terminal and no --yes it
+# is skipped and `wn setup` is the first next step; WN_SETUP_AGENTS=0 never connects.
 set -euo pipefail
+# Uninstall tests remove caches under $HOME (a temporary one): never follow these to real ones.
+unset WHERE_NEXT_HOME WN_MODELS_HOME WN_HOME XDG_DATA_HOME
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
@@ -16,11 +21,15 @@ target="x86_64-unknown-linux-gnu"
 
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi; }
 
-make_release() { # dir
+make_release() { # dir [wn script]
   local dir="$1"
   mkdir -p "$dir/stage/wn-$target"
-  # shellcheck disable=SC2016
-  printf '#!/bin/sh\n[ "$1 $2 $3" = "model pull --check" ] && exit 10\necho wn-fixture\n' > "$dir/stage/wn-$target/wn"
+  if [ -n "${2:-}" ]; then
+    cp "$2" "$dir/stage/wn-$target/wn"
+  else
+    # shellcheck disable=SC2016
+    printf '#!/bin/sh\n[ "$1 $2 $3" = "model pull --check" ] && exit 10\necho wn-fixture\n' > "$dir/stage/wn-$target/wn"
+  fi
   chmod +x "$dir/stage/wn-$target/wn"
   printf 'fixture\n' > "$dir/stage/wn-$target/libonnxruntime.so"
   tar -czf "$dir/wn-$target.tar.gz" -C "$dir/stage" "wn-$target"
@@ -154,7 +163,7 @@ if [ "${1:-} ${2:-}" = "model pull" ]; then
   fi
   echo "$src" > "$m"; echo "$src" >> "$FAKE_MODEL_LOG"; echo "installed gemma-xl1"; exit 0
 fi
-case "${1:-}" in daemon | skill) exit 0 ;; esac
+case "${1:-}" in daemon | skill | setup) exit 0 ;; uninstall) echo "$*" >> "$FAKE_ROOT/uninstall.log"; exit 0 ;; esac
 echo "wn 0.0.1 ($WN_SHA 2026-01-01)"
 WN
 chmod +x "$fake/wn-impl"
@@ -226,10 +235,15 @@ WN_NO_MODEL="" WN_MODEL_SOURCE="$models" src_install --yes --no-model 2>"$work/n
 [ "$(pulls)" = 2 ] || fail "--no-model downloaded"
 grep -q "wn model pull" "$work/nomodel.err" || fail "--no-model did not say how to install later"
 
-# 14. --uninstall removes the binary and the clone.
+# 14. --uninstall asks wn to remove everything, and removes the binary, clone and caches itself too.
+mkdir -p "$work/home/.cache/where-next/repo-0123456789abcdef" "$work/home/.cache/where-next-models/gemma-xl1"
+printf '{}' > "$work/home/.cache/where-next-models/gemma-xl1/wn-model.json"
 src_install --uninstall 2>/dev/null
+grep -qx 'uninstall --yes' "$FAKE_ROOT/uninstall.log" || fail "uninstall did not run wn uninstall --yes"
 [ ! -e "$FAKE_ROOT/bin/wn" ] || fail "uninstall left the binary"
 [ ! -e "$work/wnhome/src" ] || fail "uninstall left the clone"
+[ ! -e "$work/home/.cache/where-next" ] || fail "uninstall left the cache"
+[ ! -e "$work/home/.cache/where-next-models" ] || fail "uninstall left the models"
 
 echo "install.sh: 11 source-mode tests passed"
 
@@ -263,13 +277,91 @@ HOME="$work/auto-home" WN_INSTALL_DIR="$work/auto-bin" sh "$root/install.sh" --u
 [ ! -e "$work/auto-bin/wn" ] || fail "release binary remained after uninstall"
 [ ! -e "$work/auto-bin/libonnxruntime.so" ] || fail "release runtime remained after uninstall"
 [ ! -e "$work/auto-bin/wn.install-method" ] || fail "release marker remained after uninstall"
-grep -q 'wn skill sync --uninstall' "$work/release-uninstall.err" || fail "uninstall omitted agent skills"
+grep -q 'skill and hooks in your agents' "$work/release-uninstall.err" || fail "uninstall omitted agent skills"
 echo "install.sh: 6 additional auto/release tests passed"
 
 # A non-TTY release install that declines the model includes a pull command in next steps.
 HOME="$work/non-tty-home" WN_RELEASE_BASE="file://$work/good" WN_INSTALL_DIR="$work/non-tty-bin" WN_TARGET="$target" WN_NO_MODEL="" sh "$root/install.sh" </dev/null 2>"$work/non-tty.err"
 grep -A5 'next steps:' "$work/non-tty.err" | grep -q 'wn model pull' || fail "non-TTY next steps omitted model pull"
 echo "install.sh: non-TTY model next step passed"
+
+# Connecting agents after the model step.
+mkdir -p "$work/logging"
+cat > "$work/logging-wn" <<'LOGWN'
+#!/bin/sh
+[ "$1 $2 $3" = "model pull --check" ] && exit 10
+echo "$*" >> "$FAKE_SETUP_LOG"
+echo wn-fixture
+LOGWN
+make_release "$work/logging" "$work/logging-wn"
+agents_install() { # name [extra install.sh args...]; HOME has ~/.claude and ~/.cursor
+  local name="$1"; shift
+  mkdir -p "$work/$name-home/.claude" "$work/$name-home/.cursor"
+  FAKE_SETUP_LOG="$work/$name.log" HOME="$work/$name-home" WN_RELEASE_BASE="file://$work/logging" \
+    WN_INSTALL_DIR="$work/$name-bin" WN_TARGET="$target" WN_NO_MODEL=1 sh "$root/install.sh" "$@" 2>"$work/$name.err"
+}
+setups() { if [ -f "$work/$1.log" ]; then grep -c '^setup' "$work/$1.log" || true; else echo 0; fi; }
+WN_INSTALL_TTY=/nonexistent/tty agents_install piped
+[ "$(setups piped)" = 0 ] || fail "install without a terminal ran wn setup"
+grep -q -- '--yes or WN_SETUP_AGENTS=1' "$work/piped.err" || fail "install without a terminal did not say how to connect"
+grep -A1 'next steps:' "$work/piped.err" | grep -q 'wn setup' || fail "wn setup is not the first next step"
+WN_INSTALL_TTY=/nonexistent/tty agents_install yes --yes
+grep -qx 'setup --yes' "$work/yes.log" || fail "--yes install did not connect agents"
+WN_INSTALL_TTY=/nonexistent/tty WN_SETUP_AGENTS=1 agents_install optin
+grep -qx 'setup --yes' "$work/optin.log" || fail "WN_SETUP_AGENTS=1 did not run wn setup --yes"
+WN_INSTALL_TTY=/nonexistent/tty WN_SETUP_AGENTS=0 agents_install optout --yes
+[ "$(setups optout)" = 0 ] || fail "WN_SETUP_AGENTS=0 still ran wn setup"
+printf 'n\n' > "$work/tty-no"
+WN_INSTALL_TTY="$work/tty-no" agents_install ttyno
+grep -qx 'setup --dry-run' "$work/ttyno.log" || fail "terminal install did not show the plan first"
+! grep -qx 'setup --yes' "$work/ttyno.log" || fail "answering n still ran wn setup"
+grep -q 'Connect wn to Claude Code / Cursor (skill + hooks)? \[Y/n\]' "$work/tty-no" || fail "no [Y/n] question naming the agents"
+printf '\n' > "$work/tty-yes"
+WN_INSTALL_TTY="$work/tty-yes" agents_install ttyyes
+grep -qx 'setup --yes' "$work/ttyyes.log" || fail "the default answer did not run wn setup"
+! grep -A6 'next steps:' "$work/ttyyes.err" | grep -q 'wn setup' || fail "next steps repeat wn setup after connecting"
+: > "$work/tty-eof"
+WN_INSTALL_TTY="$work/tty-eof" agents_install ttyeof
+[ "$(setups ttyeof | tr -d ' ')" = 1 ] || fail "a failed terminal read connected agents ($(setups ttyeof) setup calls)"
+! grep -qx 'setup --yes' "$work/ttyeof.log" || fail "a failed terminal read counted as yes"
+rm -rf "$work/noagent-home"; mkdir -p "$work/noagent-home"
+printf '\n' > "$work/tty-none"
+FAKE_SETUP_LOG="$work/noagent.log" HOME="$work/noagent-home" WN_INSTALL_TTY="$work/tty-none" WN_RELEASE_BASE="file://$work/logging" \
+  WN_INSTALL_DIR="$work/noagent-bin" WN_TARGET="$target" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/noagent.err"
+[ "$(setups noagent)" = 0 ] || fail "wn setup offered with no agent installed"
+mkdir -p "$work/ttyyes-home/.cache/where-next-models/gemma-xl1"
+HOME="$work/ttyyes-home" WN_INSTALL_DIR="$work/ttyyes-bin" FAKE_SETUP_LOG="$work/ttyyes.log" sh "$root/install.sh" --uninstall --keep-models 2>/dev/null
+grep -qx 'uninstall --yes --keep-models' "$work/ttyyes.log" || fail "uninstall did not run wn uninstall --keep-models"
+[ -d "$work/ttyyes-home/.cache/where-next-models/gemma-xl1" ] || fail "--keep-models removed the models"
+echo "install.sh: 9 agent-setup tests passed"
+
+# Uninstall never removes a directory it must not: $HOME, /, its parents, a relative path; and in
+# a directory shared with other files it removes only what wn wrote.
+guard_home="$work/guard/users/me"
+mkdir -p "$guard_home/src/.git" "$guard_home/projects"
+printf 'mine\n' > "$guard_home/notes.txt"
+printf 'x\n' > "$guard_home/projects/thesis.tex"
+for var in WHERE_NEXT_HOME WN_MODELS_HOME WN_HOME; do
+  for value in "$guard_home" / "$work/guard/users" relative/dir /usr; do
+    if env HOME="$guard_home" "$var=$value" WN_INSTALL_DIR="$guard_home/bin" sh "$root/install.sh" --uninstall 2>"$work/guard.err"; then
+      fail "uninstall accepted $var=$value"
+    fi
+    grep -q 'refusing' "$work/guard.err" || fail "uninstall with $var=$value did not say it refused"
+    if [ ! -f "$guard_home/notes.txt" ] || [ ! -f "$guard_home/projects/thesis.tex" ] || [ ! -d "$guard_home/src/.git" ]; then
+      fail "uninstall with $var=$value removed files"
+    fi
+  done
+done
+shared="$guard_home/shared"
+mkdir -p "$shared/where-next-0123456789abcdef/index"
+printf 'log\n' > "$shared/daemon.log"
+printf 'keep\n' > "$shared/other-app.db"
+HOME="$guard_home" WHERE_NEXT_HOME="$shared" WN_INSTALL_DIR="$guard_home/bin" sh "$root/install.sh" --uninstall 2>/dev/null \
+  || fail "uninstall with a shared cache directory failed"
+[ -f "$shared/other-app.db" ] || fail "uninstall removed a file that is not wn's"
+if [ -e "$shared/daemon.log" ] || [ -e "$shared/where-next-0123456789abcdef" ]; then fail "uninstall left wn's files"; fi
+[ -d "$guard_home/src/.git" ] || fail "uninstall removed a non-wn ~/src"
+echo "install.sh: uninstall guard tests passed"
 
 # Explicit source mode without --ref uses the latest release tag, not the moving main branch.
 g -C "$up" tag v99.0.0-rc1 "$second"

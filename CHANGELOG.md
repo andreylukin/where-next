@@ -7,6 +7,31 @@ explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- **`wn setup`** connects Claude Code, Codex and Cursor in one step: the where-next skill plus hooks
+  that add wn's hints to the agent's context on every prompt (Claude Code, Codex) and after a
+  search that found nothing or more than 30 results (all three). At most 3 confident paths, each
+  once per session; silent on abstain, without an index or model, outside git, or with
+  `WN_HOOKS=0`; 1.5 s budget, always exits 0. Shows every file it writes and asks once;
+  `--uninstall` removes only its own entries (byte for byte what was there before, when nothing
+  else changed). `wn skill sync` is the same command.
+- **`wn stats`** opens with a hooks line (injections, and after how many the agent then opened a
+  hinted file) or a `wn setup` nudge; a *Hooks* row shows files, median latency, quiet and timed
+  out runs.
+- **`wn uninstall`** removes everything wn added (agent skill and hooks, daemon, caches, models,
+  source checkout, binary), after showing the list; `--keep-models`. `install.sh --uninstall` runs
+  it.
+- A session-start hook (all three agents) starts the daemon and loads the model in the background,
+  so the first prompt's hook does not time out.
+- The installer asks to connect detected agents after the model step (default yes; `--yes`
+  connects; skipped without a terminal). `wn init` suggests `wn setup` when no agent is connected.
+
+### Changed
+
+- The old `--with-hook` Claude Code hook (first prompt only, 3,000+ files) is replaced by the
+  hooks above; `wn update` moves existing installs over.
+
 ## [0.1.0] - 2026-09-30
 
 The first release. The launch changes (#32–#39) come first, then everything else in this version.

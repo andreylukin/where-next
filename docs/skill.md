@@ -13,47 +13,130 @@ field says whether there are hints. `--start` (a task-start hint, skipped in rep
 3,000 source files) is opt-in: in agent trials it did not lower cost, so the skill doesn't tell
 agents to use it.
 
-## `wn skill sync`
+## `wn setup`
 
 ```sh
-wn skill sync                    # detected agents, your home directory; shows the plan and asks
-wn skill sync --dry-run          # show what would change (with a diff for outdated copies)
-wn skill sync --yes              # apply without asking (required when there is no terminal)
-wn skill sync --agent codex      # claude | codex | cursor | all (repeatable)
-wn skill sync --project          # install into this repository instead (commit it for your team)
-wn skill sync --uninstall        # remove what sync installed
-wn skill show                    # print the skill
+wn setup                    # detected agents, your home directory; shows every file it writes, asks once
+wn setup --dry-run          # show what would change (diffs), write nothing
+wn setup --yes              # apply without asking (required when there is no terminal)
+wn setup --agent codex      # claude | codex | cursor | all (repeatable)
+wn setup --no-hooks         # only the skill
+wn setup --project          # install into this repository instead (commit it for your team)
+wn setup --uninstall        # remove everything setup added
+wn skill show               # print the skill
 ```
 
-| Agent | Detected by | User install | `--project` install |
-|---|---|---|---|
-| Claude Code | `~/.claude` | `~/.claude/skills/where-next/SKILL.md` | `.claude/skills/where-next/SKILL.md` |
-| Codex | `~/.codex` or `~/.agents` | `~/.agents/skills/where-next/SKILL.md` | `.agents/skills/where-next/SKILL.md` |
-| Cursor | `~/.cursor` | `~/.cursor/skills/where-next/SKILL.md` | `.cursor/skills/where-next/SKILL.md` |
+`wn skill sync` is the same command under its old name.
 
-With no agent detected, Claude Code is the default. Cursor also reads `.claude` and `.agents` skill
-directories, so installing for several agents can show the skill twice there; sync only Cursor
-(`--agent cursor`) if that bothers you.
+| Agent | Detected by | Skill | Hooks |
+|---|---|---|---|
+| Claude Code | `~/.claude` | `~/.claude/skills/where-next/SKILL.md` | `~/.claude/settings.json` |
+| Codex | `~/.codex` or `~/.agents` | `~/.agents/skills/where-next/SKILL.md` | `~/.codex/hooks.json` |
+| Cursor | `~/.cursor` | `~/.cursor/skills/where-next/SKILL.md` | `~/.cursor/hooks.json` |
+
+With `--project` the same paths are used under the repository (`.claude/`, `.agents/`, `.codex/`,
+`.cursor/`). With no agent detected, Claude Code is the default. Cursor also reads `.claude` and
+`.agents` skill directories, so installing for several agents can show the skill twice there; set
+up only Cursor (`--agent cursor`) if that bothers you.
 
 Guarantees:
 
-- **Idempotent.** Each installed file carries a marker line with the skill version; re-running
-  changes nothing when it is current, and shows a diff when it is not.
-- **Never clobbers your files.** A `SKILL.md` without the marker is reported and left alone, for
-  both sync and `--uninstall`.
-- **Asks first.** Nothing is written without `--yes` or a `y` at the prompt.
+- **Shows everything, asks once.** The plan lists every file with a diff of what changes. Nothing
+  is written without `--yes` or a `y` at the prompt.
+- **Idempotent.** Each skill file carries a marker line with the skill version; hook entries are
+  recognised by their command (`… wn hook <agent>-<moment>`). Re-running changes nothing when both
+  are current.
+- **Merges, never clobbers.** Hooks are inserted as text next to your other settings and hooks;
+  the rest of the file keeps its bytes. A symlinked settings file is written through the link,
+  permissions are kept, and a file edited after the plan was shown is not overwritten. wn keeps
+  no copy of your settings (`skills.json` records only which files it touched, mode 0600). A settings file that is not valid JSON
+  is reported and left alone, and so is a `SKILL.md` without the marker. Codex: when
+  `~/.codex/config.toml` defines hooks inline, `hooks.json` is left alone (Codex warns when a layer
+  has both).
+- **Undoable.** `wn setup --uninstall` removes our skill files and hook entries (every agent, and
+  `--project` installs it recorded) and nothing else, and says what it removed. A settings file
+  nothing else changed in gets its original bytes back; a hooks file that `wn setup` created and
+  that holds nothing else is deleted. `wn uninstall` does this and removes wn itself
+  ([install.md](install.md#uninstall)).
 - **Kept current.** Installs are recorded in `$WHERE_NEXT_HOME/skills.json`; `wn update` re-syncs
-  them (`wn skill sync --yes --from-state`).
+  them (`wn setup --yes --from-state`), which also moves hooks from older releases to the current
+  ones.
 
-### Optional Claude Code hook
+## How wn plugs into your agent
 
-`wn skill sync --with-hook` also adds a `UserPromptSubmit` hook to `~/.claude/settings.json`
-(`.claude/settings.json` with `--project`) that runs `wn hook claude-prompt`. On the first prompt
-of each session it runs `wn ask --start --json` in the session's directory and, when the repository
-is indexed, has 3,000+ files and the answer is confident, adds the top files to Claude's context.
-Otherwise it prints nothing. It always exits 0, so it never blocks a prompt. The entry is merged
-next to your other hooks, added once, and removed by `--uninstall`; an unparsable settings file is
-left alone. Off by default.
+Agents rarely decide to call a tool on their own, so `wn setup` also installs hooks: the agent runs
+`wn hook …` at the moments where knowing which file to open matters, and wn adds its hints to the
+agent's context. The agent never has to remember wn exists.
+
+**What is installed**
+
+| Agent | Event (matcher) | Command |
+|---|---|---|
+| Claude Code | `SessionStart` | `wn hook claude-start` |
+| Claude Code | `UserPromptSubmit` | `wn hook claude-prompt` |
+| Claude Code | `PostToolUse` (`Grep\|Glob\|Bash`), `PostToolUseFailure` (`Bash`) | `wn hook claude-search` |
+| Codex | `SessionStart` | `wn hook codex-start` |
+| Codex | `UserPromptSubmit` | `wn hook codex-prompt` |
+| Codex | `PostToolUse` (`Bash`) | `wn hook codex-search` |
+| Cursor | `sessionStart` | `wn hook cursor-start` |
+| Cursor | `postToolUse` (`Shell\|Grep`) | `wn hook cursor-search` |
+
+Each entry has a 5-second agent-side `timeout`. The command names `wn` when that is the binary on
+your `PATH`, else its absolute path. Cursor has no prompt hook that can add context
+(`beforeSubmitPrompt` can only allow or block), so it gets the warm-up and search hooks. **Codex runs new
+hooks only after you trust them**: open Codex, run `/hooks` and trust the where-next entries.
+Claude Code and Cursor pick them up in new sessions.
+
+**When they fire**
+
+- *Session start* (all three): in an indexed repository, starts a background `wn ask` through the
+  daemon so the model and index are loaded before the first prompt, and returns at once with no
+  output.
+- *Prompt* (Claude Code, Codex): on every prompt, the prompt is asked as a query.
+- *Search* (all three): after `rg`, `grep`, `git grep`, `ag`, `ack`, `fd` or `find` in a shell, or
+  the Grep/Glob tools, when the search found nothing or more than 30 results. The pattern is asked,
+  with the session's latest prompt as context (read from the end of the transcript the agent names
+  in the hook payload; not stored). Searches with a handful of results are left alone.
+
+**What they inject**
+
+Only confident answers (state `ok`; an abstain prints nothing): at most 3 file paths, each file at
+most once per session, in a few lines that start with "where-next (local index of this
+repository) suggests". Claude Code and Codex receive it as `hookSpecificOutput.additionalContext`,
+Cursor as `additional_context`.
+
+**When they stay silent**
+
+A hook prints nothing and exits 0 when wn abstains, every hinted file was already shown in this
+session, no model is installed (the lexical fallback has no calibrated threshold), the directory is
+not in a git repository, the repository has no index for the installed model (`wn init` once per
+repository), the payload is not one it understands, or `WN_HOOKS=0`. It never loads a model or
+builds an index itself: it asks the background daemon (starting it if needed) and gives up after
+1.5 s. The session-start warm-up loads the model first; without it (or when the daemon has been
+idle for 15 minutes mid-session) the first hook can give up while the model loads. On this repository (101 source files, gemma-xl1, debug build, Apple
+Silicon) warm prompt and search hooks took 35–42 ms end to end, including process start, and a
+shell command that is not a search 10 ms. The session-start hook returned in 11 ms, and the first
+prompt hook a few seconds later answered in 112 ms.
+
+**Local state.** Per session, the paths already injected are kept in
+`$WHERE_NEXT_HOME/hook-sessions/` and expire after a day. Each run that asked the daemon is logged
+in `$WHERE_NEXT_HOME/hook-log.jsonl` (time, agent, session id, repository, latency, outcome,
+injected paths), and each injection in the repository's usage log, like a `wn ask` (both off with
+`WN_NO_LOG`, kept 30 days, never sent anywhere). Prompt and query text are never stored.
+
+**Seeing what they did.** `wn stats` shows a *Hooks* row: injections, files and sessions, the median
+hook time, how many runs were quiet or timed out, and, from your Claude Code and Codex transcripts
+(read locally), after how many injections the agent then opened, ran or edited a hinted file. It
+counts what happened; it does not estimate tokens or money saved.
+
+**Turning them off.**
+
+| Setting | Effect |
+|---|---|
+| `WN_HOOKS=0` | Every hook is a no-op (set it in your shell, or in the agent's environment) |
+| `WN_HOOK_MIN_FILES=N` | Hooks answer only in repositories with at least N indexed source files (default 0) |
+| `WN_HOOK_TIMEOUT_MS=N` | Time budget of one hook (default 1500) |
+| `wn setup --uninstall` | Removes the hooks and the skill |
 
 ## The daemon
 

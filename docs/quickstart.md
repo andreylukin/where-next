@@ -110,13 +110,14 @@ of running it. See [history replay](../benchmarks/history-replay.md) for the pro
 ## Use it from an agent
 
 ```sh
-wn skill sync            # shows what it will write and asks; --yes to skip the question
+wn setup                 # shows what it will write and asks; --yes to skip the question
 ```
 
-installs the where-next skill for the agents found in your home directory (Claude Code, Codex,
-Cursor), so they call `wn ask --json` when they need to find where to work. A background daemon
-keeps the model and index warm between calls. Details, the optional Claude Code hook and the
-daemon's settings: [skill.md](skill.md).
+connects the agents found in your home directory (Claude Code, Codex, Cursor): the where-next
+skill, and hooks that add wn's hints to the agent's context on each prompt and after a search that
+found nothing or too much. A background daemon keeps the model and index warm. `wn stats` shows
+what the hooks did; `WN_HOOKS=0` or `wn setup --uninstall` turns them off. Details:
+[skill.md](skill.md#how-wn-plugs-into-your-agent).
 
 Clients without skills can use the MCP adapter instead: `claude mcp add -s user where-next -- wn mcp`.
 
@@ -127,7 +128,8 @@ Clients without skills can use the MCP adapter instead: `claude mcp add -s user 
 | `wn status` | Index state, model and adapter versions, last refresh |
 | `wn ask --json` | Machine-readable output, including when `wn` has no answer or no index |
 | `wn ask --no-log` | Don't record this query in the local usage log |
-| `wn skill sync` | Install or update the agent skill (`--dry-run`, `--uninstall`, `--agent`, `--project`) |
+| `wn setup` | Connect agents: skill + hooks (`--dry-run`, `--uninstall`, `--agent`, `--project`, `--no-hooks`) |
+| `wn uninstall` | Remove wn and everything it added (asks first; `--keep-models`) |
 | `wn daemon status` | Whether the background daemon runs, and what it keeps warm (`start`, `stop`) |
 | `wn train` | Refit the adapter now (normally automatic) |
 | `wn rollback` | Return to the previous adapter |
