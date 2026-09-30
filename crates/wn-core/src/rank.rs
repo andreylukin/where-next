@@ -17,6 +17,30 @@ pub const START_HINT_MIN_FILES: usize = 3000;
 /// Approximate token budget for the hint text.
 pub const TOKEN_BUDGET: usize = 250;
 
+/// Small preference for production code when the task is not about tests or examples.
+pub fn path_prior(path: &str, query: &str) -> f32 {
+    let q = query.to_ascii_lowercase();
+    if q.is_empty() {
+        return 0.0;
+    }
+    if ["test", "example", "tutorial", "fixture", "sample", "docs"]
+        .iter()
+        .any(|word| q.contains(word))
+    {
+        return 0.0;
+    }
+    if path.split('/').any(|part| {
+        matches!(
+            part,
+            "tests" | "test" | "__tests__" | "docs_src" | "examples" | "fixtures" | "testdata"
+        )
+    }) {
+        -0.12
+    } else {
+        0.0
+    }
+}
+
 /// Abstain thresholds on the top cosine similarity and its margin over the second result.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Thresholds {
@@ -446,6 +470,39 @@ pub fn budget(mut hints: Hints) -> Hints {
             hints.configs.pop();
         } else {
             hints.files.pop();
+        }
+    }
+    hints
+}
+
+/// CLI result budget: reserve a function when requested and a config for config tasks.
+pub fn budget_ask(mut hints: Hints, k: usize, with_functions: bool, wants_config: bool) -> Hints {
+    let slots = k.clamp(1, MAX_HINTS);
+    let reserve_function = usize::from(slots > 1 && with_functions && !hints.functions.is_empty());
+    let reserve_config = usize::from(
+        !hints.configs.is_empty()
+            && (hints.files.is_empty() || wants_config && slots > 1 + reserve_function),
+    );
+    hints
+        .files
+        .truncate(slots - reserve_function - reserve_config);
+    hints.functions.truncate(reserve_function);
+    hints.configs.truncate(reserve_config);
+    while cost(
+        &hints
+            .files
+            .iter()
+            .chain(&hints.functions)
+            .chain(&hints.configs)
+            .collect::<Vec<_>>(),
+    ) > TOKEN_BUDGET
+    {
+        if !hints.files.is_empty() {
+            hints.files.pop();
+        } else if !hints.configs.is_empty() {
+            hints.configs.pop();
+        } else {
+            hints.functions.pop();
         }
     }
     hints

@@ -92,6 +92,33 @@ fn wn(repo: &Path, home: &Path, args: &[&str]) -> (String, i32) {
     )
 }
 
+#[test]
+fn ask_rejects_more_than_three_hints() {
+    let repo = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let (out, code) = wn(repo.path(), home.path(), &["ask", "routes", "-k", "5"]);
+    assert_ne!(code, 0);
+    assert!(out.contains("1 to 3 hints"), "{out}");
+}
+
+#[test]
+fn exact_error_text_points_to_its_source_file() {
+    let repo = project();
+    let home = tempfile::tempdir().unwrap();
+    let (out, code) = wn(
+        repo.path(),
+        home.path(),
+        &[
+            "ask",
+            "panic: Login sessions and token verification",
+            "--json",
+        ],
+    );
+    assert_eq!(code, 0, "{out}");
+    let answer: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(answer["files"][0]["path"], "src/auth.py");
+}
+
 fn redact(text: &str, repo: &Path) -> String {
     let name = repo.file_name().unwrap().to_string_lossy();
     let mut s = text.replace(&*name, "[repo]");

@@ -181,6 +181,10 @@ fn ranking_and_answers() {
     );
     assert_eq!(out.hints.files[0].path, "src/auth.py");
     assert!(out.hints.files.len() + out.hints.functions.len() <= 3);
+    assert!(
+        !out.hints.functions.is_empty(),
+        "--functions must expose a definition"
+    );
     assert!(!out.adapter.applied);
 
     // A calibrated encoder with weak similarity abstains.

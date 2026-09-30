@@ -15,7 +15,7 @@ use crate::encoder::{EncodeError, Encoder, QueryInput};
 use crate::index::{EntryKind, Index};
 use crate::query_lifecycle::{QueryEvent, QueryLifecycle, QueryState};
 use crate::rank::{
-    abstain_with, budget, AdapterUse, AnswerState, Hint, Hints, Outcome, QueryKind, MAX_HINTS,
+    abstain_with, budget_ask, AdapterUse, AnswerState, Hint, Hints, Outcome, QueryKind, MAX_HINTS,
     MIN_SHOWN_SIMILARITY,
 };
 use crate::text::{history_body, Granularity};
@@ -268,6 +268,19 @@ pub fn suggest(
     context: &str,
     opts: SuggestOptions,
 ) -> Outcome {
+    suggest_with_exact(index, adapter, encoder, query, context, opts, &[])
+}
+
+/// As [`suggest`], with indexed files supported by rare literal matches in the request.
+pub fn suggest_with_exact(
+    index: &Index,
+    adapter: Option<&StoredAdapter>,
+    encoder: &dyn Encoder,
+    query: &str,
+    context: &str,
+    opts: SuggestOptions,
+    exact: &[String],
+) -> Outcome {
     let mut life = QueryLifecycle::default();
     let fail = |state: AnswerState, error: Option<String>| Outcome {
         state,
@@ -351,7 +364,7 @@ pub fn suggest(
         Some(format!(
             "start: {n_files} files < {min}; start hints help in large repositories"
         ))
-    } else if opts.no_abstain {
+    } else if opts.no_abstain || !exact.is_empty() {
         None
     } else {
         let kind = QueryKind::classify(query, context);
@@ -385,7 +398,7 @@ pub fn suggest(
     }
     step(&mut life, QueryEvent::Confident);
     debug_assert_eq!(life.state(), QueryState::Answer);
-    let mut files = files;
+    let mut files = index.rank_for_query(&q, EntryKind::File, opts.k, query, exact);
     files.truncate(opts.k);
     let shown = |h: &Hint| h.similarity >= MIN_SHOWN_SIMILARITY;
     // Only reachable with abstaining off: keep the top hint rather than answer with nothing.
@@ -397,13 +410,29 @@ pub fn suggest(
     let (mut functions, mut configs) = (functions, configs);
     functions.retain(shown);
     configs.retain(shown);
+    let wants_config = [
+        "config",
+        "configuration",
+        "docker",
+        "yaml",
+        "toml",
+        "manifest",
+        "settings",
+    ]
+    .iter()
+    .any(|word| query.to_ascii_lowercase().contains(word));
     Outcome {
         state: AnswerState::Ok,
-        hints: budget(Hints {
-            files,
-            functions,
-            configs,
-        }),
+        hints: budget_ask(
+            Hints {
+                files,
+                functions,
+                configs,
+            },
+            opts.k,
+            opts.with_functions,
+            wants_config,
+        ),
         abstain: None,
         error: None,
         adapter: adapter_use,

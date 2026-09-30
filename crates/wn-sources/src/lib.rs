@@ -25,6 +25,62 @@ pub const SKELETON_LIMIT: usize = 1500;
 /// Non-comment lines kept from a config file.
 pub const CONFIG_LINES: usize = 15;
 
+/// Exact fragments worth checking in indexed source files before vector ranking.
+pub fn query_literals(text: &str) -> Vec<String> {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    let pattern = PATTERN.get_or_init(|| Regex::new(r#"[\"'`]([^\"'`\n]{8,120})[\"'`]|\b([A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*|[a-z][a-z0-9]*(?:_[a-z0-9]+)+|[A-Za-z0-9_./-]+\.[A-Za-z0-9]+:\d+)\b"#).expect("literal regex"));
+    let mut out = Vec::new();
+    for hit in pattern.captures_iter(text).flatten() {
+        if let Some(m) = hit.get(1).or_else(|| hit.get(2)) {
+            let literal = m.as_str().split(':').next().unwrap_or("").trim();
+            if literal.len() >= 4 && !out.iter().any(|s| s == literal) {
+                out.push(literal.to_string());
+            }
+        }
+    }
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some((prefix, rest)) = trimmed.split_once(':') {
+            if prefix.contains("panicked")
+                || prefix.contains("Error")
+                || prefix.contains("Exception")
+                || prefix.eq_ignore_ascii_case("panic")
+            {
+                let phrase = rest
+                    .trim()
+                    .split(['.', '\n', '\'', '"', '`'])
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                if phrase.len() >= 12 && phrase.len() <= 120 && !out.iter().any(|s| s == phrase) {
+                    out.push(phrase.to_string());
+                }
+            }
+        }
+    }
+    out.truncate(12);
+    out
+}
+
+#[cfg(test)]
+mod literal_tests {
+    use super::query_literals;
+
+    #[test]
+    fn extracts_error_phrases_symbols_and_file_references() {
+        let hits = query_literals("panic: handlers are already registered for path ... at tree.go:243; FastAPIError; ShouldBindJSON; `not awaited`");
+        assert!(hits.contains(&"handlers are already registered for path".to_string()));
+        assert!(hits.contains(&"tree.go".to_string()));
+        assert!(hits.contains(&"FastAPIError".to_string()));
+        assert!(hits.contains(&"ShouldBindJSON".to_string()));
+        assert!(hits.contains(&"not awaited".to_string()));
+        let gin = query_literals("panic: handlers are already registered for path '/users/:id'");
+        assert!(gin.contains(&"handlers are already registered for path".to_string()));
+        let axum = query_literals("thread 'main' panicked: Overlapping method route. Handler for `GET /users` already exists");
+        assert!(axum.contains(&"Overlapping method route".to_string()));
+    }
+}
+
 const LANGS: &[(&str, &str)] = &[
     (".py", "python"),
     (".go", "go"),

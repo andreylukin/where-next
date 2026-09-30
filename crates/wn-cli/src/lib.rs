@@ -22,11 +22,11 @@ use wn_core::index::{EntryKind, Index, IndexedFile, RefreshStats};
 use wn_core::index_lifecycle::IndexState;
 use wn_core::rank::{render, Outcome};
 use wn_core::runtime::{
-    fit_from_history, load_adapter, save_adapter, suggest, HistoryExample, StoredAdapter,
-    SuggestOptions,
+    fit_from_history, load_adapter, save_adapter, suggest_with_exact, HistoryExample,
+    StoredAdapter, SuggestOptions,
 };
 use wn_git::{commits_since, history, repo_root, scan, Coverage};
-use wn_sources::{read_text, Kind, MAX_CONFIG_BYTES, MAX_SOURCE_BYTES};
+use wn_sources::{query_literals, read_text, Kind, MAX_CONFIG_BYTES, MAX_SOURCE_BYTES};
 
 #[cfg(feature = "onnx")]
 pub mod models;
@@ -88,6 +88,7 @@ const ASK_EXAMPLES: &str = "\
 Good queries are self-contained: say what you are looking for, plus any error text.
 Use rg/grep for exact strings and identifiers. Results are hints: open the files and check.
 \"no confident hint\" means wn abstained (nothing above the calibrated threshold): use normal search.
+Configuration queries can include one config file in the three-hint budget.
 
 Examples:
   wn ask \"where are gitignore rules matched against paths\"          good: says what to find
@@ -96,6 +97,15 @@ Examples:
   cargo test 2>&1 | wn ask \"fix the failing test\" --context-file -
   wn ask --json \"where is the config loaded\"                        state, files, adapter
   wn ask --start \"add rate limiting to the API\"                     task start; skipped below 3,000 files";
+
+fn parse_hint_count(value: &str) -> Result<usize, String> {
+    match value.parse::<usize>() {
+        Ok(n @ 1..=3) => Ok(n),
+        _ => Err(
+            "-k accepts 1 to 3 hints (the agent output cap is 3 paths / about 250 tokens)".into(),
+        ),
+    }
+}
 
 const BENCH_EXAMPLES: &str = "\
 Replays recent commits as new tasks (query = commit message, candidates = files in the parent
@@ -152,11 +162,11 @@ pub enum Command {
         /// File with recent context (conversation, last tool output); `-` reads stdin.
         #[arg(long)]
         context_file: Option<PathBuf>,
-        /// Also rank functions.
+        /// Also rank functions (first call indexes definitions and can take minutes in large repos).
         #[arg(long)]
         functions: bool,
-        /// Maximum file hints.
-        #[arg(short, default_value_t = 3)]
+        /// Maximum total hints (1-3); use --functions to reserve one for a definition.
+        #[arg(short, default_value_t = 3, value_parser = parse_hint_count)]
         k: usize,
         /// Do not apply the personal adapter.
         #[arg(long)]
@@ -1116,6 +1126,58 @@ pub struct AskArgs {
     pub no_log: bool,
 }
 
+/// Rare exact fragments give a strong file clue without searching outside the index.
+fn exact_files(ws: &Workspace, query: &str, context: &str) -> Vec<String> {
+    let text = format!(
+        "{}\n{}",
+        query,
+        context.chars().take(8192).collect::<String>()
+    );
+    let literals = query_literals(&text);
+    if literals.is_empty() {
+        return Vec::new();
+    }
+    let mut hits: Vec<Vec<String>> = vec![Vec::new(); literals.len()];
+    for path in ws.index.paths(EntryKind::File) {
+        let direct = literals
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| path.ends_with(s.as_str()));
+        for (i, _) in direct {
+            hits[i].push(path.to_string());
+        }
+        if let Ok(raw) = read_text(&ws.root.join(path), MAX_SOURCE_BYTES) {
+            for (i, literal) in literals.iter().enumerate() {
+                if raw.contains(literal) && !hits[i].iter().any(|p| p == path) {
+                    hits[i].push(path.to_string());
+                }
+            }
+        }
+    }
+    for paths in &mut hits {
+        if paths.len() > 3 {
+            let production: Vec<_> = paths
+                .iter()
+                .filter(|p| wn_core::rank::path_prior(p, query) == 0.0)
+                .cloned()
+                .collect();
+            if !production.is_empty() {
+                *paths = production;
+            }
+        }
+    }
+    let mut rare: Vec<(usize, usize)> = hits
+        .iter()
+        .enumerate()
+        .filter(|(_, paths)| (1..=3).contains(&paths.len()))
+        .map(|(i, paths)| (i, paths.len()))
+        .collect();
+    rare.sort_by_key(|&(i, count)| (count, std::cmp::Reverse(literals[i].len())));
+    rare.first()
+        .map(|&(i, _)| hits[i].clone())
+        .unwrap_or_default()
+}
+
 /// `wn ask` on an opened workspace: text or JSON, and the exit code. Shared by the in-process
 /// path and the daemon so both print the same thing.
 pub fn ask_command(ws: &mut Workspace, args: &AskArgs, context: &str, json: bool) -> (String, i32) {
@@ -1169,13 +1231,15 @@ pub fn ask_command_with(
     } else {
         None
     };
-    let outcome: Outcome = suggest(
+    let exact = exact_files(ws, &args.query, context);
+    let outcome: Outcome = suggest_with_exact(
         &ws.index,
         adapter,
         ws.encoder.as_ref(),
         &args.query,
         context,
         opts,
+        &exact,
     );
     if !args.no_log {
         record_query(

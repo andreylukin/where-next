@@ -2,8 +2,40 @@
 
 use proptest::prelude::*;
 use wn_core::rank::{
-    abstain_reason, budget, rank_of, rrf, top_k, Hint, Hints, MAX_HINTS, TOKEN_BUDGET,
+    abstain_reason, budget, budget_ask, path_prior, rank_of, rrf, top_k, Hint, Hints, MAX_HINTS,
+    TOKEN_BUDGET,
 };
+
+#[test]
+fn production_paths_win_unless_requested() {
+    assert!(path_prior("tests/test_routes.py", "where are routes matched") < 0.0);
+    assert_eq!(path_prior("src/routes.py", "where are routes matched"), 0.0);
+    assert_eq!(path_prior("tests/test_routes.py", "fix routing tests"), 0.0);
+    assert_eq!(path_prior("tests/test_routes.py", ""), 0.0);
+}
+
+#[test]
+fn ask_budget_respects_k_and_reserves_requested_kinds() {
+    let h = Hints {
+        files: vec![hint(8, 0.9, None); 3],
+        functions: vec![hint(8, 0.8, Some(8))],
+        configs: vec![hint(8, 0.7, None)],
+    };
+    let one = budget_ask(h.clone(), 1, true, true);
+    assert_eq!(
+        (one.files.len(), one.functions.len(), one.configs.len()),
+        (1, 0, 0)
+    );
+    let three = budget_ask(h, 3, true, true);
+    assert_eq!(
+        (
+            three.files.len(),
+            three.functions.len(),
+            three.configs.len()
+        ),
+        (1, 1, 1)
+    );
+}
 
 fn hint(path_len: usize, sim: f64, name: Option<usize>) -> Hint {
     Hint {
