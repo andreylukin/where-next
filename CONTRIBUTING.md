@@ -1,6 +1,11 @@
 # Contributing to where-next
 
-Thanks for helping. Two rules shape the codebase.
+Thanks for helping. Look for issues labelled
+[good first issue](https://github.com/andreylukin/where-next/labels/good%20first%20issue). Please follow
+the [Code of Conduct](CODE_OF_CONDUCT.md), and report security issues as described in
+[SECURITY.md](SECURITY.md).
+
+Two rules shape the codebase.
 
 ## 1. Tests first
 
