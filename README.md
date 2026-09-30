@@ -73,6 +73,9 @@ hit@3 = a file the real fix changed is in the top 3. ContextBench, official 500-
 - **Exact names and strings: use `rg`.** `wn` ranks by meaning.
 - **Vague follow-ups** like "now the other one" get "no confident hint" rather than a guess. Ask full
   questions.
+- **Repositories are indexed one by one.** `~` is never indexed as one repository; `wn init` in `~`
+  indexes each git repository below it, and `wn ask` there searches them all
+  ([workspace search](docs/quickstart.md#many-repositories-from-your-home-directory)).
 - **Early.** v0.1.0. Windows and Intel Macs are not supported yet.
 
 Full list: [docs/limitations.md](docs/limitations.md).

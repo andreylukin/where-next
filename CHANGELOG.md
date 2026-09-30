@@ -7,6 +7,25 @@ explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- Workspace search: in `~` or any directory of repositories, `wn init` finds the git repositories
+  up to 4 levels below it and indexes each (asking first above 10, or `--yes`), `wn status` lists
+  them with file counts and index age, and `wn ask` searches every repository indexed below the
+  directory. The query is embedded once; each repository ranks it with its own index, adapter and
+  abstain thresholds, and rankings are merged by reciprocal rank fusion so the top hints span
+  repositories. Paths are relative to the directory; `--json` adds `repo`, `root`, `repo_path`,
+  `rank`, `fused` and a `repos` list. Inside a repository nothing changes.
+- `wn mcp` started in such a directory, and agent hooks whose session starts there, search the same
+  way (hooks through the daemon only, within the same time budget).
+- Repository cache directories record their root (`root.json`), so a parent directory finds the
+  indexes below it; older caches fall back to the usage log's copy.
+
+### Changed
+
+- The daemon keeps at most 64 repositories open, closing the least recently used idle one. Its
+  protocol version is now 2 (an older daemon is replaced automatically).
+
 ## [0.1.2] - 2026-09-30
 
 ### Added
