@@ -39,7 +39,7 @@ pub mod skill;
 pub mod stats;
 pub mod uninstall;
 
-/// `wn --version`: the crate version plus the commit it was built from, e.g. `0.1.0 (abc1234 2026-09-29)`.
+/// `wn --version`: the crate version plus the commit it was built from, e.g. `0.1.1 (abc1234 2026-09-29)`.
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("WN_VERSION_SUFFIX"));
 
 /// Command-line interface.
