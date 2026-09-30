@@ -66,10 +66,14 @@ hit@3 = a file the real fix changed is in the top 3. ContextBench, official 500-
 .46, `wn` .76, with adapter .80. Protocols and more models: [benchmarks](benchmarks/README.md) ·
 [FAQ](docs/faq.md#how-is-this-different-from-embedding-search).
 
+On 102 real closed issues, the title alone put a fixed file in the top 3 49% of the time vs 31% for
+grepping its identifiers; with full bodies grep is ahead ([issue titles](benchmarks/issue-titles.md)).
+
 ## Limits
 
-- **No measured agent savings.** Three controlled trials found no lower cost or higher success for
-  agents ([agent trial](benchmarks/agent-trial.md)). Use it as navigation, not a cost-saver.
+- **No measured agent savings.** Four controlled trials found no lower cost or higher success for a
+  capable agent; even handing it the files the real fix touched barely helped
+  ([agent trials](benchmarks/agent-trial.md)). Use it as navigation, not a cost-saver.
 - **Exact names and strings: use `rg`.** `wn` ranks by meaning.
 - **Vague follow-ups** like "now the other one" get "no confident hint" rather than a guess. Ask full
   questions.

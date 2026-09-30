@@ -7,7 +7,8 @@ traces to one of these protocols.
 |---|---|---|
 | [ContextBench](contextbench.md) | Does it find the right files in unfamiliar repositories? | Protocol final; `wn bench --contextbench` |
 | [History replay](history-replay.md) | How well does it work on *my* repository, and does the adapter help? | `wn bench --history` |
-| [Agent trial](agent-trial.md) | Does it save an agent cost and time without hurting success? | Three trials done, no cost benefit shown ([details](agent-trial.md)) |
+| [Issue titles](issue-titles.md) | Does a bug report's title point at the file the real fix changed, compared with grep? | One run on 102 real issues: 49% vs 31% hit@3, title only |
+| [Agent trial](agent-trial.md) | Does it save an agent cost and time without hurting success? | Five trials done, no cost benefit shown; oracle hints barely help a capable agent ([details](agent-trial.md)) |
 | CI gate | Did this pull request make quality or latency worse? | Planned |
 
 Metrics are defined once, in [metrics.md](metrics.md).
