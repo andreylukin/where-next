@@ -29,6 +29,10 @@ right file sooner but didn't lower cost or raise success, so we don't claim agen
   read a right file (10.2k vs 18.6k median), but that didn't turn into lower cost or more solves, and
   the size trend suggested by the second trial did not replicate.
 
+A later [oracle trial](../benchmarks/agent-trial.md#trial-4-oracle-headroom-codex-september-30-2026)
+gave a capable agent the exact files the real fix edits, and even that barely helped (+3.4 points,
+−5.2 to +12.1): navigation isn't where these agents get stuck.
+
 So `wn` is positioned as fast local navigation for people and an **opt-in** tool for agents. Run
 `wn setup` to connect Claude Code, Codex or Cursor with a skill and hooks, or use `wn ask --start`
 for a manual task-start hint.

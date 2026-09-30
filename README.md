@@ -66,6 +66,9 @@ hit@3 = a file the real fix changed is in the top 3. ContextBench, official 500-
 .46, `wn` .76, with adapter .80. Protocols and more models: [benchmarks](benchmarks/README.md) ·
 [FAQ](docs/faq.md#how-is-this-different-from-embedding-search).
 
+On 102 real closed issues, the title alone put a fixed file in the top 3 49% of the time vs 31% for
+grepping its identifiers; with full bodies grep is ahead ([issue titles](benchmarks/issue-titles.md)).
+
 ## Limits
 
 - **No measured agent savings.** Three controlled trials found no lower cost or higher success for
