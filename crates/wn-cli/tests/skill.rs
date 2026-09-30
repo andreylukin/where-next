@@ -1,7 +1,8 @@
 //! `wn setup` / `wn skill sync` end to end with a temporary HOME: installs for detected agents, is
 //! idempotent, shows a diff for outdated copies, never overwrites files it did not write, needs
 //! `--yes` without a terminal, re-syncs from recorded state, uninstalls, and merges the Claude
-//! Code, Codex and Cursor hooks into their settings without touching other content.
+//! Code, Codex and Cursor hooks into their settings without touching other content (bough gets
+//! hook files of its own).
 
 use std::fs;
 use std::path::Path;
@@ -269,7 +270,8 @@ fn the_hook_is_silent_outside_indexed_repositories() {
 #[test]
 fn edit_hooks_is_idempotent_and_reversible_on_arbitrary_other_hooks() {
     use wn_cli::skill::{edit_hooks, Agent};
-    for agent in Agent::ALL {
+    // bough has hook files, no settings file.
+    for agent in Agent::ALL.into_iter().filter(|a| *a != Agent::Bough) {
         // Other hooks, including an empty entry and an event we also use, stay as they are.
         let mut v = serde_json::json!({
             "hooks": {
@@ -366,6 +368,78 @@ fn setup_connects_codex_and_cursor_hooks_and_uninstall_restores_everything() {
     assert!(!codex.exists(), "a file only wn wrote is deleted: {out}");
     let c: serde_json::Value = serde_json::from_str(&fs::read_to_string(&cursor).unwrap()).unwrap();
     assert_eq!(c, theirs);
+}
+
+#[test]
+fn setup_connects_bough_with_hook_files_and_uninstall_removes_only_those() {
+    let env = Env::new(&[".bough"]);
+    let hooks = env.home().join(".bough/hooks");
+    // The user's own hook for an event we also use stays.
+    let theirs = hooks.join("user-prompt-submit/tag.js");
+    fs::create_dir_all(theirs.parent().unwrap()).unwrap();
+    fs::write(&theirs, "return {input: event.input + \"!\"};\n").unwrap();
+    let file = |event: &str| hooks.join(event).join("where-next.js");
+
+    let (out, code) = env.wn(&["setup", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    let skill = fs::read_to_string(env.skill(".bough")).unwrap();
+    assert_eq!(
+        skill,
+        wn_cli::skill::rendered_for(wn_cli::skill::Agent::Bough)
+    );
+    assert!(
+        skill.contains("\nmanual: true\n---\n"),
+        "no injection on every mention: {skill}"
+    );
+    for (event, kind) in [
+        ("session-start", "bough-start"),
+        ("user-prompt-submit", "bough-prompt"),
+        ("post-result", "bough-search"),
+    ] {
+        let js = fs::read_to_string(file(event)).unwrap();
+        assert!(js.contains(wn_cli::skill::BOUGH_MARKER), "{js}");
+        assert!(js.contains(&format!(" hook {kind}\"")), "{js}");
+    }
+    assert!(wn_cli::skill::connected(env.home(), None));
+
+    let (out, code) = env.wn(&["setup", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("nothing to change"), "{out}");
+
+    // An edited copy is brought back; a hand-written file in our place is left alone.
+    fs::write(file("post-result"), "// managed by `wn setup`\nstale\n").unwrap();
+    fs::write(file("session-start"), "return;\n").unwrap();
+    let (out, code) = env.wn(&["setup", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("not written by wn"), "{out}");
+    assert!(!fs::read_to_string(file("post-result"))
+        .unwrap()
+        .contains("stale"));
+    assert_eq!(
+        fs::read_to_string(file("session-start")).unwrap(),
+        "return;\n"
+    );
+
+    let (out, code) = env.wn(&["setup", "--uninstall", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(!env.skill(".bough").exists());
+    assert!(!file("user-prompt-submit").exists() && !file("post-result").exists());
+    assert!(!hooks.join("post-result").exists(), "emptied event dirs go");
+    assert!(theirs.exists());
+    assert_eq!(
+        fs::read_to_string(file("session-start")).unwrap(),
+        "return;\n"
+    );
+}
+
+#[test]
+fn bough_hook_files() {
+    use wn_cli::skill::{bough_hook, hook_entries, Agent};
+    let files: Vec<String> = hook_entries(Agent::Bough)
+        .iter()
+        .map(|e| format!("// {}/where-next.js\n{}", e.event, bough_hook(e, "wn")))
+        .collect();
+    insta::assert_snapshot!("bough_hook_files", files.join("\n"));
 }
 
 #[test]

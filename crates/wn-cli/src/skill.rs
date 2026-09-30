@@ -1,4 +1,4 @@
-//! `wn setup` (alias `wn skill sync`): connects Claude Code, Codex and Cursor to wn. Per agent it
+//! `wn setup` (alias `wn skill sync`): connects Claude Code, Codex, Cursor and bough to wn. Per agent it
 //! installs the where-next skill (`SKILL.md`) and hooks that add wn's hints to the agent's context
 //! (see [`crate::hooks`]), keeps both current, and removes them again with `--uninstall`.
 //!
@@ -7,11 +7,13 @@
 //! | claude | `~/.claude/skills/where-next/SKILL.md`                       | `~/.claude/settings.json` |
 //! | codex  | `~/.agents/skills/where-next/SKILL.md`                       | `~/.codex/hooks.json`     |
 //! | cursor | `~/.cursor/skills/where-next/SKILL.md`                       | `~/.cursor/hooks.json`    |
+//! | bough  | `~/.bough/skills/where-next/SKILL.md`                        | `~/.bough/hooks/<event>/where-next.js` |
 //!
 //! Only files carrying the managed marker are updated or removed; anything else at a skill target
 //! is reported as a conflict and left alone. Hook entries are recognised by their command
 //! (`… wn hook <agent>-<moment>`); everything else in a settings file is kept as it is, and a
-//! file that is not valid JSON is left alone. Installed targets are recorded in
+//! file that is not valid JSON is left alone. bough's hooks are whole `.js` files, one per event,
+//! recognised by [`BOUGH_MARKER`]. Installed targets are recorded in
 //! `$WHERE_NEXT_HOME/skills.json` so `wn update` can re-sync them (`--from-state`).
 //!
 //! The sync itself is an explicit state machine ([`SyncState`]): plan, review (diff + confirm),
@@ -39,6 +41,9 @@ pub const MARKER: &str = "<!-- managed by `wn skill sync`";
 /// [`crate::hooks::DEFAULT_BUDGET_MS`] or prints nothing).
 pub const HOOK_TIMEOUT_S: u64 = 5;
 
+/// Marker line identifying bough hook files this command manages.
+pub const BOUGH_MARKER: &str = "// managed by `wn setup`";
+
 /// `wn skill …`
 #[derive(Debug, Clone, Subcommand)]
 pub enum SkillAction {
@@ -55,8 +60,8 @@ pub struct SyncArgs {
     /// Agents to connect (default: those detected in your home directory).
     #[arg(long = "agent", value_enum)]
     pub agents: Vec<AgentArg>,
-    /// Install into this repository (`.claude/`, `.agents/`, `.codex/`, `.cursor/`) instead of
-    /// your home directory.
+    /// Install into this repository (`.claude/`, `.agents/`, `.codex/`, `.cursor/`, `.bough/`)
+    /// instead of your home directory.
     #[arg(long)]
     pub project: bool,
     /// Show what would change without writing anything.
@@ -81,7 +86,7 @@ pub struct SyncArgs {
 
 pub const SETUP_EXAMPLES: &str = "\
 Installs, per detected agent, the where-next skill and hooks that add wn's hints to the agent's
-context: on every prompt (Claude Code, Codex) and after a search that found nothing or too much
+context: on every prompt (Claude Code, Codex, bough) and after a search that found nothing or too much
 (rg/grep/find/fd, Grep/Glob tools). Shows every file it will write and asks first. Hooks never
 block: they answer within 1.5 s or print nothing, and stay silent when wn is unsure, the repository
 is not indexed, or WN_HOOKS=0. `wn stats` shows what they did.
@@ -91,7 +96,7 @@ Examples:
   wn setup                                 agents detected in your home directory
   wn setup --agent claude --yes
   wn setup --no-hooks                      only the skill
-  wn setup --project                       this repository's .claude/.agents/.codex/.cursor
+  wn setup --project                       this repository's .claude/.agents/.codex/.cursor/.bough
   wn setup --uninstall                     remove everything wn setup added";
 
 /// `--agent` values.
@@ -100,6 +105,7 @@ pub enum AgentArg {
     Claude,
     Codex,
     Cursor,
+    Bough,
     All,
 }
 
@@ -110,16 +116,18 @@ pub enum Agent {
     Claude,
     Codex,
     Cursor,
+    Bough,
 }
 
 impl Agent {
-    pub const ALL: [Agent; 3] = [Agent::Claude, Agent::Codex, Agent::Cursor];
+    pub const ALL: [Agent; 4] = [Agent::Claude, Agent::Codex, Agent::Cursor, Agent::Bough];
 
     fn dir_name(self) -> &'static str {
         match self {
             Agent::Claude => ".claude",
             Agent::Codex => ".agents",
             Agent::Cursor => ".cursor",
+            Agent::Bough => ".bough",
         }
     }
 
@@ -128,12 +136,21 @@ impl Agent {
         base.join(self.dir_name()).join("skills").join("where-next")
     }
 
-    /// The file holding this agent's hooks under `base`.
-    pub fn hook_file(self, base: &Path) -> PathBuf {
+    /// The files holding this agent's hooks under `base`: one settings file, or for bough one
+    /// hook file per event.
+    pub fn hook_files(self, base: &Path) -> Vec<PathBuf> {
         match self {
-            Agent::Claude => base.join(".claude").join("settings.json"),
-            Agent::Codex => base.join(".codex").join("hooks.json"),
-            Agent::Cursor => base.join(".cursor").join("hooks.json"),
+            Agent::Claude => vec![base.join(".claude").join("settings.json")],
+            Agent::Codex => vec![base.join(".codex").join("hooks.json")],
+            Agent::Cursor => vec![base.join(".cursor").join("hooks.json")],
+            Agent::Bough => hook_entries(self)
+                .iter()
+                .map(|e| {
+                    base.join(".bough/hooks")
+                        .join(e.event)
+                        .join("where-next.js")
+                })
+                .collect(),
         }
     }
 
@@ -143,6 +160,7 @@ impl Agent {
             Agent::Claude => home.join(".claude").is_dir(),
             Agent::Codex => home.join(".codex").is_dir() || home.join(".agents").is_dir(),
             Agent::Cursor => home.join(".cursor").is_dir(),
+            Agent::Bough => home.join(".bough").is_dir(),
         }
     }
 
@@ -152,6 +170,7 @@ impl Agent {
             Agent::Claude => "Claude Code",
             Agent::Codex => "Codex",
             Agent::Cursor => "Cursor",
+            Agent::Bough => "bough",
         }
     }
 }
@@ -162,6 +181,7 @@ impl fmt::Display for Agent {
             Agent::Claude => "claude",
             Agent::Codex => "codex",
             Agent::Cursor => "cursor",
+            Agent::Bough => "bough",
         })
     }
 }
@@ -191,6 +211,17 @@ pub fn rendered() -> String {
             format!("---\n{front}{marker}\n{body}")
         }
         None => format!("{marker}\n{SKILL}"),
+    }
+}
+
+/// The file written for `agent`. bough's gets `manual: true`: bough injects a skill into the turn
+/// whenever its name appears in the prompt, and every hint the prompt hook adds names where-next;
+/// a manual skill stays in bough's skill catalogue for the model to read.
+pub fn rendered_for(agent: Agent) -> String {
+    let text = rendered();
+    match agent {
+        Agent::Bough => text.replacen("\n---\n", "\nmanual: true\n---\n", 1),
+        _ => text,
     }
 }
 
@@ -237,7 +268,8 @@ pub struct HookEntry {
 /// The hooks installed for an agent. Claude Code and Codex share the `settings.json` hooks shape
 /// (`hooks.<Event>[].hooks[]`); Cursor uses `hooks.json` version 1 (`hooks.<event>[]`).
 /// Every agent gets a session-start warm-up. Cursor's prompt hook (`beforeSubmitPrompt`) cannot
-/// add context, so Cursor gets no prompt hook.
+/// add context, so Cursor gets no prompt hook. bough runs a `.js` file per event (see
+/// [`bough_hook`]).
 pub fn hook_entries(agent: Agent) -> &'static [HookEntry] {
     const CLAUDE: &[HookEntry] = &[
         // Warm-up: starts the daemon so the first prompt's hook does not wait for the model.
@@ -292,11 +324,85 @@ pub fn hook_entries(agent: Agent) -> &'static [HookEntry] {
             kind: HookKind::CursorSearch,
         },
     ];
+    const BOUGH: &[HookEntry] = &[
+        HookEntry {
+            event: "session-start",
+            matcher: None,
+            kind: HookKind::BoughStart,
+        },
+        HookEntry {
+            event: "user-prompt-submit",
+            matcher: None,
+            kind: HookKind::BoughPrompt,
+        },
+        HookEntry {
+            event: "post-result",
+            matcher: Some("bash"),
+            kind: HookKind::BoughSearch,
+        },
+    ];
     match agent {
         Agent::Claude => CLAUDE,
         Agent::Codex => CODEX,
         Agent::Cursor => CURSOR,
+        Agent::Bough => BOUGH,
     }
+}
+
+/// The bough hook file for `e`: the body of a function bough runs on the event in its code-mode
+/// VM. It hands the event, with the session's id and directory, to `wn hook …` on stdin (bough's
+/// `tools.bash` gives a command no stdin of its own, and returns stdout and stderr together, so
+/// stderr is dropped) and appends the context wn prints to the prompt (`input`) or to the search's
+/// output (`result`). The prompt hook keeps the prompt in a VM global for the search hook to pass
+/// along as context. Any error returns nothing, which leaves the event as it was.
+pub fn bough_hook(e: &HookEntry, program: &str) -> String {
+    let command = serde_json::to_string(&hook_command(program, e.kind)).unwrap_or_default();
+    let (description, key) = match e.kind {
+        HookKind::BoughPrompt => ("add wn's hints for the prompt to it", Some("input")),
+        HookKind::BoughSearch => (
+            "add wn's hints to a search that found nothing or too much",
+            Some("result"),
+        ),
+        _ => ("start wn's daemon so the first prompt gets hints", None),
+    };
+    let mut js = format!(
+        "// Description: where-next: {description}.\n{BOUGH_MARKER}; edits here are overwritten, see https://github.com/andreylukin/where-next\n"
+    );
+    js.push_str("var session = {};\ntry { session = bough.session(); } catch (e) {}\n");
+    if let Some(tool) = e.matcher {
+        js.push_str(&format!("if (event.tool !== \"{tool}\") return;\n"));
+    }
+    let mut fields = format!(
+        r#"hook_event_name: "{}", session_id: session.id || "", cwd: session.cwd || """#,
+        e.event
+    );
+    match e.kind {
+        HookKind::BoughPrompt => js.push_str("globalThis.whereNextPrompt = event.input;\n"),
+        HookKind::BoughSearch => fields.push_str(r#", prompt: globalThis.whereNextPrompt || """#),
+        _ => {}
+    }
+    js.push_str(&format!(
+        "var payload = JSON.stringify(Object.assign({{}}, event, {{ {fields} }}));\n"
+    ));
+    js.push_str(&format!(
+        r#"var out;
+try {{
+  out = tools.bash("printf '%s' '" + payload.replace(/'/g, "'\\''") + "' | " + {command} + " 2>/dev/null");
+}} catch (e) {{
+  return;
+}}
+"#
+    ));
+    if let Some(key) = key {
+        js.push_str(&format!(
+            r#"var context;
+try {{ context = JSON.parse(out.split("\n")[0]).context; }} catch (e) {{ return; }}
+if (!context) return;
+return {{ {key}: event.{key} + "\n\n" + context }};
+"#
+        ));
+    }
+    js
 }
 
 fn our_command_re() -> &'static Regex {
@@ -573,7 +679,12 @@ fn has_our_entries(text: &str) -> bool {
 pub fn connected(home: &Path, root: Option<&Path>) -> bool {
     Agent::ALL.iter().any(|a| {
         std::iter::once(home).chain(root).any(|base| {
-            std::fs::read_to_string(a.hook_file(base)).is_ok_and(|t| has_our_entries(&t))
+            a.hook_files(base).iter().any(|p| {
+                std::fs::read_to_string(p).is_ok_and(|t| match a {
+                    Agent::Bough => t.contains(BOUGH_MARKER),
+                    _ => has_our_entries(&t),
+                })
+            })
         })
     })
 }
@@ -699,6 +810,47 @@ pub fn hook_item(
     if path.exists() && existing.is_none() {
         return item(HookAction::Invalid, None);
     }
+    if agent == Agent::Bough {
+        // The whole file is ours when it carries the marker; any other file is left alone.
+        let ours = existing.as_deref().map(|t| t.contains(BOUGH_MARKER));
+        let entry = hook_entries(agent)
+            .iter()
+            .find(|e| path.parent().and_then(Path::file_name) == Some(e.event.as_ref()));
+        return match (uninstall, ours, entry) {
+            (true, Some(true), _) => item(HookAction::Delete, None),
+            (true, _, _) => item(HookAction::Absent, None),
+            (false, Some(false), _) => item(
+                HookAction::Skipped {
+                    reason: "a file not written by wn is there (left alone)".into(),
+                },
+                None,
+            ),
+            (false, _, None) => item(
+                HookAction::Skipped {
+                    reason: "not a bough event wn hooks into".into(),
+                },
+                None,
+            ),
+            (false, _, Some(e)) => {
+                let new = bough_hook(e, program);
+                match existing.as_deref() {
+                    Some(old) if old == new => item(HookAction::Unchanged, None),
+                    Some(old) => item(
+                        HookAction::Update {
+                            diff: diff(old, &new),
+                        },
+                        Some(new),
+                    ),
+                    None => item(
+                        HookAction::Create {
+                            diff: diff("", &new),
+                        },
+                        Some(new),
+                    ),
+                }
+            }
+        };
+    }
     let value = match existing.as_deref() {
         None => Value::Object(Default::default()),
         Some(t) if t.trim().is_empty() => Value::Object(Default::default()),
@@ -805,10 +957,10 @@ pub fn plan(
     hook_files: &[(Agent, PathBuf, Option<HookRecord>)],
     program: &str,
 ) -> Plan {
-    let new = rendered();
     let items = targets
         .iter()
         .map(|t| {
+            let new = rendered_for(t.agent);
             let existing = std::fs::read_to_string(&t.path).ok();
             let ours = existing.as_deref().is_some_and(|s| s.contains(MARKER));
             let action = match (uninstall, existing) {
@@ -851,7 +1003,7 @@ pub struct HookRecord {
 pub struct State {
     pub version: String,
     pub targets: Vec<Target>,
-    /// Hook files (Claude settings, Codex and Cursor hooks.json).
+    /// Hook files (Claude settings, Codex and Cursor hooks.json, bough hook files).
     #[serde(default)]
     pub hooks: Vec<HookRecord>,
     /// Older releases recorded only a Claude settings file here.
@@ -935,7 +1087,6 @@ fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
 pub fn apply(plan: &Plan, home: &Path, uninstall: bool) -> Result<Vec<String>, String> {
     let mut lines = Vec::new();
     let mut state = load_state(home);
-    let new = rendered();
     // A settings file edited since the plan was shown is not overwritten.
     for h in &plan.hooks {
         let writes = matches!(
@@ -955,7 +1106,7 @@ pub fn apply(plan: &Plan, home: &Path, uninstall: bool) -> Result<Vec<String>, S
     for (target, action) in &plan.items {
         match action {
             Action::Create | Action::Update { .. } => {
-                write_atomic(&target.path, &new)
+                write_atomic(&target.path, &rendered_for(target.agent))
                     .map_err(|e| format!("{}: {e}", target.path.display()))?;
                 lines.push(format!("{}: wrote {}", target.agent, target.path.display()));
                 if !state.targets.contains(target) {
@@ -1012,6 +1163,12 @@ pub fn apply(plan: &Plan, home: &Path, uninstall: bool) -> Result<Vec<String>, S
             }
             (HookAction::Delete, _) => {
                 std::fs::remove_file(&h.path).map_err(|e| format!("{}: {e}", h.path.display()))?;
+                // bough's `hooks/<event>` directory, if that left it empty.
+                if h.agent == Agent::Bough {
+                    if let Some(dir) = h.path.parent() {
+                        let _ = std::fs::remove_dir(dir);
+                    }
+                }
                 lines.push(format!("{} hooks: deleted {}", h.agent, h.path.display()));
                 state.hooks.retain(|r| r.path != h.path);
             }
@@ -1275,6 +1432,7 @@ pub fn targets(
                 AgentArg::Claude => Some(Agent::Claude),
                 AgentArg::Codex => Some(Agent::Codex),
                 AgentArg::Cursor => Some(Agent::Cursor),
+                AgentArg::Bough => Some(Agent::Bough),
                 AgentArg::All => None,
             })
             .collect();
@@ -1336,10 +1494,11 @@ fn hook_files(args: &SyncArgs, targets: &[Target], base: &Path, state: &State) -
     agents.dedup();
     let mut out: Vec<HookFile> = agents
         .iter()
-        .map(|a| {
-            let p = a.hook_file(base);
-            let r = record(&p);
-            (*a, p, r)
+        .flat_map(|a| {
+            a.hook_files(base).into_iter().map(|p| {
+                let r = record(&p);
+                (*a, p, r)
+            })
         })
         .collect();
     if args.uninstall {
