@@ -289,3 +289,25 @@ fn an_unwritable_cache_directory_is_an_error_not_a_silent_skip() {
     assert!(result.is_err(), "{result:?}");
     assert_eq!(ix.state(), S::Idle);
 }
+
+#[test]
+fn the_stored_revision_changes_only_when_an_indexer_marks_a_change() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut a = Indexer::new(dir.path());
+    let b = Indexer::new(dir.path());
+    let start = b.revision();
+    assert!(a.mark_changed().is_err(), "only the lock holder may mark");
+    assert!(a.try_begin().unwrap());
+    a.finish(true);
+    assert_eq!(b.revision(), start, "a no-op run keeps the revision");
+    assert!(a.try_begin().unwrap());
+    a.mark_changed().unwrap();
+    a.mark_changed().unwrap();
+    a.finish(true);
+    let after = b.revision();
+    assert_ne!(after, start);
+    assert!(a.try_begin().unwrap());
+    a.mark_changed().unwrap();
+    a.finish(false);
+    assert_ne!(b.revision(), after, "a failed run that wrote still counts");
+}

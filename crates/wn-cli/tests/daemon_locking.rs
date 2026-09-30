@@ -286,3 +286,35 @@ fn two_indexers_of_one_repository_embed_each_file_once() {
     );
     assert_eq!(embedded.load(Ordering::SeqCst), 40);
 }
+
+#[test]
+fn rollback_waits_for_a_running_indexer_of_the_repository() {
+    let home = cache_home();
+    let r = repo(5);
+    let (enc, info) = shared(Gated {
+        inner: HashEncoder::default(),
+        tag: "rollback",
+        gate: gate(true),
+        embedded: Arc::new(AtomicUsize::new(0)),
+        delay: Duration::ZERO,
+    });
+    let mut ws = Workspace::open_in(&root(&r), home, enc, info);
+    std::fs::create_dir_all(ws.dir.join("adapter")).unwrap();
+    // Another indexer (say a `wn init` fitting the adapter) holds the lock.
+    let mut other = wn_daemon::indexer::Indexer::new(&ws.dir);
+    assert!(other.try_begin().unwrap());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let t = std::thread::spawn(move || {
+        let msg = ws.rollback();
+        tx.send(()).unwrap();
+        (msg, ws)
+    });
+    assert!(
+        rx.recv_timeout(Duration::from_millis(300)).is_err(),
+        "rollback ran while another indexer held the lock"
+    );
+    other.finish(true);
+    let (msg, ws) = t.join().unwrap();
+    assert!(msg.unwrap().starts_with("adapter: removed"));
+    assert!(!ws.dir.join("adapter").exists());
+}

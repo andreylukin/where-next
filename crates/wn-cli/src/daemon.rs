@@ -191,7 +191,7 @@ pub enum OpKind {
 
 /// Builds the request for a command (context already read by the caller).
 pub fn request(cli: &Cli, kind: OpKind, context: &str) -> Option<Request> {
-    let root = wn_git::repo_root(&cli.path);
+    let root = crate::project_root(&cli.path);
     let root = root.canonicalize().unwrap_or(root);
     let model = crate::resolve_model(cli.model.as_deref())
         .map(|m| m.canonicalize().unwrap_or(m).to_string_lossy().into_owned());

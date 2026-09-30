@@ -147,6 +147,10 @@ impl IndexerLifecycle {
 /// Name of the lock file inside a repository's cache directory.
 pub const LOCK_FILE: &str = "index.lock";
 
+/// Name of the revision marker: rewritten (under the lock) whenever an indexer changed what is
+/// stored, so others know to reload instead of trusting file modification times.
+pub const REVISION_FILE: &str = "index.rev";
+
 /// An indexer for one repository cache directory: the [`IndexerLifecycle`] driven by an
 /// exclusive advisory lock on [`LOCK_FILE`] (released when the work ends or the process dies).
 #[derive(Debug)]
@@ -168,6 +172,40 @@ impl Indexer {
 
     pub fn state(&self) -> IndexerState {
         self.life.state()
+    }
+
+    fn revision_path(&self) -> PathBuf {
+        self.path.with_file_name(REVISION_FILE)
+    }
+
+    /// The stored revision (empty before any change was marked). Read it before loading the
+    /// index, then compare after taking the lock: a difference means another indexer stored
+    /// something newer since.
+    pub fn revision(&self) -> String {
+        std::fs::read_to_string(self.revision_path()).unwrap_or_default()
+    }
+
+    /// Records that this indexer changed what is stored (only while `Indexing`).
+    pub fn mark_changed(&mut self) -> io::Result<()> {
+        if !self.state().holds_lock() {
+            return Err(io::Error::other(
+                "mark_changed without holding the index lock",
+            ));
+        }
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let token = format!(
+            "{}-{nanos}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        );
+        let path = self.revision_path();
+        let tmp = path.with_extension(format!("rev.{token}"));
+        std::fs::write(&tmp, token)?;
+        std::fs::rename(&tmp, &path)
     }
 
     fn event(&mut self, event: IndexerEvent) {
@@ -272,6 +310,7 @@ mod lock {
     }
 
     pub fn exclusive(_file: &File) -> io::Result<()> {
+        // TODO(windows): take a real exclusive lock (LockFileEx); Windows is untested.
         Ok(())
     }
 }

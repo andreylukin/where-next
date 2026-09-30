@@ -121,6 +121,8 @@ pub struct Workspace {
     last_scan: Option<Scan>,
     /// One indexer per repository across processes (shared with the `wn` CLI and daemon).
     indexer: crate::indexer::Indexer,
+    /// The stored revision this copy of the index reflects (see [`crate::indexer`]).
+    revision: String,
     pub options: SuggestOptions,
     /// Minimum source files for task-start hints (see [`Workspace::ask_as`]).
     pub start_min_files: usize,
@@ -131,17 +133,21 @@ impl Workspace {
     /// yet; call [`Workspace::apply`] with a scan).
     pub fn open(root: &Path, cache_home: &Path, encoder: SharedEncoder) -> Self {
         let dir = model_cache_dir(cache_home, root, &encoder.fingerprint());
+        let indexer = crate::indexer::Indexer::new(&dir);
+        // Read before loading: a change stored in between then triggers a reload.
+        let revision = indexer.revision();
         let index = Index::open(&dir.join("index"), &encoder.fingerprint());
         let adapter =
             load_adapter(&dir.join("adapter")).filter(|a| a.meta.base == encoder.fingerprint());
         Self {
             root: root.to_path_buf(),
-            dir: dir.clone(),
+            dir,
             encoder,
             index,
             adapter,
             last_scan: None,
-            indexer: crate::indexer::Indexer::new(&dir),
+            indexer,
+            revision,
             options: SuggestOptions::default(),
             start_min_files: wn_core::rank::START_HINT_MIN_FILES,
         }
@@ -186,10 +192,19 @@ impl Workspace {
             .indexer
             .begin(|| {})
             .map_err(|e| format!("cannot write to {}: {e}", self.dir.display()))?;
-        if waited {
+        if waited || self.indexer.revision() != self.revision {
+            // Another indexer stored something newer since this copy was loaded.
+            self.revision = self.indexer.revision();
             self.index = Index::open(&self.dir.join("index"), &self.encoder.fingerprint());
         }
         let result = self.apply_locked(scan);
+        let changed = match &result {
+            Ok(stats) => stats.encoded > 0 || stats.removed > 0,
+            Err(_) => true,
+        };
+        if changed && self.indexer.mark_changed().is_ok() {
+            self.revision = self.indexer.revision();
+        }
         self.indexer.finish(result.is_ok());
         result
     }

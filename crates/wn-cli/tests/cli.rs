@@ -536,3 +536,44 @@ fn mcp_outside_a_git_repository_starts_and_fails_open_per_call() {
         .flatten()
         .all(|e| !e.path().join("index").exists()));
 }
+
+/// A git repository at `$HOME` (dotfiles) never stands in for a project below it: a plain command
+/// in a non-repository subdirectory is refused like `$HOME` itself, and `--any-dir` indexes only
+/// that subdirectory, not the whole home directory.
+#[test]
+fn a_git_home_directory_never_stands_in_for_a_subdirectory() {
+    let cache = tempfile::tempdir().unwrap();
+    let home = git_dir();
+    write(home.path(), "dotfiles/x.rs", "fn x() {}\n");
+    write(home.path(), "other/y.rs", "fn y() {}\n");
+    let project = home.path().join("project");
+    write(&project, "a.rs", "fn a() {}\n");
+    write(&project, "b.rs", "fn b() {}\n");
+    let run = |args: &[&str]| {
+        let out = wn_command(&project, cache.path())
+            .env("HOME", home.path())
+            .args(args)
+            .output()
+            .unwrap();
+        let text = if out.status.success() {
+            out.stdout
+        } else {
+            out.stderr
+        };
+        (
+            String::from_utf8_lossy(&text).into_owned(),
+            out.status.code().unwrap_or(-1),
+        )
+    };
+    let (err, code) = run(&["ask", "where is a"]);
+    assert_eq!(code, 2, "{err}");
+    assert!(err.contains("home directory"), "{err}");
+    let (out, code) = run(&["--any-dir", "status", "--json"]);
+    assert_eq!(code, 0, "{out}");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["files"], 2, "{out}");
+    assert_eq!(
+        Path::new(v["repo"].as_str().unwrap()),
+        project.canonicalize().unwrap()
+    );
+}
