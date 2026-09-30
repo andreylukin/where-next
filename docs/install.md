@@ -14,8 +14,9 @@
 The unsupported platforms need ONNX Runtime built from source; that is on the roadmap.
 
 **Resources:** the default model is a ~1.2 GB download, stored once under
-`~/.cache/where-next-models`. Indexes are small (a few MB per repository, under
-`~/.cache/where-next`). The background daemon that keeps the model warm uses about 1.2–1.6 GB of RAM
+`~/.cache/where-next-models`. Indexes live under `~/.cache/where-next` and grow with
+the repository: a few MB for a small one, tens of MB for a large one (the vectors alone for
+kubernetes' ~20k indexed files are about 62 MB). The background daemon that keeps the model warm uses about 1.2–1.6 GB of RAM
 and exits after 15 idle minutes. The first `wn init` on a large repository takes minutes (about
 6.5 minutes and 1.6 GB peak memory for kubernetes on an Apple M-series laptop; see
 [building.md](building.md#measured-apple-m-series-laptop-cpu-fp32)).
@@ -58,8 +59,8 @@ If your shell then says `wn: command not found`, open a new terminal (after a fr
 | `--dry-run` | print what would happen; no download, clone or build |
 | `--uninstall` | remove the `wn` binary and the private clone (caches and models are kept) |
 | `WN_MODEL_SOURCE` | pull the model from a local dir, an `https://` URL or `hf:owner/repo[@rev]` |
-| `WN_VERSION` | release tag to install (default: latest) |
-| `WN_INSTALL_DIR` | where a prebuilt binary goes (default `~/.local/bin`) |
+| `WN_VERSION` | release mode (prebuilt binary): release tag to install (default: latest) |
+| `WN_INSTALL_DIR` | release mode (prebuilt binary): where the binary goes (default `~/.local/bin`) |
 | `WN_HOME` | private clone location for source builds (default `~/.local/share/where-next`) |
 | `WN_BIN_ROOT` | `cargo install --root` for source builds (default: cargo's own, usually `~/.cargo`) |
 | `WN_REPO_URL` | source repository (default this repo; a local path works too) |

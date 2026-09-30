@@ -5,7 +5,7 @@ where-next keeps three kinds of knowledge in three different places.
 | Layer | What it knows | Where it lives | How it changes |
 |---|---|---|---|
 | **Model weights** (skill) | How to judge whether a resource is relevant to a task: issue words to file and symbol names, error text to where errors come from | The downloaded model file | Only when a new model is released |
-| **Index** (memory) | What is in this repository right now: one vector per file and function skeleton | `~/.cache/where-next/<repo>/` | Incrementally, for changed files only |
+| **Index** (memory) | What is in this repository right now: one vector per file skeleton (and per function, once `--functions` is used) | `~/.cache/where-next/<repo>/` | Incrementally, for changed files only |
 | **Adapter and usage log** (learning) | This repository's habits: which kinds of change touch which files, its abbreviations and conventions | Next to the index | Refit from git history, and later from local usage |
 
 ## One query

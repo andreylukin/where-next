@@ -6,7 +6,7 @@ description: Find which files to open or edit next in a repository with the loca
 # where-next (`wn`)
 
 `wn` ranks the files most likely relevant to a description, from a local model and this
-repository's own git history (tens of milliseconds once its background process is warm). Treat its
+repository's own git history (about 100 ms per call once its background daemon is warm). Treat its
 answers as hints: open the files and verify.
 
 ## When to call it

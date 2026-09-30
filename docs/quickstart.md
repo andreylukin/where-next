@@ -30,7 +30,8 @@ Run it inside a git repository: `wn` refuses other directories and your home dir
 than indexing everything under them. `wn init` does two things, once per repository:
 
 1. Indexes the repository with the installed model (or keyword matching if none is installed): one
-   vector per file and function skeleton, plus config files. Untracked files are included; files
+   vector per file, plus config files. Function vectors are built the first time you use
+   `wn ask --functions`. Untracked files are included; files
    ignored by git are not. This takes seconds on a small repository and a few minutes on a big one
    (about 6.5 minutes for kubernetes), with progress printed as it goes.
 2. Learns from the repository's recent commit history (fits a small per-repo adapter), in seconds

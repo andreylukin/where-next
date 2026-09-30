@@ -47,7 +47,7 @@ back to plain keyword matching, which is much weaker, and says so. Install it an
 
 More options (pinning a version, uninstalling, verifying releases): [docs/install.md](docs/install.md).
 
-## First run
+## Quick start
 
 ```sh
 cd your-repo
@@ -58,8 +58,9 @@ wn ask "where is the retry logic for upload timeouts"
 `wn` only works inside a git repository (it refuses other directories, and your home directory,
 rather than indexing everything under them). `wn init` takes seconds on a small repository and a few
 minutes on a big one (about 6.5 minutes for kubernetes' ~20k indexed files on a laptop CPU); it
-prints progress while it works and is incremental after that. Once the background process is warm,
-answers take tens of milliseconds.
+prints progress while it works and is incremental after that. Once the background daemon is warm, a
+`wn ask` takes about 80–100 ms end to end (p50; 180–200 ms p95, measured on a 3,000-file repository
+under load; see [docs/skill.md](docs/skill.md#the-daemon)).
 
 ## Honest status
 
