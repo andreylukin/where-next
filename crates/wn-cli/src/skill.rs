@@ -167,7 +167,9 @@ impl Agent {
     /// The first existing directory under which this user cannot write the agent's skill or hook
     /// file, if any: e.g. a config directory left owned by root by a run with sudo.
     pub fn unwritable(self, base: &Path) -> Option<PathBuf> {
-        [self.skill_dir(base), self.hook_file(base)]
+        std::iter::once(self.skill_dir(base))
+            .chain(self.hook_files(base))
+            .collect::<Vec<_>>()
             .iter()
             .filter_map(|p| p.ancestors().find(|d| d.is_dir()))
             .find(|d| tempfile::tempfile_in(d).is_err())
