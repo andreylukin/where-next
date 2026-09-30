@@ -4,8 +4,12 @@ A source turns something in a workspace into indexable resources. Code files are
 configs, logs, docs (Notion, Markdown), and CLI `--help` sections are next. Sources live in the
 `wn-sources` crate.
 
-> The plugin interface is being built in milestone M1. This page describes the intended contract so
-> contributors can plan; it will be updated with the real trait once it lands.
+> There is no plugin trait yet. Today everything lives in
+> [`crates/wn-sources/src/lib.rs`](../crates/wn-sources/src/lib.rs): `LANGS` / `lang_of` (which
+> extensions are source code), `kind_of` and `CONFIG_NAMES` (source vs config vs skipped),
+> `symbols` (definitions per language), and `skeleton` / `config_doc` (the text the model reads). A
+> new language or file kind is a change there, with tests next to it. This page describes the
+> contract a future plugin trait will formalize.
 
 ## What a source provides
 

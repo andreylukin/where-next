@@ -5,7 +5,7 @@ where-next keeps three kinds of knowledge in three different places.
 | Layer | What it knows | Where it lives | How it changes |
 |---|---|---|---|
 | **Model weights** (skill) | How to judge whether a resource is relevant to a task: issue words to file and symbol names, error text to where errors come from | The downloaded model file | Only when a new model is released |
-| **Index** (memory) | What is in this repository right now: one vector per file and function skeleton | `~/.cache/where-next/<repo>/` | Incrementally, for changed files only |
+| **Index** (memory) | What is in this repository right now: one vector per file skeleton (and per function, once `--functions` is used) | `~/.cache/where-next/<repo>/` | Incrementally, for changed files only |
 | **Adapter and usage log** (learning) | This repository's habits: which kinds of change touch which files, its abbreviations and conventions | Next to the index | Refit from git history, and later from local usage |
 
 ## One query
@@ -16,9 +16,9 @@ where-next keeps three kinds of knowledge in three different places.
    transforms the query, so refitting it never invalidates the index.
 3. The query vector is compared with every stored vector (cosine similarity), and the closest
    candidates are kept.
-4. Abstain rules check whether the best candidate is clearly better than the rest. If not, `wn`
-   returns no hint.
-5. At most 3 results go back, each with its score and a short reason.
+4. Abstain rules check the best candidate against a threshold calibrated for this model and kind
+   of query. If nothing scores above it, `wn` returns no hint and says so.
+5. At most 3 results go back, each with its score.
 
 ## What the index stores
 
@@ -34,7 +34,7 @@ the repository's vocabulary and structure. It is fitted in seconds on CPU becaus
 frozen; only a small matrix is learned.
 
 In the research prototype, on one private repository with eight architecture rewrites, the adapter
-raised hit@3 from .65 to .80 over the fine-tuned model alone, and re-adapted within 100 to 200
+raised hit@3 from .70 to .83 over the default fine-tuned model alone, and re-adapted within 100 to 200
 commits after each rewrite. Ranking by recency alone scored .37, so the adapter is learning more than
 "what changed recently".
 
@@ -44,8 +44,9 @@ The model is a small embedding model fine-tuned with a contrastive loss on outco
 
 - commit message to the files and functions it changed,
 - issue text to the files the accepted fix edited,
-- files an agent opened and then edited (positives) versus opened and abandoned (hard negatives),
-- an error or stack trace to where the fix landed.
+- an error or stack trace to where the fix landed,
+
+with mined hard negatives.
 
 Evaluation repositories are excluded from training. Details live in
 [training/README.md](../training/README.md) and [datasets/README.md](../datasets/README.md).

@@ -4,9 +4,10 @@
 
 Use both. Grep (`rg`) is the right tool when you know the exact string, symbol or error message, and
 where-next does not replace it. where-next helps when you know *what* you want but not *what it is
-called*: "where do we retry uploads?", "which config controls the port?". In our benchmark, plain
-lexical ranking (BM25) put a correct file in the top 3 for about 37% of ContextBench tasks; the
-fine-tuned model did so for about 74%.
+called*: "where do we retry uploads?", "which config controls the port?". On ContextBench, the default
+model put a correct file in the top 3 for about 76% of the tasks in repositories held out from its
+training; on all 1,136 tasks, plain lexical ranking (BM25) managed about 37%. (Different subsets; see
+[benchmarks](../benchmarks/README.md).)
 
 ## Why not my editor's codebase index?
 
@@ -22,8 +23,8 @@ Editor indexes are search over your code. where-next differs in three ways:
 ## Does it replace my coding agent's exploration?
 
 No. It gives the agent a good first pointer, or says nothing. The agent still reads, searches and
-decides. A wrong hint costs a detour, which is why `wn` returns at most 3 results and abstains when
-it isn't confident.
+decides. A wrong hint costs a detour, which is why `wn` returns at most 3 results and says it has
+no confident hint when nothing scores above a calibrated threshold.
 
 ## Does it help agents in practice?
 
@@ -39,15 +40,22 @@ benefit, treat where-next as fast local navigation, with the start hint as an op
 
 ## What does it do badly?
 
-- Short conversational follow-ups ("now do the same for the other one"): about .25 hit@3 so far.
+- Short conversational follow-ups ("now do the same for the other one"): about .31 hit@3 so far.
 - Exact identifiers and strings, where grep is better.
 - Files it cannot see: anything ignored by git, or resource types without a source yet.
-- Deciding when to stay quiet: current abstain thresholds withhold too many good hints on issue-style
-  questions. Calibration per model and query type is in progress.
+- Deciding when to stay quiet: thresholds are calibrated per model and query kind on held-out
+  queries, but not perfectly; expect it to sometimes answer when it should have stayed quiet, and the
+  reverse.
 
 ## Does it send my code anywhere?
 
 No. See [privacy-and-licensing.md](privacy-and-licensing.md).
+
+## Which platforms does it run on?
+
+macOS on Apple silicon, and Linux (x86_64, arm64) with glibc 2.35+ (Ubuntu 22.04+, Debian 12+). Older
+Linux, Intel Macs and musl aren't supported yet because of the ONNX Runtime builds `wn` uses (the
+installer says so before downloading anything); Windows is untested. See [install.md](install.md#platforms).
 
 ## Why Rust?
 

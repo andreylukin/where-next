@@ -31,7 +31,7 @@ pub struct WhereNextArgs {
     #[serde(default)]
     pub context: Option<String>,
     #[schemars(
-        description = "True when asking at the start of a task, before any search: small repositories (under 3,000 source files) then get a skip, since start hints only pay off in large ones."
+        description = "Optional, off by default: true when asking at the start of a task, before any search. Skipped in repositories under 3,000 source files. In agent trials it did not lower cost, so only set it when you want an orientation hint."
     )]
     #[serde(default)]
     pub start: Option<bool>,
@@ -68,7 +68,7 @@ impl WhereNextServer {
     }
 
     #[tool(
-        description = "Suggest up to 3 files in this repository worth opening next for a task. Send a self-contained query (what you are looking for plus any error text), not a terse follow-up. Scores are similarities, not probabilities. Only state \"ok\" (or \"stale_index\") carries hints; any other state (abstain, empty_index, unsupported_scope, error) means use ordinary search instead."
+        description = "Suggest up to 3 files in this repository worth opening next, for when you know what you are looking for but not what it is called. Send a self-contained query (what you are looking for plus any error text), not a terse follow-up. For an exact identifier, string or error message you already know, use grep/rg instead. Scores are similarities, not probabilities. Only state \"ok\" (or \"stale_index\") carries hints; any other state (abstain: nothing scored above a calibrated threshold; empty_index, unsupported_scope, error) means use ordinary search instead."
     )]
     fn where_next(
         &self,

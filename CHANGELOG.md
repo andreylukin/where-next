@@ -7,6 +7,38 @@ explicitly.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-30
+
+The first release. The launch changes (#32–#39) come first, then everything else in this version.
+
+### Launch changes
+
+- **Abstention works again** (#34): with the repository adapter on, `wn ask` says "no confident hint"
+  on vague or gibberish queries instead of always answering; rows that would print as `0.00` are
+  never shown; an empty query is rejected (exit 2) unless `--context-file` supplies context.
+- **Truthful `ask` flags and exact-match evidence** (#33): `-k` accepts 1–3 and rejects larger
+  values; `--functions` reserves a hint slot for a definition (its first call indexes every
+  definition). A file that literally contains a distinctive name from the query is marked `(exact)`
+  in text output and `"evidence": "exact"` in JSON (similarity stays the raw cosine), and can be
+  ranked higher. Test and example files are down-weighted unless the query asks for them. CLI and
+  MCP share one answer path.
+- **Git guard, progress and a responsive daemon** (#36): `init`, `status`, `ask`, `train`,
+  `rollback`, `bench` and `mcp` refuse (exit 2) a path outside a git repository, or your home
+  directory or `/`; `--any-dir` overrides. `wn mcp` started outside a repository keeps running and
+  answers each call with that error. Model loading and indexing print progress on stderr. The
+  daemon locks per repository, so a big first index no longer blocks other repositories, and
+  `wn daemon status` reports "busy" instead of "not running". Index failures exit 1 with a message.
+- **Release binaries by default** (#35, #39): `install.sh` installs a checksum-verified release
+  binary into `~/.local/bin` and falls back to a source build only when no binary is published for
+  the platform. Linux binaries bundle ONNX Runtime and run on glibc 2.35+ (Ubuntu 22.04+,
+  Debian 12+). Older glibc and Intel Macs are refused before anything is downloaded. `wn update`
+  re-runs the installer for release installs. `wn model pull` shows progress and resumes
+  interrupted downloads.
+- **Launch docs** (#32): the README opens with a demo recorded on kubernetes (`docs/demo.tape`),
+  install, quick start and an honest status. Platforms, the ~1.2 GB model and daemon memory are
+  stated up front, and LAUNCH.md was removed. The skill and the MCP tool description treat
+  `--start` as opt-in and say when to use `rg`. There is a new "First run" issue template.
+
 ### Added
 
 - `wn stats`: whether agents acted on wn's hints, from Claude Code and Codex transcripts read
@@ -67,7 +99,7 @@ explicitly.
   reads, ancestry among commits).
 - `wn model pull | list | remove`: install models from a local directory, an `https://` base URL or
   `hf:owner/repo[@revision]`, verified against their SHA-256 manifest before use; shows the Gemma
-  Terms of Use notice on first install. No default source yet (`--source` is required).
+  Terms of Use notice on first install.
 - Release pipeline in dry-run form: signed-provenance (on tags), checksummed binaries for macOS
   (Apple silicon), Linux (x86_64, arm64) and Windows, SBOMs, `install.sh` with checksum
   verification, a Homebrew formula template, and crates publishable as `where-next`.
@@ -89,12 +121,12 @@ explicitly.
 - Docs: building and testing guide; agent-trial pilot 1 results.
 - `wn` command: `init`, `ask` (`--json`, `--context-file`, `--start`), `status`, `train`, `rollback`
   and `mcp` (MCP server over stdio), sharing one index per repository and model with the server.
-- Model resolution: `--model`, `$WN_MODEL_DIR`, else the best installed model: `gemma-xl1`, then
-  `gemma-g2r`, then `v2b`; the lexical fallback says why it is in use.
+- Model resolution: `--model`, `$WN_MODEL_DIR`, else the best installed model (`gemma-xl1` first);
+  the lexical fallback says why it is in use.
 - `query_format` v2 in `wn-model.json` (request, last tool output, earlier context), with golden
   parity against the reference; v1 queries drop the oldest context to fit the token window.
 - Abstain calibration per model and per query kind (`calibration.json`, with built-in calibrations
-  for `v2b`, `gemma-g2r` and `gemma-xl1`); issue-style task starts never abstain.
+  for `gemma-xl1` and earlier research models).
 - Task-start hints skip repositories with fewer than 3,000 source files (`--start-min-files`).
 - Resumable first index: checkpoints every 1,024 documents; ranking reads vectors in place.
 - `doc_throughput` benchmark example and measured kubernetes numbers in docs/building.md.
@@ -110,5 +142,5 @@ explicitly.
   agent to the right file sooner, but did not reduce cost or change success, so we make no
   agent-savings claim. The pitch is fast local navigation for people and agents.
 - Default model is now the EmbeddingGemma-300M fine-tune `gemma-xl1` (preliminary ContextBench
-  held-out hit@3 .76, .80 with the adapter; previously Qwen3-Embedding-0.6B `v2b`, .72 and .78).
+  held-out hit@3 .76, .80 with the adapter; previously a Qwen3-Embedding-0.6B fine-tune, .72 and .78).
 - The hard-coded calibrated-model constant was replaced by calibration files.

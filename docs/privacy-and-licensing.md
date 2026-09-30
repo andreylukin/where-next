@@ -4,7 +4,8 @@
 
 Everything. The model runs locally. The index, adapter and usage log are stored under
 `~/.cache/where-next/`. There is no account, no login, and no telemetry. The only network access is
-the one-time model download, which is checksum-verified. `wn stats` also reads your coding agents'
+the model download (checksum-verified), plus `wn update` (fetching a new version) and `wn report`
+(only after you confirm). `wn stats` also reads your coding agents'
 transcripts on this machine (see below); it stores nothing from them and sends nothing.
 
 ## The usage log
@@ -83,7 +84,7 @@ contain none of them; a property test does the same with random content; a snaps
 format.
 
 Posted reports are validated and aggregated by a GitHub Action into `stats/reports.jsonl` and
-`stats/SUMMARY.md` on the repository's `stats` branch (hit@3 by repository size and language,
+`stats/SUMMARY.md` on a `stats` branch, which is created once the first reports arrive (hit@3 by repository size and language,
 latency by hardware, abstain rate, hint usefulness).
 
 ## Licensing
@@ -100,7 +101,7 @@ latency by hardware, abstain rate, hint usefulness).
 The default model is fine-tuned from `google/embeddinggemma-300m`, so it is a model derivative of
 Gemma and is distributed under the [Gemma Terms of Use](https://ai.google.dev/gemma/terms), including
 the use restrictions they reference. The model card states that it was modified by where-next. Using
-it does not imply any endorsement by Google. `wn init` shows this notice before the first download.
+it does not imply any endorsement by Google. The installer and `wn model pull` show this notice when the model is first installed.
 
 If you need a model without these terms, the planned alternative model is Apache-2.0.
 
