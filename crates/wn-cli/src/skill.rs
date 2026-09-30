@@ -601,6 +601,40 @@ fn codex_inline_hooks(hooks_json: &Path) -> bool {
     })
 }
 
+/// Whether the inline config contains every Codex command suggested by `wn setup`.
+fn codex_inline_hooks_connected(hooks_json: &Path) -> bool {
+    let Ok(toml) = std::fs::read_to_string(hooks_json.with_file_name("config.toml")) else {
+        return false;
+    };
+    let entries = hook_entries(Agent::Codex);
+    let mut found = vec![false; entries.len()];
+    let mut section = None;
+    let mut command_type = false;
+    for line in toml.lines().map(str::trim) {
+        if line.starts_with('[') {
+            section = entries
+                .iter()
+                .position(|entry| line == format!("[[hooks.{}.hooks]]", entry.event));
+            command_type = false;
+        } else if let Some(index) = section {
+            if let Some((key, value)) = line.split_once('=') {
+                match key.trim() {
+                    "type" => command_type = value.trim() == "\"command\"",
+                    "command" if command_type => {
+                        if let Ok(command) = serde_json::from_str::<String>(value.trim()) {
+                            found[index] |= is_our_command(&command)
+                                && command.split_whitespace().last()
+                                    == Some(entries[index].kind.name());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    found.into_iter().all(|present| present)
+}
+
 /// What happens to one agent's hook file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
@@ -611,6 +645,8 @@ pub enum HookAction {
     Update { diff: String },
     /// Already as it should be.
     Unchanged,
+    /// All Codex hooks are present in config.toml, which the user manages.
+    ConnectedManually,
     /// Our entries are removed; everything else stays.
     Remove { diff: String },
     /// The file only held our entries and `wn setup` created it: it is deleted.
@@ -672,6 +708,9 @@ pub fn hook_item(
         },
     };
     if !uninstall && agent == Agent::Codex && codex_inline_hooks(path) {
+        if codex_inline_hooks_connected(path) {
+            return item(HookAction::ConnectedManually, None);
+        }
         return item(
             HookAction::Skipped {
                 reason: "config.toml next to it defines hooks inline; add them there by hand (see docs/skill.md)".into(),
@@ -1039,6 +1078,7 @@ pub fn render_plan(plan: &Plan) -> String {
             HookAction::Create { .. } => "create".to_string(),
             HookAction::Update { .. } => "add where-next hooks".to_string(),
             HookAction::Unchanged => "up to date".to_string(),
+            HookAction::ConnectedManually => "hooks connected manually in config.toml".to_string(),
             HookAction::Remove { .. } => "remove where-next hooks".to_string(),
             HookAction::Delete => "delete (only where-next hooks in it)".to_string(),
             HookAction::Absent => "no where-next hooks".to_string(),
@@ -1264,6 +1304,8 @@ pub struct SyncReport {
     pub applied: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub codex_inline_hook_notice: Option<String>,
 }
 
 /// Runs `wn skill …`.
@@ -1371,6 +1413,31 @@ fn after_notes(plan: &Plan, uninstall: bool) -> Vec<String> {
     notes
 }
 
+fn codex_inline_hook_note(plan: &Plan, program: &str) -> Option<String> {
+    let skipped = plan
+        .hooks
+        .iter()
+        .find(|h| h.agent == Agent::Codex && matches!(h.action, HookAction::Skipped { .. }))?;
+    let config = skipped.path.with_file_name("config.toml");
+    let mut note = format!(
+        "Codex: hooks NOT connected (config.toml defines hooks inline). Add these entries to {}:",
+        config.display()
+    );
+    for entry in hook_entries(Agent::Codex) {
+        note.push_str(&format!("\n\n[[hooks.{}]]", entry.event));
+        if let Some(matcher) = entry.matcher {
+            note.push_str(&format!("\nmatcher = {}", serde_json::json!(matcher)));
+        }
+        note.push_str(&format!(
+            "\n[[hooks.{}.hooks]]\ntype = \"command\"\ncommand = {}\ntimeout = {}",
+            entry.event,
+            serde_json::json!(hook_command(program, entry.kind)),
+            HOOK_TIMEOUT_S
+        ));
+    }
+    Some(note)
+}
+
 /// Runs `wn setup` / `wn skill sync`.
 pub fn run_sync(args: &SyncArgs, cli: &crate::Cli) -> (String, i32) {
     let wn_home = crate::home();
@@ -1382,7 +1449,8 @@ pub fn run_sync(args: &SyncArgs, cli: &crate::Cli) -> (String, i32) {
     }
     let (targets, hooks) = resolve(args, root.as_deref(), &home, &recorded);
     let mut life = SyncLifecycle::default();
-    let plan = plan(&targets, args.uninstall, &hooks, &hook_program());
+    let program = hook_program();
+    let plan = plan(&targets, args.uninstall, &hooks, &program);
     let mut applied = Vec::new();
     let mut message = None;
     if plan.has_changes() {
@@ -1427,11 +1495,17 @@ pub fn run_sync(args: &SyncArgs, cli: &crate::Cli) -> (String, i32) {
             let _ = apply(&plan, &wn_home, args.uninstall);
         }
     }
+    let codex_inline_hook_notice = if args.uninstall {
+        None
+    } else {
+        codex_inline_hook_note(&plan, &program)
+    };
     let report = SyncReport {
         state: format!("{:?}", life.state()).to_lowercase(),
         plan,
         applied,
         message,
+        codex_inline_hook_notice,
     };
     let code = match life.state() {
         S::Failed => 1,
@@ -1466,6 +1540,10 @@ pub fn run_sync(args: &SyncArgs, cli: &crate::Cli) -> (String, i32) {
         for note in after_notes(&report.plan, args.uninstall) {
             text.push('\n');
             text.push_str(&note);
+        }
+        if let Some(note) = &report.codex_inline_hook_notice {
+            text.push('\n');
+            text.push_str(note);
         }
     }
     (text, code)

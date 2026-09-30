@@ -296,6 +296,11 @@ pub fn parse(kind: HookKind, input: &str) -> Option<Trigger> {
                 .and_then(|r| r.first())
                 .and_then(Value::as_str)
                 .map(PathBuf::from)
+        })
+        .or_else(|| {
+            (kind == HookKind::CursorStart)
+                .then(std::env::current_dir)?
+                .ok()
         })?;
     let event = s(&v, "hook_event_name")
         .unwrap_or(kind.default_event())
