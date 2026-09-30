@@ -47,6 +47,19 @@ fn paint(style: Style, text: &str) -> String {
     format!("{style}{text}{style:#}")
 }
 
+/// Make untrusted repository text printable without terminal controls.
+pub fn escape_controls(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        if ch.is_control() {
+            out.push_str(&format!("\\u{{{:x}}}", ch as u32));
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 /// One row's left side: styled text and its visible width.
 struct Row {
     styled: String,
@@ -55,10 +68,10 @@ struct Row {
 }
 
 fn path_row(h: &Hint) -> (String, usize) {
-    let (dir, file) = h
-        .path
+    let path = escape_controls(&h.path);
+    let (dir, file) = path
         .rsplit_once('/')
-        .map_or(("", h.path.as_str()), |(d, f)| (d, f));
+        .map_or(("", path.as_str()), |(d, f)| (d, f));
     let dir = if dir.is_empty() {
         String::new()
     } else {
@@ -66,7 +79,7 @@ fn path_row(h: &Hint) -> (String, usize) {
     };
     (
         format!("{}{}", paint(DIM, &dir), paint(BOLD, file)),
-        h.path.chars().count(),
+        path.chars().count(),
     )
 }
 
@@ -89,7 +102,7 @@ fn rows(out: &Outcome) -> Vec<Row> {
         let tail = format!(
             ":{}  {}",
             h.line.unwrap_or(0),
-            h.name.as_deref().unwrap_or("")
+            escape_controls(h.name.as_deref().unwrap_or(""))
         );
         styled.push_str(&paint(LOC, &tail));
         width += tail.chars().count();
@@ -129,7 +142,7 @@ pub fn render(out: &Outcome, note: Option<&str>) -> String {
             let reason = if reason.is_empty() {
                 String::new()
             } else {
-                format!(" {}", paint(DIM, &format!("({reason})")))
+                format!(" {}", paint(DIM, &format!("({})", escape_controls(reason))))
             };
             lines.push(format!(
                 "{}{reason}; try rg for exact names, or add detail",
@@ -148,14 +161,18 @@ pub fn render(out: &Outcome, note: Option<&str>) -> String {
                 (AnswerState::StaleIndex, _) => {
                     "the index is out of date (run `wn init`); use normal search".to_string()
                 }
-                (_, Some(d)) => format!("wn could not answer ({d}); use normal search"),
+                (_, Some(d)) => format!("wn could not answer ({}); use normal search", escape_controls(d)),
                 (_, None) => "wn could not answer; use normal search".to_string(),
             };
             lines.push(paint(WARN, &text));
         }
     }
     if let Some(note) = note {
-        lines.push(format!("{} {note}", paint(WARN, "note:")));
+        lines.push(format!(
+            "{} {}",
+            paint(WARN, "note:"),
+            escape_controls(note)
+        ));
     }
     lines.join("\n")
 }
@@ -211,6 +228,17 @@ deploy/app.yaml  (config)      0.30"
         let plain = finish(styled, false);
         assert!(!plain.contains('\x1b'));
         assert!(plain.ends_with("\nnote: x"));
+    }
+
+    #[test]
+    fn repository_text_cannot_emit_terminal_controls() {
+        let mut out = sample();
+        out.hints.files[0].path = "src/socket_\x1b[2J_\u{007f}\u{0085}.rs".into();
+        out.hints.functions[0].name = Some("retry\x1b[31m\nUpload".into());
+        let colored = render(&out, None);
+        assert!(colored.contains("socket_\\u{1b}[2J_\\u{7f}\\u{85}.rs"));
+        assert!(colored.contains("retry\\u{1b}[31m\\u{a}Upload"));
+        assert_eq!(colored.matches('\n').count(), 3);
     }
 
     #[test]

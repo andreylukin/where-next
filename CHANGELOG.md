@@ -7,6 +7,13 @@ explicitly.
 
 ## [Unreleased]
 
+### Fixed
+
+- Text output escapes terminal controls in repository paths and symbol names, including with
+  `--color always`.
+- `wn ask --json` reports `fallback` on answers so agents can see lexical fallback use.
+- `wn update --help` describes release and source update behavior accurately.
+
 ## [0.1.1] - 2026-09-30
 
 ### Added
