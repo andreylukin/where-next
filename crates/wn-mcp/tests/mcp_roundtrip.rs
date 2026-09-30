@@ -56,6 +56,10 @@ fn args(v: Value) -> serde_json::Map<String, Value> {
 #[tokio::test]
 async fn tools_answer_over_mcp() {
     let dir = repo();
+    let mut billing = fs::read_to_string(dir.path().join("billing.py")).unwrap();
+    billing.push_str(&"# padding\n".repeat(200));
+    billing.push_str("# panic: Peacock teapot quantum failure\n");
+    fs::write(dir.path().join("billing.py"), billing).unwrap();
     let cache = tempfile::tempdir().unwrap();
     let mut ws = Workspace::open(dir.path(), cache.path(), Arc::new(HashEncoder { dim: 128 }));
     ws.options.no_abstain = true;
@@ -99,6 +103,18 @@ async fn tools_answer_over_mcp() {
     assert_eq!(answer["state"], "ok");
     assert_eq!(answer["files"][0]["path"], "billing.py");
     assert!(answer["files"].as_array().unwrap().len() <= 3);
+
+    let exact = client
+        .call_tool(
+            CallToolRequestParams::new("where_next").with_arguments(args(serde_json::json!({
+                "query": "panic: Peacock teapot quantum failure"
+            }))),
+        )
+        .await
+        .unwrap();
+    let answer = text(&exact);
+    assert_eq!(answer["files"][0]["path"], "billing.py");
+    assert_eq!(answer["files"][0]["evidence"], "exact");
 
     let status = client
         .call_tool(CallToolRequestParams::new("status"))

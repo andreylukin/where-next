@@ -85,6 +85,8 @@ Clients without skills can use the MCP adapter instead: `claude mcp add where-ne
 |---|---|
 | `wn status` | Index state, model and adapter versions, last refresh |
 | `wn ask --json` | Machine-readable output, including abstain and fail-open states |
+
+In `--json` answers, each file keeps its raw cosine `similarity`. A file promoted by a rare literal in the query also has `"evidence": "exact"`; other hints omit `evidence`. File order reflects ranking evidence and may differ from similarity order.
 | `wn ask --no-log` | Don't record this query in the local usage log |
 | `wn skill sync` | Install or update the agent skill (`--dry-run`, `--uninstall`, `--agent`, `--project`) |
 | `wn daemon status` | Whether the background daemon runs, and what it keeps warm (`start`, `stop`) |

@@ -18,7 +18,7 @@ use wn_sources::{config_doc, file_doc, function_docs, Kind, CONFIG_LINES};
 
 use crate::encoder::{EncodeError, Encoder};
 use crate::index_lifecycle::{IndexEvent, IndexLifecycle, IndexState};
-use crate::rank::{round4, select_top, Hint};
+use crate::rank::{auxiliary_dir, path_prior, round4, select_top, Hint};
 
 /// Documents embedded between checkpoints by default.
 pub const CHECKPOINT_EVERY: usize = 1024;
@@ -152,6 +152,14 @@ impl Index {
     /// Number of entries of a kind.
     pub fn count(&self, kind: EntryKind) -> usize {
         self.entries.iter().filter(|e| e.kind == kind).count()
+    }
+
+    /// Paths currently represented by this index kind.
+    pub fn paths(&self, kind: EntryKind) -> impl Iterator<Item = &str> {
+        self.entries
+            .iter()
+            .filter(move |e| e.kind == kind)
+            .map(|e| e.path.as_str())
     }
 
     /// Entries and their vectors (row-major) for one kind.
@@ -359,10 +367,30 @@ impl Index {
 
     /// Top `k` entries of `kind` for an (already adapted, normalised) query vector.
     pub fn rank(&self, q: &[f32], kind: EntryKind, k: usize) -> Vec<Hint> {
+        self.rank_for_query(q, kind, k, "", &[])
+    }
+
+    /// Rank with task-specific path and exact-literal evidence; displayed similarities stay raw.
+    pub fn rank_for_query(
+        &self,
+        q: &[f32],
+        kind: EntryKind,
+        k: usize,
+        query: &str,
+        exact: &[String],
+    ) -> Vec<Hint> {
         if self.dim == 0 || q.len() != self.dim {
             return Vec::new();
         }
         let d = self.dim;
+        let file_count = self.count(EntryKind::File);
+        let mostly_auxiliary = file_count > 0
+            && self
+                .paths(EntryKind::File)
+                .filter(|p| auxiliary_dir(p))
+                .count()
+                * 2
+                > file_count;
         let scored: Vec<(usize, f32)> = self
             .entries
             .iter()
@@ -370,17 +398,33 @@ impl Index {
             .filter(|(_, e)| e.kind == kind)
             .map(|(i, _)| {
                 let row = &self.vecs[i * d..(i + 1) * d];
-                (i, row.iter().zip(q).map(|(a, b)| a * b).sum())
+                let raw: f32 = row.iter().zip(q).map(|(a, b)| a * b).sum();
+                let path = &self.entries[i].path;
+                let prior = if kind == EntryKind::File && !mostly_auxiliary {
+                    path_prior(path, query)
+                } else {
+                    0.0
+                };
+                let exact_boost = if kind == EntryKind::File && exact.iter().any(|p| p == path) {
+                    0.5
+                } else {
+                    0.0
+                };
+                (i, raw + prior + exact_boost)
             })
             .collect();
         select_top(scored, k)
             .into_iter()
-            .map(|(i, score)| {
+            .map(|(i, _)| {
                 let e = &self.entries[i];
                 let func = kind == EntryKind::Function;
+                let row = &self.vecs[i * d..(i + 1) * d];
+                let score: f32 = row.iter().zip(q).map(|(a, b)| a * b).sum();
                 Hint {
                     path: e.path.clone(),
                     similarity: round4(score),
+                    evidence: (kind == EntryKind::File && exact.iter().any(|p| p == &e.path))
+                        .then(|| "exact".to_string()),
                     name: if func { e.name.clone() } else { None },
                     line: if func { Some(e.line) } else { None },
                 }

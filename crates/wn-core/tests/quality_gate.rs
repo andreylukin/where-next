@@ -138,6 +138,7 @@ fn quality_gate() {
                 .map(|(i, sim)| Hint {
                     path: i.to_string(),
                     similarity: *sim as f64,
+                    evidence: None,
                     name: None,
                     line: None,
                 })

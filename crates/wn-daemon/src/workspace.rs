@@ -16,8 +16,8 @@ use wn_core::index::{EntryKind, Index, IndexedFile, RefreshStats};
 use wn_core::index_lifecycle::IndexState;
 use wn_core::rank::Outcome;
 use wn_core::runtime::{
-    fit_from_history, load_adapter, save_adapter, suggest, HistoryExample, StoredAdapter,
-    SuggestOptions,
+    fit_from_history, load_adapter, save_adapter, suggest_with_exact, HistoryExample,
+    StoredAdapter, SuggestOptions,
 };
 use wn_git::Coverage;
 
@@ -251,13 +251,14 @@ impl Workspace {
             .last_scan
             .as_ref()
             .is_some_and(|s| s.files.is_empty() && s.coverage.unsupported > 0);
-        suggest(
+        suggest_with_exact(
             &self.index,
             self.adapter.as_ref(),
             self.encoder.as_ref(),
             query,
             context,
             opts,
+            Some(&self.root),
         )
     }
 

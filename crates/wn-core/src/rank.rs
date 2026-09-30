@@ -17,6 +17,51 @@ pub const START_HINT_MIN_FILES: usize = 3000;
 /// Approximate token budget for the hint text.
 pub const TOKEN_BUDGET: usize = 250;
 
+/// Small preference for production code when the task is not about tests or examples.
+pub fn path_prior(path: &str, query: &str) -> f32 {
+    let q = query.to_ascii_lowercase();
+    if q.is_empty() {
+        return 0.0;
+    }
+    if q.split(|c: char| !c.is_ascii_alphanumeric()).any(|word| {
+        [
+            "test", "tests", "example", "examples", "tutorial", "fixture", "sample", "docs",
+            "spec", "mocks",
+        ]
+        .contains(&word)
+    }) {
+        return 0.0;
+    }
+    let filename = path.rsplit('/').next().unwrap_or(path);
+    if auxiliary_dir(path)
+        || filename.starts_with("test_")
+        || filename.contains("_test.")
+        || filename.contains("_spec.")
+    {
+        -0.12
+    } else {
+        0.0
+    }
+}
+
+/// Whether a path is located under an auxiliary directory.
+pub fn auxiliary_dir(path: &str) -> bool {
+    path.split('/').any(|part| {
+        matches!(
+            part,
+            "tests"
+                | "test"
+                | "__tests__"
+                | "docs_src"
+                | "examples"
+                | "fixtures"
+                | "testdata"
+                | "spec"
+                | "__mocks__"
+        )
+    })
+}
+
 /// Abstain thresholds on the top cosine similarity and its margin over the second result.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Thresholds {
@@ -268,6 +313,9 @@ pub struct Hint {
     pub path: String,
     /// Cosine similarity to the query (not a probability).
     pub similarity: f64,
+    /// Ranking evidence beyond cosine similarity, when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
     /// Definition name, for function hints.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -451,6 +499,41 @@ pub fn budget(mut hints: Hints) -> Hints {
     hints
 }
 
+/// CLI result budget: reserve a function when requested and a config for config tasks.
+pub fn budget_ask(mut hints: Hints, k: usize, with_functions: bool, wants_config: bool) -> Hints {
+    let slots = k.clamp(1, MAX_HINTS);
+    let reserve_function = usize::from(slots > 1 && with_functions && !hints.functions.is_empty());
+    let reserve_config = usize::from(
+        !hints.configs.is_empty()
+            && (hints.files.is_empty() || wants_config && slots > 1 + reserve_function),
+    );
+    hints
+        .files
+        .truncate(slots - reserve_function - reserve_config);
+    hints.functions.truncate(reserve_function);
+    hints.configs.truncate(reserve_config);
+    while cost(
+        &hints
+            .files
+            .iter()
+            .chain(&hints.functions)
+            .chain(&hints.configs)
+            .collect::<Vec<_>>(),
+    ) > TOKEN_BUDGET
+    {
+        if !hints.functions.is_empty() {
+            hints.functions.pop();
+        } else if !hints.configs.is_empty() {
+            hints.configs.pop();
+        } else if hints.files.len() > 1 {
+            hints.files.pop();
+        } else {
+            break;
+        }
+    }
+    hints
+}
+
 fn state_name(state: AnswerState) -> &'static str {
     match state {
         AnswerState::Ok => "ok",
@@ -475,7 +558,16 @@ pub fn render(out: &Outcome) -> String {
                 if out.adapter.applied { "on" } else { "off" }
             )];
             for h in &out.hints.files {
-                lines.push(format!("{:.2}  {}", h.similarity, h.path));
+                lines.push(format!(
+                    "{:.2}  {}{}",
+                    h.similarity,
+                    h.path,
+                    if h.evidence.as_deref() == Some("exact") {
+                        "  (exact)"
+                    } else {
+                        ""
+                    }
+                ));
             }
             for h in &out.hints.functions {
                 lines.push(format!(

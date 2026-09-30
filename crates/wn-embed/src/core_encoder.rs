@@ -221,6 +221,7 @@ mod tests {
             let low = [Hint {
                 path: "a.py".into(),
                 similarity: 0.01,
+                evidence: None,
                 name: None,
                 line: None,
             }];

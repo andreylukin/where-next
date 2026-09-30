@@ -9,8 +9,8 @@ use wn_core::index::{EntryKind, Index, IndexedFile};
 use wn_core::index_lifecycle::IndexState;
 use wn_core::rank::AnswerState;
 use wn_core::runtime::{
-    fit_from_history, load_adapter, save_adapter, suggest, FitSkipped, HistoryExample,
-    SuggestOptions,
+    fit_from_history, load_adapter, save_adapter, suggest, suggest_with_exact, FitSkipped,
+    HistoryExample, SuggestOptions,
 };
 use wn_sources::Kind;
 
@@ -181,6 +181,10 @@ fn ranking_and_answers() {
     );
     assert_eq!(out.hints.files[0].path, "src/auth.py");
     assert!(out.hints.files.len() + out.hints.functions.len() <= 3);
+    assert!(
+        !out.hints.functions.is_empty(),
+        "--functions must expose a definition"
+    );
     assert!(!out.adapter.applied);
 
     // A calibrated encoder with weak similarity abstains.
@@ -295,6 +299,54 @@ fn an_empty_query_is_an_error() {
         SuggestOptions::default(),
     );
     assert_eq!(out.state, AnswerState::Ok);
+}
+
+#[test]
+fn context_literals_do_not_bypass_abstention() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let mut r = repo();
+    r.get_mut("src/auth.py")
+        .unwrap()
+        .push_str("\n# Rare peacock teapot phrase\n");
+    for (path, body) in &r {
+        let target = root.path().join(path);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(target, body).unwrap();
+    }
+    let enc = Probe {
+        calibrated: true,
+        ..Probe::new()
+    };
+    let mut index = Index::open(dir.path(), "probe-a");
+    index
+        .refresh(&files_of(&r, "v1"), &reader(&r), &enc, false)
+        .unwrap();
+    let out = suggest_with_exact(
+        &index,
+        None,
+        &enc,
+        "zzzz qqqq",
+        "`Rare peacock teapot phrase`",
+        SuggestOptions::default(),
+        Some(root.path()),
+    );
+    assert_eq!(out.state, AnswerState::Abstain);
+    assert!(out.hints.files.is_empty());
+
+    let out = suggest_with_exact(
+        &index,
+        None,
+        &enc,
+        "zzzz qqqq `Rare peacock teapot phrase`",
+        "",
+        SuggestOptions::default(),
+        Some(root.path()),
+    );
+    assert_eq!(out.state, AnswerState::Ok);
+    assert_eq!(out.hints.files.len(), 1);
+    assert_eq!(out.hints.files[0].path, "src/auth.py");
+    assert_eq!(out.hints.files[0].evidence.as_deref(), Some("exact"));
 }
 
 #[test]

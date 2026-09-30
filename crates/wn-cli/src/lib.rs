@@ -22,8 +22,8 @@ use wn_core::index::{EntryKind, Index, IndexedFile, RefreshStats};
 use wn_core::index_lifecycle::IndexState;
 use wn_core::rank::{render, Outcome};
 use wn_core::runtime::{
-    fit_from_history, load_adapter, save_adapter, suggest, HistoryExample, StoredAdapter,
-    SuggestOptions,
+    fit_from_history, load_adapter, save_adapter, suggest_with_exact, HistoryExample,
+    StoredAdapter, SuggestOptions,
 };
 use wn_git::{commits_since, history, repo_root, scan, Coverage};
 use wn_sources::{read_text, Kind, MAX_CONFIG_BYTES, MAX_SOURCE_BYTES};
@@ -88,6 +88,7 @@ const ASK_EXAMPLES: &str = "\
 Good queries are self-contained: say what you are looking for, plus any error text.
 Use rg/grep for exact strings and identifiers. Results are hints: open the files and check.
 \"no confident hint\" means wn abstained (nothing above the calibrated threshold): use normal search.
+Configuration queries can include one config file in the three-hint budget.
 
 Examples:
   wn ask \"where are gitignore rules matched against paths\"          good: says what to find
@@ -96,6 +97,15 @@ Examples:
   cargo test 2>&1 | wn ask \"fix the failing test\" --context-file -
   wn ask --json \"where is the config loaded\"                        state, files, adapter
   wn ask --start \"add rate limiting to the API\"                     task start; skipped below 3,000 files";
+
+fn parse_hint_count(value: &str) -> Result<usize, String> {
+    match value.parse::<usize>() {
+        Ok(n @ 1..=3) => Ok(n),
+        _ => Err(
+            "-k accepts 1 to 3 hints (the agent output cap is 3 paths / about 250 tokens)".into(),
+        ),
+    }
+}
 
 const BENCH_EXAMPLES: &str = "\
 Replays recent commits as new tasks (query = commit message, candidates = files in the parent
@@ -152,11 +162,11 @@ pub enum Command {
         /// File with recent context (conversation, last tool output); `-` reads stdin.
         #[arg(long)]
         context_file: Option<PathBuf>,
-        /// Also rank functions.
+        /// Also rank functions (first call indexes definitions and can take minutes in large repos).
         #[arg(long)]
         functions: bool,
-        /// Maximum file hints.
-        #[arg(short, default_value_t = 3)]
+        /// Maximum total hints (1-3); use --functions to reserve one for a definition.
+        #[arg(short, default_value_t = 3, value_parser = parse_hint_count)]
         k: usize,
         /// Do not apply the personal adapter.
         #[arg(long)]
@@ -1169,13 +1179,14 @@ pub fn ask_command_with(
     } else {
         None
     };
-    let outcome: Outcome = suggest(
+    let outcome: Outcome = suggest_with_exact(
         &ws.index,
         adapter,
         ws.encoder.as_ref(),
         &args.query,
         context,
         opts,
+        Some(&ws.root),
     );
     if !args.no_log {
         record_query(
