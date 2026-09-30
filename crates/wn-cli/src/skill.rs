@@ -1371,6 +1371,31 @@ fn after_notes(plan: &Plan, uninstall: bool) -> Vec<String> {
     notes
 }
 
+fn codex_inline_hook_note(plan: &Plan, program: &str) -> Option<String> {
+    let skipped = plan
+        .hooks
+        .iter()
+        .find(|h| h.agent == Agent::Codex && matches!(h.action, HookAction::Skipped { .. }))?;
+    let config = skipped.path.with_file_name("config.toml");
+    let mut note = format!(
+        "Codex: hooks NOT connected (config.toml defines hooks inline). Add these entries to {}:",
+        config.display()
+    );
+    for entry in hook_entries(Agent::Codex) {
+        note.push_str(&format!("\n\n[[hooks.{}]]", entry.event));
+        if let Some(matcher) = entry.matcher {
+            note.push_str(&format!("\nmatcher = {}", serde_json::json!(matcher)));
+        }
+        note.push_str(&format!(
+            "\n[[hooks.{}.hooks]]\ntype = \"command\"\ncommand = {}\ntimeout = {}",
+            entry.event,
+            serde_json::json!(hook_command(program, entry.kind)),
+            HOOK_TIMEOUT_S
+        ));
+    }
+    Some(note)
+}
+
 /// Runs `wn setup` / `wn skill sync`.
 pub fn run_sync(args: &SyncArgs, cli: &crate::Cli) -> (String, i32) {
     let wn_home = crate::home();
@@ -1382,7 +1407,8 @@ pub fn run_sync(args: &SyncArgs, cli: &crate::Cli) -> (String, i32) {
     }
     let (targets, hooks) = resolve(args, root.as_deref(), &home, &recorded);
     let mut life = SyncLifecycle::default();
-    let plan = plan(&targets, args.uninstall, &hooks, &hook_program());
+    let program = hook_program();
+    let plan = plan(&targets, args.uninstall, &hooks, &program);
     let mut applied = Vec::new();
     let mut message = None;
     if plan.has_changes() {
@@ -1466,6 +1492,12 @@ pub fn run_sync(args: &SyncArgs, cli: &crate::Cli) -> (String, i32) {
         for note in after_notes(&report.plan, args.uninstall) {
             text.push('\n');
             text.push_str(&note);
+        }
+        if !args.uninstall {
+            if let Some(note) = codex_inline_hook_note(&report.plan, &program) {
+                text.push('\n');
+                text.push_str(&note);
+            }
         }
     }
     (text, code)

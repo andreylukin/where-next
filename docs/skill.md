@@ -52,7 +52,8 @@ Guarantees:
   no copy of your settings (`skills.json` records only which files it touched, mode 0600). A settings file that is not valid JSON
   is reported and left alone, and so is a `SKILL.md` without the marker. Codex: when
   `~/.codex/config.toml` defines hooks inline, `hooks.json` is left alone (Codex warns when a layer
-  has both).
+  has both). Setup finishes with a `Codex: hooks NOT connected` notice and entries to paste into
+  that `config.toml`.
 - **Undoable.** `wn setup --uninstall` removes our skill files and hook entries (every agent, and
   `--project` installs it recorded) and nothing else, and says what it removed. A settings file
   nothing else changed in gets its original bytes back; a hooks file that `wn setup` created and
@@ -80,6 +81,31 @@ agent's context. The agent never has to remember wn exists.
 | Codex | `PostToolUse` (`Bash`) | `wn hook codex-search` |
 | Cursor | `sessionStart` | `wn hook cursor-start` |
 | Cursor | `postToolUse` (`Shell\|Grep`) | `wn hook cursor-search` |
+
+If Codex already defines hooks inline in `~/.codex/config.toml`, append these entries there.
+`wn setup` prints the same entries with the command path it selected for your installation;
+use that path if `wn` is not on the agent's `PATH`.
+
+```toml
+[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "wn hook codex-start"
+timeout = 5
+
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "wn hook codex-prompt"
+timeout = 5
+
+[[hooks.PostToolUse]]
+matcher = "Bash"
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "wn hook codex-search"
+timeout = 5
+```
 
 Each entry has a 5-second agent-side `timeout`. The command names `wn` when that is the binary on
 your `PATH`, else its absolute path. Cursor has no prompt hook that can add context

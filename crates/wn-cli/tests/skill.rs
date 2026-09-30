@@ -390,6 +390,35 @@ fn codex_with_inline_hooks_in_config_toml_is_left_alone() {
     assert_eq!(code, 0, "{out}");
     assert!(out.contains("defines hooks inline"), "{out}");
     assert!(!env.home().join(".codex/hooks.json").exists());
+    let config = env.home().join(".codex/config.toml");
+    let exe = env!("CARGO_BIN_EXE_wn");
+    assert!(
+        out.contains(&format!(
+            "Codex: hooks NOT connected (config.toml defines hooks inline). Add these entries to {}:",
+            config.display()
+        )),
+        "{out}"
+    );
+    for (event, matcher, command) in [
+        ("SessionStart", None, "codex-start"),
+        ("UserPromptSubmit", None, "codex-prompt"),
+        ("PostToolUse", Some("Bash"), "codex-search"),
+    ] {
+        assert!(out.contains(&format!("[[hooks.{event}]]")), "{out}");
+        assert!(out.contains(&format!("[[hooks.{event}.hooks]]")), "{out}");
+        assert!(
+            out.contains(&format!("command = \"{exe} hook {command}\"")),
+            "{out}"
+        );
+        if let Some(matcher) = matcher {
+            assert!(out.contains(&format!("matcher = \"{matcher}\"")), "{out}");
+        }
+    }
+    assert!(out.contains("timeout = 5"), "{out}");
+    assert_eq!(
+        fs::read_to_string(config).unwrap(),
+        "[[hooks.PreToolUse]]\nmatcher = \"Bash\"\n"
+    );
 }
 
 #[test]
