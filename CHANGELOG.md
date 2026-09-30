@@ -14,6 +14,10 @@ explicitly.
 
 ### Fixed
 
+- Cursor session-start hooks warm the daemon when Cursor omits workspace paths from its payload.
+- `wn setup` prints copy-pasteable Codex TOML hooks when inline hooks prevent automatic hookup.
+- `wn setup` recognizes Codex hooks pasted into `config.toml` as manually connected and includes
+  missing inline-hook entries in `--json` output.
 - Text output escapes terminal controls in repository paths and symbol names, including with
   `--color always`.
 - `wn ask --json` reports `fallback` on answers so agents can see lexical fallback use.
