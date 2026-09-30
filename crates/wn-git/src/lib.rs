@@ -128,6 +128,7 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
 /// modification time and size. Files deleted from the working tree are dropped even if they are
 /// still in the git index.
 pub fn scan(root: &Path) -> (BTreeMap<String, FileEntry>, Coverage) {
+    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let mut files = BTreeMap::new();
     let mut cov = Coverage::default();
     let mut unsupported_ext: HashMap<String, usize> = HashMap::new();
@@ -167,6 +168,9 @@ pub fn scan(root: &Path) -> (BTreeMap<String, FileEntry>, Coverage) {
                 let Some((meta, path)) = entry.split_once('\t') else {
                     continue;
                 };
+                if meta.split_whitespace().next() == Some("120000") {
+                    continue;
+                }
                 let Some(kind) = kind_of(path) else {
                     if !is_skipped(path) {
                         unsupported(path, &mut cov);
@@ -176,6 +180,14 @@ pub fn scan(root: &Path) -> (BTreeMap<String, FileEntry>, Coverage) {
                 let p = root.join(path);
                 if !p.exists() {
                     cov.deleted_dropped += 1;
+                    continue;
+                }
+                if p.symlink_metadata()
+                    .is_ok_and(|m| m.file_type().is_symlink())
+                    || !p
+                        .canonicalize()
+                        .is_ok_and(|p| p.starts_with(&canonical_root))
+                {
                     continue;
                 }
                 let id = if dirty.contains(path) {
@@ -190,13 +202,22 @@ pub fn scan(root: &Path) -> (BTreeMap<String, FileEntry>, Coverage) {
             let others = run_git(root, &["ls-files", "--others", "--exclude-standard", "-z"])
                 .unwrap_or_default();
             for path in others.split('\0').filter(|s| !s.is_empty()) {
+                let p = root.join(path);
+                if p.symlink_metadata()
+                    .is_ok_and(|m| m.file_type().is_symlink())
+                    || !p
+                        .canonicalize()
+                        .is_ok_and(|p| p.starts_with(&canonical_root))
+                {
+                    continue;
+                }
                 let Some(kind) = kind_of(path) else {
                     if !is_skipped(path) {
                         unsupported(path, &mut cov);
                     }
                     continue;
                 };
-                if let Some(id) = mtime_id(&root.join(path)) {
+                if let Some(id) = mtime_id(&p) {
                     cov.untracked += 1;
                     files.insert(path.to_string(), FileEntry { id, kind });
                 }
