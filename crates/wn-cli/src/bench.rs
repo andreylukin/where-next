@@ -20,6 +20,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use serde::{Deserialize, Serialize};
 use wn_core::adapter::{
@@ -443,9 +444,109 @@ impl Docs {
     }
 }
 
+/// Keep only tasks whose complete parent-tree candidate set was read, and compact document ids.
+/// Returns the original indices of the retained tasks so callers can filter parallel metadata.
+fn keep_readable_tasks(
+    tasks: &mut Vec<Task>,
+    docs: &mut Docs,
+    texts: &HashMap<String, String>,
+) -> Vec<usize> {
+    let old = std::mem::take(docs);
+    let mut kept = Vec::new();
+    let mut original = 0;
+    tasks.retain_mut(|task| {
+        let readable = task
+            .cand
+            .iter()
+            .all(|&id| texts.contains_key(&old.keys[id].1));
+        if readable {
+            kept.push(original);
+        }
+        original += 1;
+        readable
+    });
+    let mut compact = Docs::default();
+    for task in tasks {
+        for id in &mut task.cand {
+            let (path, blob) = &old.keys[*id];
+            let new_id = compact.id(path, blob);
+            compact.text[new_id] = file_doc(path, &texts[blob]);
+            *id = new_id;
+        }
+    }
+    *docs = compact;
+    kept
+}
+
+/// Fetch missing promisor blobs in one request before reading the candidate texts.
+fn load_blobs(root: &Path, blobs: &[String], log: &mut dyn FnMut(&str)) -> HashMap<String, String> {
+    if blobs.is_empty() {
+        return HashMap::new();
+    }
+    let check = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["cat-file", "--batch-check"])
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .ok();
+    if let Some(mut child) = check {
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        let input = blobs.join("\n");
+        let writer = std::thread::spawn(move || writeln!(stdin, "{input}"));
+        let output = child.wait_with_output();
+        let _ = writer.join();
+        if let Ok(output) = output {
+            if output.status.success() {
+                let missing: Vec<&str> = std::str::from_utf8(&output.stdout)
+                    .unwrap_or("")
+                    .lines()
+                    .filter_map(|line| line.strip_suffix(" missing"))
+                    .collect();
+                if !missing.is_empty() {
+                    log(&format!(
+                        "fetching {} missing historical blobs",
+                        missing.len()
+                    ));
+                    if let Ok(mut fetch) = Command::new("git")
+                        .arg("-C")
+                        .arg(root)
+                        .args([
+                            "-c",
+                            "fetch.negotiationAlgorithm=noop",
+                            "fetch",
+                            "origin",
+                            "--no-tags",
+                            "--no-write-fetch-head",
+                            "--recurse-submodules=no",
+                            "--filter=blob:none",
+                            "--stdin",
+                        ])
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .spawn()
+                    {
+                        if let Some(mut stdin) = fetch.stdin.take() {
+                            let _ = writeln!(stdin, "{}", missing.join("\n"));
+                        }
+                        if !fetch.wait().is_ok_and(|status| status.success()) {
+                            log("historical blob fetch failed; unreadable commits will be skipped");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    read_blobs(root, blobs, MAX_SOURCE_BYTES)
+}
+
 /// Vectors saved between runs, keyed by `path\tblob` (a rerun only embeds new file versions).
 #[derive(Serialize, Deserialize)]
 struct CacheMeta {
+    version: u8,
     fingerprint: String,
     dim: usize,
     keys: Vec<String>,
@@ -462,7 +563,10 @@ fn cache_load(dir: &Path, fingerprint: &str) -> HashMap<String, Vec<f32>> {
     let Ok(meta) = serde_json::from_slice::<CacheMeta>(&meta) else {
         return out;
     };
-    if meta.fingerprint != fingerprint || bytes.len() != meta.keys.len() * meta.dim * 4 {
+    if meta.version != 1
+        || meta.fingerprint != fingerprint
+        || bytes.len() != meta.keys.len() * meta.dim * 4
+    {
         return out;
     }
     for (k, chunk) in meta.keys.into_iter().zip(bytes.chunks_exact(meta.dim * 4)) {
@@ -490,6 +594,7 @@ fn cache_save(dir: &Path, fingerprint: &str, docs: &Docs) -> std::io::Result<()>
         }
     }
     let meta = CacheMeta {
+        version: 1,
         fingerprint: fingerprint.to_string(),
         dim,
         keys,
@@ -506,7 +611,6 @@ fn cache_save(dir: &Path, fingerprint: &str, docs: &Docs) -> std::io::Result<()>
 /// Fills in document texts (from git blobs) and vectors (index, cache, then the encoder).
 #[allow(clippy::too_many_arguments)]
 fn embed_docs(
-    root: &Path,
     docs: &mut Docs,
     encoder: &dyn Encoder,
     reuse: Option<&Index>,
@@ -514,17 +618,6 @@ fn embed_docs(
     timing: &mut Timing,
     log: &mut dyn FnMut(&str),
 ) -> Result<(), EncodeError> {
-    let blobs: Vec<String> = docs
-        .keys
-        .iter()
-        .map(|(_, b)| b.clone())
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-    let texts = read_blobs(root, &blobs, MAX_SOURCE_BYTES);
-    for (i, (path, blob)) in docs.keys.iter().enumerate() {
-        docs.text[i] = file_doc(path, texts.get(blob).map_or("", String::as_str));
-    }
     let fingerprint = encoder.fingerprint();
     let mut known = cache_load(cache_dir, &fingerprint);
     if let Some(index) = reuse.filter(|ix| ix.fingerprint() == fingerprint) {
@@ -808,6 +901,20 @@ pub fn history(
             gold: gold_pos,
         });
     }
+    let mut blobs: Vec<String> = docs.keys.iter().map(|(_, blob)| blob.clone()).collect();
+    blobs.sort_unstable();
+    blobs.dedup();
+    let texts = load_blobs(root, &blobs, log);
+    let kept = keep_readable_tasks(&mut tasks, &mut docs, &texts);
+    let unreadable = picked.len() - kept.len();
+    langs_of = kept.iter().map(|&i| langs_of[i].clone()).collect();
+    dirs_of = kept.iter().map(|&i| dirs_of[i].clone()).collect();
+    if tasks.is_empty() {
+        return Err(fail(
+            &mut life,
+            format!("no commits have readable candidate blobs ({unreadable} skipped)"),
+        ));
+    }
     let mut timing = Timing::default();
     let _ = life.handle(BenchEvent::Collected);
     log(&format!(
@@ -816,7 +923,7 @@ pub fn history(
         docs.keys.len()
     ));
     let t1 = std::time::Instant::now();
-    embed_docs(root, &mut docs, encoder, reuse, cache_dir, &mut timing, log)
+    embed_docs(&mut docs, encoder, reuse, cache_dir, &mut timing, log)
         .map_err(|e| fail(&mut life, format!("embedding failed: {e}")))?;
     let queries: Vec<QueryInput> = tasks.iter().map(|t| t.query.clone()).collect();
     let qvecs = encoder
@@ -856,6 +963,11 @@ pub fn history(
     // Rolling adapter, fitted only on ancestors of every commit it scores.
     let mut adapted: Vec<Option<Option<usize>>> = vec![None; tasks.len() - eval_from];
     let mut notes = Vec::new();
+    if unreadable > 0 {
+        notes.push(format!(
+            "{unreadable} commits skipped because candidate blobs could not be read"
+        ));
+    }
     if opts.adapter {
         let d = qvecs.first().map_or(0, Vec::len);
         let mat: Vec<f32> = docs
@@ -966,7 +1078,7 @@ pub fn history(
         ),
         model: model_name.to_string(),
         scanned,
-        eligible: picked.len(),
+        eligible: tasks.len(),
         evaluated: n_eval,
         adapted: adapted_ix.len(),
         files_median: median(tasks[eval_from..].iter().map(|t| t.cand.len()).collect()),
@@ -1118,18 +1230,31 @@ pub fn contextbench(
                 },
             ));
         }
+        let mut blobs: Vec<String> = docs.keys.iter().map(|(_, blob)| blob.clone()).collect();
+        blobs.sort_unstable();
+        blobs.dedup();
+        let texts = load_blobs(&root, &blobs, log);
+        let mut ready: Vec<Task> = prepared.iter().map(|(_, task)| task.clone()).collect();
+        let kept = keep_readable_tasks(&mut ready, &mut docs, &texts);
+        let unreadable = prepared.len() - kept.len();
+        eligible -= unreadable;
+        if unreadable > 0 {
+            notes.push(format!(
+                "{repo}: {unreadable} tasks skipped because candidate blobs could not be read"
+            ));
+        }
+        prepared = kept
+            .into_iter()
+            .zip(ready)
+            .map(|(i, task)| (prepared[i].0, task))
+            .collect();
+        if prepared.is_empty() {
+            continue;
+        }
         let t0 = std::time::Instant::now();
         let mut part = Timing::default();
-        embed_docs(
-            &root,
-            &mut docs,
-            encoder,
-            None,
-            &cache_root(&root),
-            &mut part,
-            log,
-        )
-        .map_err(|e| format!("embedding failed: {e}"))?;
+        embed_docs(&mut docs, encoder, None, &cache_root(&root), &mut part, log)
+            .map_err(|e| format!("embedding failed: {e}"))?;
         timing.docs_embedded += part.docs_embedded;
         timing.docs_reused += part.docs_reused;
         timing.embed_s += t0.elapsed().as_secs_f64();
@@ -1349,6 +1474,45 @@ pub fn stderr_log(msg: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_candidate_blob_skips_commit_instead_of_scoring_empty_text() {
+        let mut docs = Docs::default();
+        let present = docs.id("src/present.rs", "present");
+        let missing = docs.id("src/missing.rs", "missing");
+        let task = |sha: &str, cand: Vec<usize>| Task {
+            sha: sha.into(),
+            date: String::new(),
+            query: QueryInput::file("present"),
+            cand,
+            gold: vec![0],
+        };
+        let mut tasks = vec![
+            task("skipped", vec![present, missing]),
+            task("kept", vec![present]),
+        ];
+        let texts = HashMap::from([("present".to_string(), "real source".to_string())]);
+
+        let kept = keep_readable_tasks(&mut tasks, &mut docs, &texts);
+
+        assert_eq!(kept, vec![1]);
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].sha, "kept");
+        assert_eq!(docs.keys.len(), 1);
+        assert_eq!(docs.text[0], file_doc("src/present.rs", "real source"));
+    }
+
+    #[test]
+    fn legacy_vectors_from_unreadable_blobs_are_not_reused() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("bench-vectors.json"),
+            serde_json::json!({"fingerprint":"model", "dim":1, "keys":["a.rs\tblob"]}).to_string(),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("bench-vectors.bin"), 0f32.to_le_bytes()).unwrap();
+        assert!(cache_load(dir.path(), "model").is_empty());
+    }
 
     #[test]
     fn tokens_match_the_reference_regex() {
