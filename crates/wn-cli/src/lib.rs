@@ -114,6 +114,10 @@ Examples:
   wn ask --json \"where is the config loaded\"                        state, files, adapter
   wn ask --start \"add rate limiting to the API\"                     task start; skipped below 3,000 files";
 
+const UPDATE_DETAILS: &str = "\
+Release installs run the installer for the latest release. Source installs fetch and rebuild
+the source repository at main, or at --ref when supplied. --ref applies only to source installs.";
+
 fn parse_hint_count(value: &str) -> Result<usize, String> {
     match value.parse::<usize>() {
         Ok(n @ 1..=3) => Ok(n),
@@ -242,7 +246,8 @@ pub enum Command {
         #[arg(long)]
         no_adapter: bool,
     },
-    /// Rebuild wn from the tip of main (or --ref) of its source repository.
+    /// Update release installs from the latest release; rebuild source installs from main (or --ref).
+    #[command(after_help = UPDATE_DETAILS)]
     Update {
         /// Only report whether an update is available (exit code 10 when it is).
         #[arg(long)]
@@ -511,20 +516,20 @@ pub fn check_repo(path: &Path, any_dir: bool, home: Option<&Path>) -> Result<Pat
             "wn: {} is not inside a git repository, so there is nothing to index.\n\
              Run wn inside a git repository (or pass --path <repo>); \
              --any-dir indexes this directory anyway.",
-            here.display()
+            ask_text::escape_controls(&here.display().to_string())
         )),
         Place::Broad(root, what) => Err(format!(
             "wn: refusing to index {} ({what}): it is a git repository, but indexing everything \
              under it would take a long time.\nRun wn inside a project repository; --any-dir \
              indexes it anyway.",
-            root.display()
+            ask_text::escape_controls(&root.display().to_string())
         )),
         Place::BelowBroad(here, root, what) => Err(format!(
             "wn: {} is not inside a project repository: the nearest one is {} ({what}), and \
              indexing all of it would take a long time.\nRun wn inside a project repository; \
              --any-dir indexes just this directory.",
-            here.display(),
-            root.display()
+            ask_text::escape_controls(&here.display().to_string()),
+            ask_text::escape_controls(&root.display().to_string())
         )),
     }
 }
@@ -631,7 +636,7 @@ impl Workspace {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| self.root.display().to_string());
-        let tracker = progress::Tracker::new(&name);
+        let tracker = progress::Tracker::new(&ask_text::escape_controls(&name));
         let _ticker = self
             .progress
             .clone()
@@ -873,6 +878,7 @@ pub fn render_status(s: &StatusReport) -> String {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
+    let name = ask_text::escape_controls(&name);
     let mut lines = vec![format!(
         "where-next: {}, {}{} indexed in {name} ({})",
         count(s.files, "source file"),
@@ -889,7 +895,7 @@ pub fn render_status(s: &StatusReport) -> String {
             .coverage
             .unsupported_ext
             .iter()
-            .map(|(e, n)| format!("{e} {n}"))
+            .map(|(e, n)| format!("{} {n}", ask_text::escape_controls(e)))
             .collect();
         lines.push(format!(
             "not indexed: {} ({})",
@@ -970,7 +976,10 @@ fn run_command(cli: Cli) -> (String, i32) {
     );
     if uses_repo && !cli.path.exists() {
         return (
-            format!("wn: --path {} does not exist", cli.path.display()),
+            format!(
+                "wn: --path {} does not exist",
+                ask_text::escape_controls(&cli.path.display().to_string())
+            ),
             2,
         );
     }
@@ -1205,6 +1214,7 @@ pub fn run_stats(cli: &Cli, opts: &StatsArgs) -> (String, i32) {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
+            let name = ask_text::escape_controls(&name);
             format!(
                 "wn stats: nothing logged for {name} yet: run `wn init`, then `wn ask \"where is …\"`\n\
                  (`wn stats --all` shows every repository)"
@@ -1224,20 +1234,27 @@ pub fn run_stats(cli: &Cli, opts: &StatsArgs) -> (String, i32) {
         (None, true) => erased::Json::to_json(&stats),
         (None, false) => {
             let color = ask_text::color_enabled(cli.color);
+            stats.summary.name = ask_text::escape_controls(&stats.summary.name);
+            for repo in &mut stats.repos {
+                repo.name = ask_text::escape_controls(&repo.name);
+            }
             stats::render(&stats, stats::Style { color })
         }
     };
     if let (Some(path), Some(c)) = (&opts.svg, &card) {
         if let Err(e) = std::fs::write(path, stats::render_svg(c)) {
             return (
-                format!("wn stats: could not write {}: {e}", path.display()),
+                format!(
+                    "wn stats: could not write {}: {e}",
+                    ask_text::escape_controls(&path.display().to_string())
+                ),
                 1,
             );
         }
         if !cli.json {
             text.push_str(&format!(
                 "\n\nwrote {} (redacted: no repository names, paths or queries)",
-                path.display()
+                ask_text::escape_controls(&path.display().to_string())
             ));
         }
     }
@@ -1361,7 +1378,13 @@ pub fn status_command(ws: &mut Workspace, kind: StatusKind, json: bool) -> (Stri
     let mut note = None;
     let started = std::time::Instant::now();
     if let Err(e) = ws.refresh(false) {
-        return (format!("wn: could not index {}: {e}", ws.root.display()), 1);
+        return (
+            format!(
+                "wn: could not index {}: {e}",
+                ask_text::escape_controls(&ws.root.display().to_string())
+            ),
+            1,
+        );
     }
     let index_ms = started.elapsed().as_millis();
     let should_fit = match kind {
@@ -1542,7 +1565,10 @@ fn run_bench(cli: Cli) -> (String, i32) {
             let text = if cli.json {
                 serde_json::to_string_pretty(&report).unwrap_or_default()
             } else {
-                bench::render(&report)
+                let mut safe = report.clone();
+                safe.name = ask_text::escape_controls(&safe.name);
+                safe.model = ask_text::escape_controls(&safe.model);
+                bench::render(&safe)
             };
             (text, 0)
         }

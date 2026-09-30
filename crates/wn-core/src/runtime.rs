@@ -282,13 +282,16 @@ pub fn suggest_with_exact(
     root: Option<&std::path::Path>,
 ) -> Outcome {
     let mut life = QueryLifecycle::default();
+    let fallback = encoder.fingerprint().starts_with("hash-");
     let fail = |state: AnswerState, error: Option<String>| Outcome {
         state,
         error,
+        fallback,
         ..Outcome::default()
     };
-    if let Some(empty) = empty_query(query, context) {
+    if let Some(mut empty) = empty_query(query, context) {
         step(&mut life, QueryEvent::Unavailable);
+        empty.fallback = fallback;
         return empty;
     }
     if !index.state().can_serve() {
@@ -409,6 +412,7 @@ pub fn suggest_with_exact(
             state: AnswerState::Abstain,
             abstain: Some(reason),
             adapter: adapter_use,
+            fallback,
             ..Outcome::default()
         };
     }
@@ -443,6 +447,7 @@ pub fn suggest_with_exact(
     let exact_only = !exact.is_empty();
     Outcome {
         state: AnswerState::Ok,
+        fallback,
         hints: budget_ask(
             Hints {
                 files,

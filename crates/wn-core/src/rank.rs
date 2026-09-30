@@ -376,6 +376,9 @@ pub struct AdapterUse {
 pub struct Outcome {
     /// Answer state.
     pub state: AnswerState,
+    /// Whether the lexical encoder answered instead of an installed model.
+    #[serde(default)]
+    pub fallback: bool,
     /// Ranked hints (empty unless `state` is `Ok` or `StaleIndex`).
     #[serde(flatten)]
     pub hints: Hints,
