@@ -48,3 +48,11 @@ fn examples_mention_commands_that_exist() {
         assert!(text.contains(word), "help should show {word}");
     }
 }
+
+#[test]
+fn update_help_describes_release_and_source_installs() {
+    let text = help(&["update"]);
+    assert!(text.contains("release installs"), "{text}");
+    assert!(text.contains("source installs"), "{text}");
+    assert!(text.contains("--ref"), "{text}");
+}

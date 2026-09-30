@@ -9,6 +9,10 @@ explicitly.
 
 ### Fixed
 
+- Text output escapes terminal controls in repository paths and symbol names, including with
+  `--color always`.
+- `wn ask --json` reports `fallback` on answers so agents can see lexical fallback use.
+- `wn update --help` describes release and source update behavior accurately.
 - Daemon fallback sockets now live in a private per-user temporary directory, and clients check
   socket ownership before sending requests. New cache homes are private, and existing default
   cache homes are tightened on startup. Existing explicit cache homes are left untouched.
