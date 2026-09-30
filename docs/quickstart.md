@@ -95,9 +95,17 @@ wn bench
 replays your repository's recent commits: for each one, it asks "given this commit message, which
 files would you open?" (candidates are the files as they were just before the commit) and shows how
 often a file that commit changed was in the top 1, 3 and 10 suggestions, for plain lexical search
-(BM25), the model, and the model with your repository's adapter. It only reads history and changes
-nothing. The first run embeds old file versions, so it can take several minutes on a laptop CPU;
-reruns reuse the cached vectors. On the ripgrep clone (300 commits):
+(BM25), the model, and the model with your repository's adapter. It leaves the working tree alone;
+partial clones may fetch missing historical blobs. The first run embeds old file versions, so it can
+take several minutes on a laptop CPU;
+reruns reuse the cached vectors. For this sample, use ripgrep commit
+`3fce3b5bb0236da2df6d99672afb8a719642eca7` (300 commits):
+
+```sh
+git clone --filter=blob:none https://github.com/BurntSushi/ripgrep.git
+git -C ripgrep checkout 3fce3b5bb0236da2df6d99672afb8a719642eca7
+wn bench --path ripgrep
+```
 
 ```text
                       hit@1  hit@3 hit@10    MRR      n
