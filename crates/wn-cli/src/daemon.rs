@@ -330,7 +330,14 @@ fn render_report(r: &DaemonReport) -> String {
             if s.busy.is_empty() {
                 String::new()
             } else {
-                format!("\nbusy with: {}", s.busy.join(", "))
+                format!(
+                    "\nbusy with: {}",
+                    s.busy
+                        .iter()
+                        .map(|name| crate::ask_text::escape_controls(name))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             },
             r.socket
         ),
@@ -1279,6 +1286,29 @@ pub mod client {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_escapes_busy_repository_names_only_in_text() {
+        let report = DaemonReport {
+            running: true,
+            socket: "socket".into(),
+            stats: Some(Stats {
+                busy: vec!["repo\x1b[2J\nnext".into()],
+                ..Stats::default()
+            }),
+            message: None,
+        };
+        let text = render_report(&report);
+        assert!(
+            text.contains("busy with: repo\\u{1b}[2J\\u{a}next"),
+            "{text}"
+        );
+        assert!(!text.contains('\x1b'));
+        assert_eq!(
+            serde_json::to_value(&report).unwrap()["stats"]["busy"][0],
+            "repo\x1b[2J\nnext"
+        );
+    }
 
     #[test]
     fn rescans_back_off_to_ten_times_the_scan_cost() {
