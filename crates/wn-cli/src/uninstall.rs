@@ -236,7 +236,9 @@ fn installer_files(exe: &Path) -> Vec<PathBuf> {
             .into_iter()
             .filter(|p| sidecar(p) && p.exists())
             .collect();
-        out.push(manifest);
+        if !out.contains(&manifest) {
+            out.push(manifest);
+        }
         if marker.exists() && !out.contains(&marker) {
             out.push(marker);
         }
@@ -247,6 +249,34 @@ fn installer_files(exe: &Path) -> Vec<PathBuf> {
         return [lib, marker].into_iter().filter(|p| p.exists()).collect();
     }
     Vec::new()
+}
+
+/// Directories explicitly recorded by the installer. Only the binary's own directory and the
+/// default parent/cache directories under this HOME are accepted from the manifest.
+fn installer_dirs(exe: &Path, home: &Path) -> Vec<PathBuf> {
+    let Some(bin) = exe.parent() else {
+        return Vec::new();
+    };
+    let Ok(text) = std::fs::read_to_string(bin.join("wn.install-files")) else {
+        return Vec::new();
+    };
+    if !text
+        .lines()
+        .any(|line| canon(Path::new(line)) == canon(exe))
+    {
+        return Vec::new();
+    }
+    let local = home.join(".local");
+    [bin.to_path_buf(), local, home.join(".cache")]
+        .into_iter()
+        .filter(|dir| {
+            bin == home.join(".local/bin")
+                && text
+                    .lines()
+                    .any(|line| line == format!("dir:{}", dir.display()))
+                && dir.is_dir()
+        })
+        .collect()
 }
 
 /// Plans the uninstall. Refuses (before looking at anything else) a location it must not remove.
@@ -337,6 +367,14 @@ pub fn plan(loc: &Locations, keep_models: bool) -> Result<Plan, String> {
                     ));
                 }
                 paths.push(single("the wn binary", exe));
+                for dir in installer_dirs(exe, &loc.user_home) {
+                    paths.push(Removal {
+                        what: "directory created by install.sh (if empty)".into(),
+                        path: dir,
+                        items: Vec::new(),
+                        others: 0,
+                    });
+                }
             }
         }
     }
@@ -412,7 +450,7 @@ pub fn render(p: &Plan) -> String {
         }
     }
     for r in &p.paths {
-        if r.items == [r.path.clone()] {
+        if r.items.is_empty() || r.items == [r.path.clone()] {
             out.push(format!("  {}  ({})", r.path.display(), r.what));
         } else {
             out.push(format!(
@@ -470,6 +508,18 @@ pub fn apply(p: &Plan, loc: &Locations) -> (Vec<String>, Vec<String>) {
     }
     for r in &p.paths {
         let mut ok = true;
+        if r.items.is_empty() {
+            match std::fs::remove_dir(&r.path) {
+                Ok(()) => done.push(format!("removed {}", r.path.display())),
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::NotFound
+                        || r.path
+                            .read_dir()
+                            .is_ok_and(|mut entries| entries.next().is_some()) => {}
+                Err(e) => failed.push(format!("{}: {e}", r.path.display())),
+            }
+            continue;
+        }
         for item in &r.items {
             match remove(item) {
                 Ok(()) => {}

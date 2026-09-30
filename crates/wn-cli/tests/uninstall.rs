@@ -311,14 +311,24 @@ fn files_beside_the_binary_go_only_when_the_installer_recorded_them() {
     fs::write(
         bin.join("wn.install-files"),
         format!(
-            "{}\n{}\n",
+            "{}\n{}\n{}\n",
             n.exe.display(),
-            bin.join("libonnxruntime.so").display()
+            bin.join("libonnxruntime.so").display(),
+            bin.join("wn.install-files").display()
         ),
     )
     .unwrap();
     let (out, code) = n.uninstall("WN_HOME", &n.home.join("none"));
     assert_eq!(code, 0, "{out}");
+    assert_eq!(
+        out.lines()
+            .filter(
+                |line| line.trim() == format!("removed {}", bin.join("wn.install-files").display())
+            )
+            .count(),
+        1,
+        "{out}"
+    );
     for f in [
         "wn",
         "libonnxruntime.so",
@@ -336,4 +346,79 @@ fn files_beside_the_binary_go_only_when_the_installer_recorded_them() {
     let (out, code) = n.uninstall("WN_HOME", &n.home.join("none"));
     assert_eq!(code, 0, "{out}");
     assert!(bin.join("libonnxruntime.so").exists() && bin.join("wn.install-files").exists());
+}
+
+#[test]
+fn recorded_install_directories_go_only_when_empty() {
+    let home = Home::new();
+    let bin = home.path().join(".local/bin");
+    fs::create_dir_all(&bin).unwrap();
+    let exe = bin.join("wn");
+    fs::copy(wn(), &exe).unwrap();
+    let cache = home.path().join(".cache");
+    fs::create_dir(&cache).unwrap();
+    fs::write(
+        bin.join("wn.install-files"),
+        format!(
+            "{}\ndir:{}\ndir:{}\ndir:{}\n",
+            exe.display(),
+            bin.display(),
+            home.path().join(".local").display(),
+            cache.display()
+        ),
+    )
+    .unwrap();
+    let (preview, code) = home.run(&exe, &["uninstall", "--dry-run"]);
+    assert_eq!(code, 0, "{preview}");
+    assert!(
+        preview.contains("directory created by install.sh (if empty)"),
+        "{preview}"
+    );
+    let (out, code) = home.run(&exe, &["uninstall", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        !bin.exists() && !cache.exists() && !home.path().join(".local").exists(),
+        "{out}"
+    );
+
+    let home = Home::new();
+    let bin = home.path().join(".local/bin");
+    fs::create_dir_all(&bin).unwrap();
+    let exe = bin.join("wn");
+    fs::copy(wn(), &exe).unwrap();
+    let cache = home.path().join(".cache");
+    fs::create_dir(&cache).unwrap();
+    fs::write(cache.join("other-app"), "keep").unwrap();
+    fs::write(bin.join("other-app"), "keep").unwrap();
+    fs::write(
+        bin.join("wn.install-files"),
+        format!(
+            "{}\ndir:{}\ndir:{}\n",
+            exe.display(),
+            bin.display(),
+            cache.display()
+        ),
+    )
+    .unwrap();
+    let (out, code) = home.run(&exe, &["uninstall", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        bin.join("other-app").exists() && cache.join("other-app").exists(),
+        "{out}"
+    );
+
+    let home = Home::new();
+    let bin = home.path().join(".local/bin");
+    fs::create_dir_all(&bin).unwrap();
+    let exe = bin.join("wn");
+    fs::copy(wn(), &exe).unwrap();
+    let cache = home.path().join(".cache");
+    fs::create_dir(&cache).unwrap();
+    fs::write(bin.join("wn.install-files"), format!("{}\n", exe.display())).unwrap();
+    let (out, code) = home.run(&exe, &["uninstall", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        bin.exists() && cache.exists(),
+        "unrecorded directories removed: {out}"
+    );
 }
