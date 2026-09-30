@@ -165,7 +165,10 @@ install_release() {
           */fish) say 'run: fish_add_path ~/.local/bin' ;;
           *) say "add this line to your shell startup file: export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
         esac
-        say "then open a new terminal or run: export PATH=\"\$HOME/.local/bin:\$PATH\""
+        case "${SHELL:-}" in
+          */fish) say 'then open a new terminal or run: fish_add_path ~/.local/bin' ;;
+          *) say "then open a new terminal or run: export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
+        esac
       else
         say "add $install_dir to your PATH"
       fi

@@ -251,8 +251,8 @@ fn installer_files(exe: &Path) -> Vec<PathBuf> {
     Vec::new()
 }
 
-/// Directories explicitly recorded by the installer. Only the binary's own directory and the
-/// default parent/cache directories under this HOME are accepted from the manifest.
+/// Directories explicitly recorded by the installer. Only the default binary and parent
+/// directories, and the cache directory under this HOME, are accepted from the manifest.
 fn installer_dirs(exe: &Path, home: &Path) -> Vec<PathBuf> {
     let Some(bin) = exe.parent() else {
         return Vec::new();
@@ -267,10 +267,11 @@ fn installer_dirs(exe: &Path, home: &Path) -> Vec<PathBuf> {
         return Vec::new();
     }
     let local = home.join(".local");
-    [bin.to_path_buf(), local, home.join(".cache")]
+    let cache = home.join(".cache");
+    [bin.to_path_buf(), local, cache.clone()]
         .into_iter()
         .filter(|dir| {
-            bin == home.join(".local/bin")
+            (dir.as_path() == cache.as_path() || bin == home.join(".local/bin"))
                 && text
                     .lines()
                     .any(|line| line == format!("dir:{}", dir.display()))

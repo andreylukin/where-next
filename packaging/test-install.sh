@@ -63,7 +63,12 @@ for shell in zsh bash fish unknown; do
     *) expected="export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
   esac
   grep -Fq "$expected" "$work/path-$shell.err" || fail "$shell PATH advice missing"
-  grep -Fq "then open a new terminal or run: export PATH=\"\$HOME/.local/bin:\$PATH\"" "$work/path-$shell.err" || fail "immediate PATH advice missing"
+  if [ "$shell" = fish ]; then
+    grep -Fq 'then open a new terminal or run: fish_add_path ~/.local/bin' "$work/path-$shell.err" || fail "fish immediate PATH advice missing"
+    ! grep -Fq 'run: export PATH=' "$work/path-$shell.err" || fail "fish received POSIX PATH advice"
+  else
+    grep -Fq "then open a new terminal or run: export PATH=\"\$HOME/.local/bin:\$PATH\"" "$work/path-$shell.err" || fail "immediate PATH advice missing"
+  fi
 done
 home="$work/path-zsh"
 SHELL=/bin/zsh HOME="$home" WN_FROM=release WN_RELEASE_BASE="file://$work/good" \

@@ -17,6 +17,8 @@ explicitly.
 - Installer PATH advice names the shell startup command; `wn uninstall` reports manifest removal
   once and removes only empty directories the installer recorded creating. Install and FAQ docs
   describe the current agent setup and uninstall fallback.
+- Fish PATH advice uses a fish command for the current terminal, and uninstall removes a recorded
+  empty cache directory even when the binary was installed elsewhere.
 - Text output escapes terminal controls in repository paths and symbol names, including with
   `--color always`.
 - `wn ask --json` reports `fallback` on answers so agents can see lexical fallback use.

@@ -471,3 +471,24 @@ fn recorded_install_directories_go_only_when_empty() {
         "unrecorded directories removed: {out}"
     );
 }
+
+#[test]
+fn custom_install_dir_removes_recorded_empty_cache() {
+    let home = Home::new();
+    let bin = home.path().join("custom-bin");
+    fs::create_dir(&bin).unwrap();
+    let exe = bin.join("wn");
+    fs::copy(wn(), &exe).unwrap();
+    let cache = home.path().join(".cache");
+    fs::create_dir(&cache).unwrap();
+    fs::write(
+        bin.join("wn.install-files"),
+        format!("{}\ndir:{}\n", exe.display(), cache.display()),
+    )
+    .unwrap();
+
+    let (out, code) = home.run(&exe, &["uninstall", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(!cache.exists(), "recorded empty cache remained: {out}");
+    assert!(bin.exists(), "custom install directory removed: {out}");
+}
