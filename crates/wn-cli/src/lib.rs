@@ -1132,17 +1132,12 @@ pub fn ask_command_with(
     rescan: bool,
 ) -> (String, i32) {
     use wn_core::rank::AnswerState;
-    if args.query.trim().is_empty() && context.trim().is_empty() {
-        let error = "empty query: say what you are looking for, e.g. wn ask \"where is the request logger\"";
-        let outcome = Outcome {
-            state: AnswerState::Error,
-            error: Some(error.into()),
-            ..Outcome::default()
-        };
+    // The same check `suggest` makes (so the daemon and MCP agree), before touching the index.
+    if let Some(outcome) = wn_core::runtime::empty_query(&args.query, context) {
         let text = if json {
             erased::Json::to_json(&outcome)
         } else {
-            format!("where-next: {error}")
+            format!("where-next: {}", wn_core::runtime::EMPTY_QUERY)
         };
         return (text, 2);
     }

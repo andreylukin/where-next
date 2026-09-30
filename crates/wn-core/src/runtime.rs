@@ -244,6 +244,20 @@ fn step(q: &mut QueryLifecycle, e: QueryEvent) {
         .unwrap_or_else(|err| panic!("query lifecycle: {err}"));
 }
 
+/// Error for a query with no text: nothing to rank.
+pub const EMPTY_QUERY: &str =
+    "empty query: say what you are looking for, e.g. wn ask \"where is the request logger\"";
+
+/// The error outcome for an empty query (blank request and blank context), else `None`.
+/// [`suggest`] checks it first; the CLI checks it before touching the index.
+pub fn empty_query(query: &str, context: &str) -> Option<Outcome> {
+    (query.trim().is_empty() && context.trim().is_empty()).then(|| Outcome {
+        state: AnswerState::Error,
+        error: Some(EMPTY_QUERY.into()),
+        ..Outcome::default()
+    })
+}
+
 /// Answers one query against an index. Operational problems never raise: they fail open with a
 /// machine-readable state, so the caller falls back to its normal search.
 pub fn suggest(
@@ -260,6 +274,10 @@ pub fn suggest(
         error,
         ..Outcome::default()
     };
+    if let Some(empty) = empty_query(query, context) {
+        step(&mut life, QueryEvent::Unavailable);
+        return empty;
+    }
     if !index.state().can_serve() {
         step(&mut life, QueryEvent::Unavailable);
         return fail(
@@ -337,17 +355,24 @@ pub fn suggest(
         None
     } else {
         let kind = QueryKind::classify(query, context);
-        encoder
-            .calibration()
-            .and_then(|c| c.thresholds(kind, adapter_use.applied, opts.strict_abstain))
-            .and_then(|th| abstain_with(&files, th))
-            .map(|why| format!("{}: {why}", kind.as_str()))
-            .or_else(|| {
-                files
-                    .first()
-                    .is_some_and(|h| h.similarity < MIN_SHOWN_SIMILARITY)
-                    .then(|| "no file matches the query".to_string())
-            })
+        let no_match = || {
+            files
+                .first()
+                .is_some_and(|h| h.similarity < MIN_SHOWN_SIMILARITY)
+                .then(|| "no file matches the query".to_string())
+        };
+        match encoder.calibration() {
+            // Uncalibrated (the lexical fallback): abstain only when nothing matches.
+            None => no_match(),
+            Some(c) => match c.thresholds(kind, adapter_use.applied, opts.strict_abstain) {
+                // `null` or a negative `min_top`: this kind never abstains.
+                None => None,
+                Some(th) if th.min_top < 0.0 => None,
+                Some(th) => abstain_with(&files, th)
+                    .map(|why| format!("{}: {why}", kind.as_str()))
+                    .or_else(no_match),
+            },
+        }
     };
     if let Some(reason) = reason {
         step(&mut life, QueryEvent::NotConfident);
@@ -363,7 +388,12 @@ pub fn suggest(
     let mut files = files;
     files.truncate(opts.k);
     let shown = |h: &Hint| h.similarity >= MIN_SHOWN_SIMILARITY;
+    // Only reachable with abstaining off: keep the top hint rather than answer with nothing.
+    let top = files.first().cloned();
     files.retain(shown);
+    if files.is_empty() {
+        files.extend(top);
+    }
     let (mut functions, mut configs) = (functions, configs);
     functions.retain(shown);
     configs.retain(shown);

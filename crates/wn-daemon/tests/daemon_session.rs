@@ -146,3 +146,18 @@ fn background_refresher_warms_and_picks_up_new_files() {
     }
     refresher.stop();
 }
+
+#[test]
+fn an_empty_query_is_an_error_like_the_cli() {
+    let dir = repo();
+    let cache = tempfile::tempdir().unwrap();
+    let mut d = daemon(dir.path(), cache.path());
+    d.warm().unwrap();
+    let reply = d.ask("  ", "");
+    assert_eq!(reply.outcome.state, AnswerState::Error);
+    assert_eq!(
+        reply.outcome.error.as_deref(),
+        Some(wn_core::runtime::EMPTY_QUERY)
+    );
+    assert!(reply.outcome.hints.files.is_empty());
+}
