@@ -84,6 +84,24 @@ fn installs_for_detected_agents_and_is_idempotent() {
 }
 
 #[test]
+fn a_detected_agent_whose_directory_is_not_writable_is_skipped() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let env = Env::new(&[".claude", ".cursor"]);
+    let cursor = env.home().join(".cursor");
+    fs::set_permissions(&cursor, fs::Permissions::from_mode(0o555)).unwrap();
+    if tempfile::tempfile_in(&cursor).is_ok() {
+        return; // running as root: nothing is unwritable
+    }
+    let (out, code) = env.wn(&["setup", "--yes"]);
+    fs::set_permissions(&cursor, fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(code, 0, "{out}");
+    assert!(env.skill(".claude").exists(), "{out}");
+    assert!(!env.skill(".cursor").exists(), "{out}");
+    assert!(out.contains("skipped Cursor"), "{out}");
+    assert!(out.contains("chown"), "{out}");
+}
+
+#[test]
 fn dry_run_and_missing_yes_write_nothing() {
     let env = Env::new(&[".claude"]);
     let (out, code) = env.wn(&["skill", "sync", "--dry-run"]);

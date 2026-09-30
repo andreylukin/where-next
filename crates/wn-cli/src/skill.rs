@@ -146,6 +146,16 @@ impl Agent {
         }
     }
 
+    /// The first existing directory under which this user cannot write the agent's skill or hook
+    /// file, if any: e.g. a config directory left owned by root by a run with sudo.
+    pub fn unwritable(self, base: &Path) -> Option<PathBuf> {
+        [self.skill_dir(base), self.hook_file(base)]
+            .iter()
+            .filter_map(|p| p.ancestors().find(|d| d.is_dir()))
+            .find(|d| tempfile::tempfile_in(d).is_err())
+            .map(Path::to_path_buf)
+    }
+
     /// Display name.
     pub fn label(self) -> &'static str {
         match self {
@@ -1261,7 +1271,7 @@ pub fn targets(
     } else if agents.is_empty() {
         let found: Vec<Agent> = Agent::ALL
             .into_iter()
-            .filter(|a| a.detected(home))
+            .filter(|a| a.detected(home) && a.unwritable(project.unwrap_or(home)).is_none())
             .collect();
         if found.is_empty() {
             vec![Agent::Claude]
@@ -1522,6 +1532,19 @@ pub fn run_sync(args: &SyncArgs, cli: &crate::Cli) -> (String, i32) {
     for line in &report.applied {
         text.push('\n');
         text.push_str(line);
+    }
+    if args.agents.is_empty() && !args.uninstall && !args.from_state {
+        let base = root.as_deref().unwrap_or(&home);
+        for a in Agent::ALL.into_iter().filter(|a| a.detected(&home)) {
+            if let Some(dir) = a.unwritable(base) {
+                text.push_str(&format!(
+                    "\nskipped {}: {} is not writable by you (owned by root?); fix it with `sudo chown -R \"$USER\" {}`, then run wn setup again",
+                    a.label(),
+                    dir.display(),
+                    dir.display(),
+                ));
+            }
+        }
     }
     let tail = match life.state() {
         S::Done if report.applied.is_empty() => "nothing to change".to_string(),
