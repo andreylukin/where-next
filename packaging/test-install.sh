@@ -58,7 +58,8 @@ for shell in zsh bash fish unknown; do
   grep -Fxq "dir:$home/.local" "$home/.local/bin/wn.install-files" || fail "install did not record .local directory"
   case "$shell" in
     zsh) expected="echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc" ;;
-    bash) expected="echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bash_profile" ;;
+    bash) if [ "$(uname -s)" = Darwin ]; then profile=.bash_profile; else profile=.bashrc; fi
+      expected="echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/$profile" ;;
     fish) expected='fish_add_path ~/.local/bin' ;;
     *) expected="export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
   esac
