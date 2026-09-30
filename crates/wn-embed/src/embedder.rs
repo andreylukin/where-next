@@ -86,6 +86,22 @@ impl Embedder {
                 .ok_or_else(|| EmbedError::Spec("no ONNX graph in model directory".into()))?
                 .to_string(),
         };
+        #[cfg(target_os = "linux")]
+        {
+            let library = std::env::var_os("ORT_DYLIB_PATH")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| {
+                    let sibling = std::env::current_exe()
+                        .unwrap_or_default()
+                        .with_file_name("libonnxruntime.so");
+                    if sibling.is_file() {
+                        sibling
+                    } else {
+                        "libonnxruntime.so".into()
+                    }
+                });
+            ort::init_from(&library).map_err(rt)?.commit();
+        }
         let session = Session::builder()
             .map_err(rt)?
             .commit_from_file(dir.join(&graph))

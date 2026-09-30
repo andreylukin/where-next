@@ -22,6 +22,7 @@ make_release() { # dir
   # shellcheck disable=SC2016
   printf '#!/bin/sh\n[ "$1 $2 $3" = "model pull --check" ] && exit 10\necho wn-fixture\n' > "$dir/stage/wn-$target/wn"
   chmod +x "$dir/stage/wn-$target/wn"
+  printf 'fixture\n' > "$dir/stage/wn-$target/libonnxruntime.so"
   tar -czf "$dir/wn-$target.tar.gz" -C "$dir/stage" "wn-$target"
   (cd "$dir" && sha256 "wn-$target.tar.gz" > "wn-$target.tar.gz.sha256")
 }
@@ -36,6 +37,8 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 make_release "$work/good"
 run_install "file://$work/good" "$work/bin1" 2>/dev/null
 [ "$("$work/bin1/wn")" = "wn-fixture" ] || fail "installed binary does not run"
+[ -f "$work/bin1/libonnxruntime.so" ] || fail "installed runtime missing"
+[ "$(cat "$work/bin1/libonnxruntime.so")" = fixture ] || fail "installed runtime differs from archive"
 cat > "$work/bin1/wn" <<'OLD_WN'
 #!/bin/sh
 [ "$1 $2" = 'daemon stop' ] && printf 'stopped\n' > "$WN_DAEMON_LOG"
@@ -55,6 +58,15 @@ make_release "$work/nosum"
 rm "$work/nosum/wn-$target.tar.gz.sha256"
 if run_install "file://$work/nosum" "$work/bin3" 2>/dev/null; then fail "installed without checksum"; fi
 [ ! -e "$work/bin3/wn" ] || fail "missing checksum left a binary"
+
+# A Linux archive without its shared library must be refused.
+make_release "$work/nort"
+rm "$work/nort/stage/wn-$target/libonnxruntime.so"
+tar -czf "$work/nort/wn-$target.tar.gz" -C "$work/nort/stage" "wn-$target"
+(cd "$work/nort" && sha256 "wn-$target.tar.gz" > "wn-$target.tar.gz.sha256")
+if run_install "file://$work/nort" "$work/bin4" 2>"$work/nort.err"; then fail "installed without runtime"; fi
+grep -q 'archive does not contain libonnxruntime.so' "$work/nort.err" || fail "missing runtime error not reported"
+[ ! -e "$work/bin4/wn" ] || fail "missing runtime left a binary"
 
 # A destination that cannot contain files must never report success.
 mkdir "$work/blocked-bin"
@@ -76,7 +88,7 @@ if run_install "file://$work/good" "$work/marker-bin" 2>"$work/marker.err"; then
 fi
 ! grep -q 'installed ' "$work/marker.err" || fail "failed marker write reported success"
 
-echo "install.sh: 6 release-mode tests passed"
+echo "install.sh: 7 release-mode tests passed"
 
 # A server error must fail rather than entering source mode.
 mkdir -p "$work/http-fake"
@@ -226,29 +238,30 @@ HOME="$work/auto-home" WN_RELEASE_BASE="file://$work/good" WN_INSTALL_DIR="$work
 [ "$("$work/auto-bin/wn")" = "wn-fixture" ] || fail "default did not install the release"
 [ -f "$work/auto-bin/wn.install-method" ] || fail "release install marker missing"
 grep -q 'wn model pull' "$work/auto.err" || fail "model next step missing"
-HOME="$work/fallback-home" PATH="$fake:$PATH" WN_GLIBC=2.39 WN_RELEASE_BASE="file://$work/missing" WN_INSTALL_DIR="$work/fallback-bin" WN_TARGET="$target" WN_HOME="$work/fallback-wnhome" WN_BIN_ROOT="$work/fallback-root" WN_REPO_URL="$up" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/fallback.err"
+HOME="$work/fallback-home" PATH="$fake:$PATH" WN_GLIBC=2.35 WN_RELEASE_BASE="file://$work/missing" WN_INSTALL_DIR="$work/fallback-bin" WN_TARGET="$target" WN_HOME="$work/fallback-wnhome" WN_BIN_ROOT="$work/fallback-root" WN_REPO_URL="$up" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/fallback.err"
 [ -x "$work/fallback-root/bin/wn" ] || fail "source fallback did not build"
 
 # Old or unknown glibc is refused before any release download or source clone.
-for libc in 2.36 unknown; do
+for libc in 2.34 unknown; do
   if HOME="$work/$libc-home" WN_GLIBC="$libc" WN_RELEASE_BASE="file://$work/good" WN_TARGET="$target" sh "$root/install.sh" 2>"$work/$libc.err"; then
     fail "glibc $libc was accepted"
   fi
   grep -q "detected glibc version: $libc" "$work/$libc.err" || fail "glibc $libc detection missing"
-  grep -q 'prebuilt binaries need glibc >= 2.39 (Ubuntu 24.04+, Debian 13+)' "$work/$libc.err" || fail "glibc $libc requirement missing"
-  grep -q 'source build will also fail on this system' "$work/$libc.err" || fail "glibc $libc source warning missing"
-  grep -q 'ubuntu:24.04' "$work/$libc.err" || fail "glibc $libc container option missing"
+  grep -q 'prebuilt binaries need glibc >= 2.35 (Ubuntu 22.04+, Debian 12+)' "$work/$libc.err" || fail "glibc $libc requirement missing"
+  grep -q 'source build needs a compatible ONNX Runtime shared library' "$work/$libc.err" || fail "glibc $libc source warning missing"
+  grep -q 'ubuntu:22.04' "$work/$libc.err" || fail "glibc $libc container option missing"
   grep -q 'WN_FROM=source' "$work/$libc.err" || fail "glibc $libc override missing"
   ! grep -q 'downloading\|cloning' "$work/$libc.err" || fail "glibc $libc attempted a download"
 done
 
 # Explicit source mode remains available on old glibc.
-HOME="$work/old-source-home" PATH="$fake:$PATH" WN_GLIBC=2.36 WN_FROM=source WN_HOME="$work/old-source-wnhome" WN_BIN_ROOT="$work/old-source-root" WN_REPO_URL="$up" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/old-source.err"
+HOME="$work/old-source-home" PATH="$fake:$PATH" WN_GLIBC=2.34 WN_FROM=source WN_HOME="$work/old-source-wnhome" WN_BIN_ROOT="$work/old-source-root" WN_REPO_URL="$up" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/old-source.err"
 [ -x "$work/old-source-root/bin/wn" ] || fail "explicit source override did not build"
 
 # Uninstall removes a release install and explains retained skill files.
 HOME="$work/auto-home" WN_INSTALL_DIR="$work/auto-bin" sh "$root/install.sh" --uninstall 2>"$work/release-uninstall.err"
 [ ! -e "$work/auto-bin/wn" ] || fail "release binary remained after uninstall"
+[ ! -e "$work/auto-bin/libonnxruntime.so" ] || fail "release runtime remained after uninstall"
 [ ! -e "$work/auto-bin/wn.install-method" ] || fail "release marker remained after uninstall"
 grep -q 'wn skill sync --uninstall' "$work/release-uninstall.err" || fail "uninstall omitted agent skills"
 echo "install.sh: 6 additional auto/release tests passed"
