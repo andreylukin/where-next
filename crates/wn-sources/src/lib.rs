@@ -534,15 +534,23 @@ pub fn file_doc(path: &str, text: &str) -> String {
     let lang = lang_of(path);
     if matches!(lang, Some("vue" | "svelte" | "astro")) {
         let body = if lang == Some("vue") {
-            let template = text
-                .split_once("<template")
-                .and_then(|(_, tail)| tail.split_once('>'))
-                .and_then(|(_, tail)| tail.split_once("</template>"))
-                .map(|(body, _)| body);
+            let template = text.find("<template").and_then(|start| {
+                let body_start = start + text[start..].find('>')? + 1;
+                let close = text.rfind("</template>")?;
+                (close >= body_start).then_some((start, body_start, close))
+            });
             match template {
-                Some(template) => {
-                    let markup = template.split_whitespace().collect::<Vec<_>>().join(" ");
-                    let script = text.split_whitespace().collect::<Vec<_>>().join(" ");
+                Some((start, body_start, close)) => {
+                    let markup = text[body_start..close]
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let outside = format!(
+                        "{} {}",
+                        &text[..start],
+                        &text[close + "</template>".len()..]
+                    );
+                    let script = outside.split_whitespace().collect::<Vec<_>>().join(" ");
                     format!("{} {}", take_chars(&markup, 750), take_chars(&script, 750))
                 }
                 None => text.split_whitespace().collect::<Vec<_>>().join(" "),

@@ -204,6 +204,86 @@ fn history_replay_of_a_repository_without_history_is_an_error() {
     assert!(err.contains("no commits"), "{err}");
 }
 
+#[test]
+fn blobless_history_fetches_from_configured_promisor_remote() {
+    let t = tempfile::tempdir().unwrap();
+    let source = t.path().join("source");
+    fs::create_dir(&source).unwrap();
+    git(&source, &["init", "-q", "-b", "main"]);
+    git(&source, &["config", "commit.gpgsign", "false"]);
+    git(&source, &["config", "uploadpack.allowFilter", "true"]);
+    write(
+        &source,
+        "src/topic.py",
+        "# unique parent blob\ndef topic():\n    pass\n",
+    );
+    git(&source, &["add", "-A"]);
+    git(&source, &["commit", "-q", "-m", "initial topic"]);
+    let parent_blob = git(&source, &["rev-parse", "HEAD:src/topic.py"]);
+    append(&source, "src/topic.py", "# more topic detail");
+    git(&source, &["commit", "-q", "-am", "improve topic detail"]);
+
+    let clone = t.path().join("clone");
+    let url = format!("file://{}", source.display());
+    git(
+        t.path(),
+        &[
+            "clone",
+            "-q",
+            "--filter=blob:none",
+            &url,
+            clone.to_str().unwrap(),
+        ],
+    );
+    git(&clone, &["remote", "rename", "origin", "archive"]);
+    assert_eq!(
+        git(&clone, &["config", "--get", "remote.archive.promisor"]),
+        "true"
+    );
+    let missing = Command::new("git")
+        .args(["cat-file", "-e", &parent_blob])
+        .current_dir(&clone)
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .status()
+        .unwrap();
+    assert!(!missing.success(), "parent blob should start absent");
+
+    let opts = BenchOptions {
+        commits: 1,
+        adapter: false,
+        ..BenchOptions::default()
+    };
+    let cache = t.path().join("cache");
+    let enc = HashEncoder { dim: 128 };
+    let mut messages = Vec::new();
+    let first = bench::history(&clone, &enc, "hash", None, &cache, &opts, &mut |s| {
+        messages.push(s.to_string())
+    })
+    .unwrap();
+    assert!(
+        messages
+            .iter()
+            .any(|s| s.contains("fetching 1 missing historical blobs")),
+        "{messages:?}"
+    );
+    assert!(
+        !messages.iter().any(|s| s.contains("fetch failed")),
+        "{messages:?}"
+    );
+    assert_eq!((first.eligible, first.evaluated), (1, 1));
+    assert_eq!(first.all[0].n, 1);
+    assert!(git(&clone, &["cat-file", "-e", &parent_blob]).is_empty());
+
+    let again = bench::history(&clone, &enc, "hash", None, &cache, &opts, &mut |_| {}).unwrap();
+    assert_eq!(again.all, first.all);
+    assert_eq!(again.by_size, first.by_size);
+    assert_eq!(again.eras, first.eras);
+    assert_eq!(
+        (again.eligible, again.evaluated),
+        (first.eligible, first.evaluated)
+    );
+}
+
 fn wn(repo: &Path, home: &Path, args: &[&str]) -> (String, i32) {
     let out = Command::new(env!("CARGO_BIN_EXE_wn"))
         .arg("--path")

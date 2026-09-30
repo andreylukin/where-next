@@ -708,11 +708,14 @@ fn ask_colors_only_when_asked_or_on_a_terminal() {
 fn ask_json_reports_lexical_fallback() {
     let repo = project();
     let home = tempfile::tempdir().unwrap();
-    for query in ["login session expiry", "unrelated quantum teapot"] {
+    for (query, state) in [
+        ("login session expiry", "ok"),
+        ("unrelated quantum teapot", "abstain"),
+    ] {
         let (out, code) = wn(repo.path(), home.path(), &["ask", query, "--json"]);
         assert_eq!(code, 0, "{out}");
         let answer: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert!(matches!(answer["state"].as_str(), Some("ok" | "abstain")));
+        assert_eq!(answer["state"], state, "{out}");
         assert_eq!(answer["fallback"], true, "{out}");
     }
 }

@@ -510,6 +510,27 @@ fn load_blobs(root: &Path, blobs: &[String], log: &mut dyn FnMut(&str)) -> HashM
                         "fetching {} missing historical blobs",
                         missing.len()
                     ));
+                    let remote = Command::new("git")
+                        .arg("-C")
+                        .arg(root)
+                        .args(["config", "--get-regexp", r"^remote\..*\.promisor$"])
+                        .output()
+                        .ok()
+                        .filter(|output| output.status.success())
+                        .and_then(|output| {
+                            String::from_utf8(output.stdout).ok().and_then(|text| {
+                                text.lines().find_map(|line| {
+                                    let (key, value) = line.split_once(' ')?;
+                                    (value == "true")
+                                        .then(|| {
+                                            key.strip_prefix("remote.")?.strip_suffix(".promisor")
+                                        })
+                                        .flatten()
+                                        .map(str::to_owned)
+                                })
+                            })
+                        })
+                        .unwrap_or_else(|| "origin".to_string());
                     if let Ok(mut fetch) = Command::new("git")
                         .arg("-C")
                         .arg(root)
@@ -517,7 +538,7 @@ fn load_blobs(root: &Path, blobs: &[String], log: &mut dyn FnMut(&str)) -> HashM
                             "-c",
                             "fetch.negotiationAlgorithm=noop",
                             "fetch",
-                            "origin",
+                            &remote,
                             "--no-tags",
                             "--no-write-fetch-head",
                             "--recurse-submodules=no",
