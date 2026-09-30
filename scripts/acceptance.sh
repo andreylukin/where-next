@@ -94,6 +94,14 @@ if sel lock || sel progress; then
     [ -s "$errlog" ] && pass "progress: init prints progress within 5 s" || fail "progress: init prints progress within 5 s" "stderr empty after 5 s"
   fi
   if sel lock; then
+    # The init above may run in-process; also index a second big copy through the daemon,
+    # which is where a global lock would block other repositories.
+    BIG2="$CACHE/big2"
+    [ -d "$BIG2/.git" ] || cp -R "$BIG" "$BIG2"
+    rm -rf "$BIG2/.wn" 2>/dev/null
+    "$WN" ask "where are handlers" --path "$BIG2" >/dev/null 2>&1 &
+    daskpid=$!
+    sleep 3
     start=$(python3 -c 'import time;print(time.time())')
     timeout 30 "$WN" ask "where is the request logger" --path "$GIN" >/dev/null 2>&1; rc=$?
     el=$(python3 -c "import time;print(round(time.time()-$start,2))")
@@ -103,6 +111,7 @@ if sel lock || sel progress; then
     echo "$ds" | grep -qi "not running" && fail "lock: daemon status correct while busy" "$ds" || pass "lock: daemon status correct while busy"
   fi
   wait $initpid 2>/dev/null
+  [ -n "${daskpid:-}" ] && wait "$daskpid" 2>/dev/null
   rm -f "$errlog"
 fi
 
