@@ -11,7 +11,7 @@ Options:
           Every repository with logged usage, one row each
 
       --path <PATH>
-          Repository (or any directory inside it)
+          Repository (or any directory inside it), or a directory of repositories
           
           [default: .]
 

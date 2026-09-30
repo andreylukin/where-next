@@ -123,6 +123,10 @@ Claude Code and Cursor pick them up in new sessions.
   the Grep/Glob tools, when the search found nothing or more than 30 results. The pattern is asked,
   with the session's latest prompt as context (read from the end of the transcript the agent names
   in the hook payload; not stored). Searches with a handful of results are left alone.
+- *Outside a repository* (an agent started in `~` or another directory of repositories): the same
+  hooks ask across every repository indexed below that directory (see
+  [quickstart](quickstart.md#many-repositories-from-your-home-directory)), with paths relative to
+  it. With nothing indexed there they stay silent.
 
 **What they inject**
 

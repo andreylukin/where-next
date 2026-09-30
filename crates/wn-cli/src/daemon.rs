@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::{AskArgs, Cli, Command};
 
 /// Bumped when requests or responses change shape.
-pub const PROTOCOL: u32 = 1;
+pub const PROTOCOL: u32 = 2;
 
 /// Default idle timeout.
 pub const DEFAULT_IDLE_SECS: u64 = 900;
@@ -53,6 +53,9 @@ pub enum Op {
     Hello,
     /// `wn ask`.
     Ask { args: AskArgs, context: String },
+    /// `wn ask` in a directory of repositories (`repo` is the directory; see
+    /// [`crate::workspace`]).
+    WorkspaceAsk { args: AskArgs, context: String },
     /// `wn status`.
     Status,
     /// Daemon statistics for `wn daemon status`.
@@ -254,7 +257,12 @@ pub enum OpKind {
 
 /// Builds the request for a command (context already read by the caller).
 pub fn request(cli: &Cli, kind: OpKind, context: &str) -> Option<Request> {
-    let root = crate::project_root(&cli.path);
+    // Outside a project repository, `ask` searches the repositories below the directory.
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let (root, workspace) = match crate::check_repo(&cli.path, cli.any_dir, home.as_deref()) {
+        Ok(root) => (root, false),
+        Err(_) => (cli.path.clone(), true),
+    };
     let root = root.canonicalize().unwrap_or(root);
     let model = crate::resolve_model(cli.model.as_deref())
         .map(|m| m.canonicalize().unwrap_or(m).to_string_lossy().into_owned());
@@ -273,8 +281,8 @@ pub fn request(cli: &Cli, kind: OpKind, context: &str) -> Option<Request> {
                 no_log,
                 ..
             },
-        ) => Op::Ask {
-            args: AskArgs {
+        ) => {
+            let args = AskArgs {
                 query: query.clone(),
                 functions: *functions,
                 k: *k,
@@ -285,10 +293,16 @@ pub fn request(cli: &Cli, kind: OpKind, context: &str) -> Option<Request> {
                 start_min_files: *start_min_files,
                 // The daemon outlives this command's environment, so forward `WN_NO_LOG`.
                 no_log: *no_log || !wn_daemon::usage::enabled(),
-            },
-            context: context.to_string(),
-        },
-        (OpKind::Status, Command::Status) => Op::Status,
+            };
+            let context = context.to_string();
+            if workspace {
+                Op::WorkspaceAsk { args, context }
+            } else {
+                Op::Ask { args, context }
+            }
+        }
+        // A workspace status only reads the cache: it never needs the daemon.
+        (OpKind::Status, Command::Status) if !workspace => Op::Status,
         _ => return None,
     };
     Some(Request {
@@ -461,6 +475,10 @@ pub mod handler {
     /// A model directory and its manifest's modification time.
     type ModelKey = (Option<PathBuf>, Option<SystemTime>);
 
+    /// Most repositories kept open; beyond it the least recently used idle one is closed (a
+    /// workspace query from `~` can touch every indexed repository).
+    const MAX_SLOTS: usize = 64;
+
     /// One repository (for one model): its workspace, opened on first use under its own lock.
     struct Slot {
         root: PathBuf,
@@ -469,6 +487,8 @@ pub mod handler {
         ws: Mutex<Option<Workspace>>,
         /// When the background rescanner may start refreshing it (after the first request).
         scanned: Mutex<Option<Instant>>,
+        /// Last request for it.
+        used: Mutex<Instant>,
     }
 
     /// Loaded encoders and open workspaces.
@@ -565,7 +585,18 @@ pub mod handler {
             let (encoder, info) = self.encoder(model);
             let key = (repo.to_path_buf(), info.fingerprint.clone());
             let mut slots = self.slots.lock().unwrap_or_else(|e| e.into_inner());
-            slots
+            if !slots.contains_key(&key) && slots.len() >= MAX_SLOTS {
+                // Idle: no request holds it (the map's is the only reference) and nothing runs.
+                let idle = slots
+                    .iter()
+                    .filter(|(_, s)| Arc::strong_count(s) == 1 && s.ws.try_lock().is_ok())
+                    .min_by_key(|(_, s)| *s.used.lock().unwrap_or_else(|e| e.into_inner()))
+                    .map(|(k, _)| k.clone());
+                if let Some(k) = idle {
+                    slots.remove(&k);
+                }
+            }
+            let slot = slots
                 .entry(key)
                 .or_insert_with(|| {
                     Arc::new(Slot {
@@ -574,9 +605,12 @@ pub mod handler {
                         info,
                         ws: Mutex::new(None),
                         scanned: Mutex::new(None),
+                        used: Mutex::new(Instant::now()),
                     })
                 })
-                .clone()
+                .clone();
+            *slot.used.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
+            slot
         }
 
         /// Workspaces the background rescanner should refresh: key and repository root.
@@ -618,6 +652,9 @@ pub mod handler {
                 return failure("bad_request: no repository");
             };
             let model = req.model.as_deref().map(Path::new);
+            if let Op::WorkspaceAsk { args, context } = &req.op {
+                return self.serve_workspace(Path::new(repo), model, args, context, req, progress);
+            }
             let loading = progress
                 .clone()
                 .map(|sink| crate::progress::Ticker::step("loading the model", sink));
@@ -665,6 +702,62 @@ pub mod handler {
                 }
             };
             ws.progress = None;
+            Response {
+                ok: true,
+                text,
+                code,
+                proto: PROTOCOL,
+                ..Response::default()
+            }
+        }
+
+        /// A workspace `ask`: the query is embedded once and ranked in every repository indexed
+        /// below `dir`, each from its own warm slot (a repository busy with another request is
+        /// skipped, not waited for). Nothing is scanned on the request path; the background
+        /// rescanner keeps these indexes current from then on.
+        fn serve_workspace(
+            &self,
+            dir: &Path,
+            model: Option<&Path>,
+            args: &crate::AskArgs,
+            context: &str,
+            req: &Request,
+            progress: Option<Arc<dyn Sink>>,
+        ) -> Response {
+            use crate::workspace;
+            let started = Instant::now();
+            let loading =
+                progress.map(|sink| crate::progress::Ticker::step("loading the model", sink));
+            let (encoder, info) = self.encoder(model);
+            drop(loading);
+            let once = workspace::OnceEncoder::new(encoder.as_ref());
+            let results: Vec<workspace::RepoResult> =
+                workspace::indexed(&crate::home(), dir, &info.fingerprint)
+                    .iter()
+                    .map(|root| {
+                        let slot = self.slot(root, model);
+                        let mut guard = match slot.ws.try_lock() {
+                            Ok(g) => g,
+                            Err(TryLockError::WouldBlock) => {
+                                return workspace::skipped(root, "busy: being indexed");
+                            }
+                            Err(TryLockError::Poisoned(e)) => e.into_inner(),
+                        };
+                        let ws = guard.get_or_insert_with(|| {
+                            Workspace::open_with(
+                                &slot.root,
+                                slot.encoder.clone(),
+                                slot.info.clone(),
+                            )
+                        });
+                        if let Ok(mut scanned) = slot.scanned.lock() {
+                            scanned.get_or_insert_with(Instant::now);
+                        }
+                        workspace::repo_result(ws, &once, args, context)
+                    })
+                    .collect();
+            let (text, code) =
+                workspace::respond(dir, &results, &info, args, context, req.json, started);
             Response {
                 ok: true,
                 text,
@@ -929,7 +1022,7 @@ pub mod server {
                     ..base
                 }
             }
-            Op::Ask { .. } | Op::Status => {
+            Op::Ask { .. } | Op::WorkspaceAsk { .. } | Op::Status => {
                 if req.proto != PROTOCOL || req.client != binary {
                     return Response {
                         error: Some("mismatch".into()),

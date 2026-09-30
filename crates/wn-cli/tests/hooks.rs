@@ -841,6 +841,44 @@ fn session_start_warms_the_daemon_up_and_prints_nothing() {
     assert!(stub.warmed.lock().unwrap().is_empty());
 }
 
+/// Outside any repository (an agent started in `~`), hooks ask across the repositories indexed
+/// below the directory, with paths relative to it; with none indexed there they stay silent.
+#[test]
+fn outside_a_repository_hooks_ask_across_the_repositories_below() {
+    let home = tempfile::tempdir().unwrap();
+    let parent = tempfile::tempdir().unwrap();
+    let cwd = parent.path().canonicalize().unwrap();
+    let root = cwd.join("proj");
+    fs::create_dir_all(root.join(".git")).unwrap();
+    let stub = Stub::new(&["proj/src/upload.rs"]);
+    let deps = Deps {
+        home: home.path().to_path_buf(),
+        now: 1_790_000_000,
+        budget: Duration::from_millis(1500),
+        min_files: 0,
+        model: Some("gemma-xl1".into()),
+        asker: stub.clone(),
+    };
+    let prompt = claude_prompt(cwd.to_str().unwrap(), "s1", "fix upload retries");
+    let start = json!({ "session_id": "s1", "cwd": cwd, "hook_event_name": "SessionStart" });
+    // Nothing indexed below: silent, and the daemon is never asked.
+    assert_eq!(hooks::run(HookKind::ClaudePrompt, &prompt, &deps), "");
+    hooks::run(HookKind::ClaudeStart, &start.to_string(), &deps);
+    assert!(stub.asked.lock().unwrap().is_empty());
+    assert!(stub.warmed.lock().unwrap().is_empty());
+
+    let dir = wn_daemon::workspace::repo_cache_dir(home.path(), &root);
+    fs::create_dir_all(dir.join("gemma-xl1-model/index")).unwrap();
+    wn_daemon::workspace::record_root(&dir, &root);
+    let out = hooks::run(HookKind::ClaudePrompt, &prompt, &deps);
+    assert!(
+        context_of(&out).ends_with(":\n- proj/src/upload.rs"),
+        "{out}"
+    );
+    hooks::run(HookKind::ClaudeStart, &start.to_string(), &deps);
+    assert_eq!(*stub.warmed.lock().unwrap(), vec![cwd]);
+}
+
 #[test]
 fn the_start_hook_returns_at_once() {
     let w = World::new(true);

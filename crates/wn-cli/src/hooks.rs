@@ -11,8 +11,10 @@
 //! Confident hints (answer state `ok`) are added to the agent's context: at most [`MAX_HINTS`]
 //! paths, each file at most once per session. Every hook fails open: it always exits 0, answers
 //! within [`DEFAULT_BUDGET_MS`] or prints nothing, and is silent when wn abstains, no model is
-//! installed (the lexical fallback has no calibrated abstain threshold), the directory is not a
-//! git repository, the repository is not indexed with the installed model, or `WN_HOOKS=0`.
+//! installed (the lexical fallback has no calibrated abstain threshold), the repository is not
+//! indexed with the installed model, or `WN_HOOKS=0`. Outside a project repository (`~`, a
+//! directory of repositories) a hook asks across the repositories indexed below the directory
+//! (see [`crate::workspace`]) and is silent when there are none.
 //!
 //! A hook only asks the background daemon (starting it when needed); it never loads a model or
 //! builds an index itself.
@@ -858,10 +860,21 @@ pub fn git_root(cwd: &Path) -> Option<PathBuf> {
     }
 }
 
+/// A repository at `/` or `$HOME` (dotfiles), which never stands for the directories below it.
+fn broad(root: &Path) -> bool {
+    let home = std::env::var_os("HOME").and_then(|h| PathBuf::from(h).canonicalize().ok());
+    root.parent().is_none() || home.as_deref() == Some(root)
+}
+
 /// The installed model's name (`gemma-xl1`), which prefixes its index directories. `None` without
 /// a model: the lexical fallback has no calibrated threshold, so hooks stay silent.
 pub fn model_name() -> Option<String> {
-    let dir = crate::resolve_model(None)?;
+    model_name_for(None)
+}
+
+/// [`model_name`] for the model `--model` names (`None`: the default resolution).
+pub fn model_name_for(explicit: Option<&Path>) -> Option<String> {
+    let dir = crate::resolve_model(explicit)?;
     let name = std::fs::read(dir.join("wn-model.json"))
         .ok()
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
@@ -974,14 +987,30 @@ pub fn run(kind: HookKind, input: &str, deps: &Deps) -> String {
     let Some(trigger) = parse(kind, input) else {
         return String::new();
     };
-    let Some(root) = git_root(&trigger.cwd) else {
-        return String::new();
-    };
     let Some(model) = deps.model.as_deref() else {
         return String::new();
     };
-    let Some(files) = indexed_files(&deps.home, &root, model) else {
-        return String::new();
+    // Inside a project repository: that repository. Anywhere else (`~`, a directory of
+    // repositories): every repository indexed below it, through the daemon's workspace search.
+    let (root, files, workspace) = match git_root(&trigger.cwd).filter(|r| !broad(r)) {
+        Some(root) => match indexed_files(&deps.home, &root, model) {
+            Some(files) => (root, files, false),
+            None => return String::new(),
+        },
+        None => {
+            let Ok(dir) = trigger.cwd.canonicalize() else {
+                return String::new();
+            };
+            let repos = crate::workspace::indexed_named(&deps.home, &dir, model);
+            if repos.is_empty() {
+                return String::new();
+            }
+            let files = repos
+                .iter()
+                .filter_map(|(r, _)| indexed_files(&deps.home, r, model))
+                .sum();
+            (dir, files, true)
+        }
     };
     if files < deps.min_files {
         return String::new();
@@ -1056,9 +1085,12 @@ pub fn run(kind: HookKind, input: &str, deps: &Deps) -> String {
     run.outcome = "injected".into();
     run.injected = fresh.clone();
     log_run(&deps.home, &run);
-    record_answer(
-        &deps.home, &root, &query, &context, &outcome, &fresh, run.ms, files,
-    );
+    // A workspace answer is logged per repository by the daemon's search itself.
+    if !workspace {
+        record_answer(
+            &deps.home, &root, &query, &context, &outcome, &fresh, run.ms, files,
+        );
+    }
     output(kind, &trigger.event, &render(&trigger.moment, &fresh))
 }
 

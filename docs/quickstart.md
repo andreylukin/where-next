@@ -26,8 +26,10 @@ wn status
 wn ask "where are gitignore rules matched against paths"
 ```
 
-Run it inside a git repository: `wn` refuses other directories and your home directory rather
-than indexing everything under them. `wn init` does two things, once per repository:
+Run it inside a git repository: `wn` never indexes your home directory or another plain directory
+as one big repository (to search many repositories at once, see
+[below](#many-repositories-from-your-home-directory)). `wn init` does two things, once per
+repository:
 
 1. Indexes the repository with the installed model (or keyword matching if none is installed): one
    vector per file, plus config files. Function vectors are built the first time you use
@@ -55,6 +57,43 @@ no confident hint (request: top similarity 0.07 < 0.20); try rg for exact names,
 On a terminal the file names are bold and the scores dimmed; piped output is plain text. Use
 `--color always|never` to override (`NO_COLOR` and `CLICOLOR_FORCE` are honored), and `--json`
 for scripts and agents.
+
+## Many repositories from your home directory
+
+If you (or your agents) start in `~` and work down into different repositories, index them all
+from there once:
+
+```sh
+cd ~
+wn init        # finds the git repositories up to 4 levels down and indexes each; asks first above 10
+wn status      # which repositories are indexed, how many files, how fresh
+wn ask "where are hook sessions deduplicated"
+```
+
+`wn init` skips hidden directories, `node_modules`, `target`, `vendor`, `build`, `dist` and
+`~/Library`, never follows symlinks, and does not look inside a repository for more repositories.
+Re-running it refreshes every index (only changed files are re-embedded).
+
+`wn ask` there searches every repository indexed below the directory, each with its own index,
+adapter and abstain thresholds, so repositories with nothing confident drop out. The query is
+embedded once. Each remaining repository's best file comes first (ordered by score), then the
+second-best ones, so the top 3 span repositories instead of one large repository filling the list.
+Paths are relative to where you asked, so they open from there, and a last line says which
+repositories the hints came from:
+
+```text
+~$ wn ask "retry uploads when the request times out"
+src/github.com/me/uploader/internal/storage/retry.go              0.48
+repos/where-next/crates/wn-sources/tests/fixtures/src/Retry.java  0.37
+src/github.com/me/uploader/cmd/main.go                            0.36
+3 repositories searched; hints from src/github.com/me/uploader, repos/where-next; no confident hint in 1
+```
+
+`--json` adds `repo`, `root`, `repo_path`, per-repository `rank` and the `fused` score to each file,
+and a `repos` list with each repository's state and best similarity. Inside a repository nothing
+changes: `wn` answers for that repository alone. Nothing is indexed at query time: a repository you
+clone later is searched after the next `wn init`. `wn mcp` and the agent hooks started in such a
+directory search the same way.
 
 ## Writing good queries
 
@@ -158,9 +197,11 @@ In `--json` answers, each file keeps its raw cosine `similarity`. A file promote
   `wn init` again in repositories you already indexed.
 - **Model checksum mismatch**: `wn model remove <name>`, then `wn model pull` it again.
 - **"not inside a git repository" / "refusing to index"**: `wn` indexes git repositories only, and
-  never your home directory or `/` by default (everything under them would be indexed). Run it in
-  the project or pass `--path <repo>`; `--any-dir` overrides. `wn mcp` started outside a repository
-  still runs and answers every call with this error; register it as `wn --path <repo> mcp`.
+  never your home directory or `/` as one repository (everything under them would be indexed). Run
+  it in the project, pass `--path <repo>`, or run `wn init` there to index the repositories below
+  it ([workspace search](#many-repositories-from-your-home-directory)); `--any-dir` indexes the
+  directory itself. `wn mcp` started where nothing is indexed still runs and answers every call
+  with this error.
 - **Daemon trouble**: `wn daemon status`, `wn daemon stop` (it restarts on the next call), or answer
   in-process with `--no-daemon` / `WN_NO_DAEMON=1`. Log: `~/.cache/where-next/daemon.log`.
 - **Don't log queries**: `wn ask --no-log` or `WN_NO_LOG=1` (query text is never stored either way).

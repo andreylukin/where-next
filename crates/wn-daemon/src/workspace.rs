@@ -92,6 +92,58 @@ pub fn model_cache_dir(cache_home: &Path, root: &Path, fingerprint: &str) -> Pat
     repo_cache_dir(cache_home, root).join(tag)
 }
 
+/// File in a repository's cache directory naming its root, so a parent directory can find the
+/// indexes of the repositories below it (see [`cached_repos`]).
+pub const ROOT_FILE: &str = "root.json";
+
+#[derive(Serialize, serde::Deserialize)]
+struct RootFile {
+    root: PathBuf,
+}
+
+/// Records `root` in its cache directory `repo_dir` (once; errors are ignored).
+pub fn record_root(repo_dir: &Path, root: &Path) {
+    let path = repo_dir.join(ROOT_FILE);
+    if path.exists() {
+        return;
+    }
+    let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    if let Ok(bytes) = serde_json::to_vec(&RootFile { root }) {
+        let _ = std::fs::create_dir_all(repo_dir);
+        let _ = std::fs::write(path, bytes);
+    }
+}
+
+/// The repository root recorded in a cache directory: [`ROOT_FILE`], else the usage log's copy
+/// (caches from before [`ROOT_FILE`] existed).
+pub fn cached_root(repo_dir: &Path) -> Option<PathBuf> {
+    [ROOT_FILE, crate::usage::REPO_META]
+        .iter()
+        .find_map(|name| {
+            let bytes = std::fs::read(repo_dir.join(name)).ok()?;
+            serde_json::from_slice::<RootFile>(&bytes)
+                .ok()
+                .map(|f| f.root)
+        })
+}
+
+/// Roots of every repository with a cache directory under `cache_home` whose recorded root still
+/// maps to that directory (a moved or deleted checkout is skipped).
+pub fn cached_repos(cache_home: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(cache_home) else {
+        return Vec::new();
+    };
+    let mut roots: Vec<PathBuf> = entries
+        .flatten()
+        .filter_map(|e| {
+            let root = cached_root(&e.path())?;
+            (root.is_dir() && repo_cache_dir(cache_home, &root) == e.path()).then_some(root)
+        })
+        .collect();
+    roots.sort();
+    roots
+}
+
 /// Where an answer came from.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Provenance {
@@ -198,6 +250,9 @@ impl Workspace {
             self.index = Index::open(&self.dir.join("index"), &self.encoder.fingerprint());
         }
         let result = self.apply_locked(scan);
+        if let (Ok(_), Some(repo_dir)) = (&result, self.dir.parent()) {
+            record_root(repo_dir, &self.root);
+        }
         let changed = match &result {
             Ok(stats) => stats.encoded > 0 || stats.removed > 0,
             Err(_) => true,
@@ -324,5 +379,26 @@ mod cache_dir_tests {
         assert_ne!(a, b);
         assert_ne!(b.parent(), c.parent());
         assert!(a.ends_with("gemma-g2r-abc_q8"));
+    }
+
+    #[test]
+    fn cache_dirs_map_back_to_their_roots() {
+        let home = tempfile::tempdir().unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        let root = repo.path().canonicalize().unwrap();
+        let dir = repo_cache_dir(home.path(), &root);
+        assert!(cached_repos(home.path()).is_empty());
+        record_root(&dir, &root);
+        assert_eq!(cached_root(&dir), Some(root.clone()));
+        assert_eq!(cached_repos(home.path()), vec![root.clone()]);
+        // Caches from before `root.json` fall back to the usage log's copy.
+        std::fs::remove_file(dir.join(ROOT_FILE)).unwrap();
+        let meta = serde_json::json!({ "root": root });
+        std::fs::write(dir.join(crate::usage::REPO_META), meta.to_string()).unwrap();
+        assert_eq!(cached_repos(home.path()), vec![root.clone()]);
+        // A directory whose recorded root maps elsewhere (a moved checkout) is skipped.
+        let stray = home.path().join("stray-0000000000000000");
+        record_root(&stray, &root);
+        assert_eq!(cached_repos(home.path()), vec![root]);
     }
 }

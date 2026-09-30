@@ -15,7 +15,7 @@ Options:
           File with recent context (conversation, last tool output); `-` reads stdin
 
       --path <PATH>
-          Repository (or any directory inside it)
+          Repository (or any directory inside it), or a directory of repositories
           
           [default: .]
 
@@ -80,3 +80,4 @@ Examples:
   cargo test 2>&1 | wn ask "fix the failing test" --context-file -
   wn ask --json "where is the config loaded"                        state, files, adapter
   wn ask --start "add rate limiting to the API"                     task start; skipped below 3,000 files
+  cd ~ && wn ask "where are hook sessions deduplicated"             every repository indexed below ~

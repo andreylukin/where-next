@@ -8,9 +8,12 @@ Usage: wn init [OPTIONS]
 
 Options:
       --path <PATH>
-          Repository (or any directory inside it)
+          Repository (or any directory inside it), or a directory of repositories
           
           [default: .]
+
+  -y, --yes
+          In a directory of repositories: index more than ten without asking
 
       --json
           Print JSON instead of text
@@ -36,10 +39,15 @@ Options:
 Indexes source and config files (untracked included, git-ignored excluded) with the best installed
 model, or the lexical fallback when none is installed, then fits the per-repository adapter from
 recent commits. Safe to re-run; only changed files are re-embedded. Large repositories take minutes
-the first time; progress goes to stderr. Directories outside a git repository, your home directory
-and / are refused unless you pass --any-dir.
+the first time; progress goes to stderr.
+
+Outside a repository (in ~, or any directory that holds repositories), init indexes every git
+repository up to 4 levels below it instead, asking first when there are more than 10; `wn ask` and
+`wn status` there then work across all of them. --any-dir indexes the directory itself as a
+single repository.
 
 Examples:
   wn init
   wn --path ~/src/project init
+  cd ~ && wn init                          index every repository below ~ (workspace search)
   wn --model ~/models/gemma-xl1 init       use a specific model directory

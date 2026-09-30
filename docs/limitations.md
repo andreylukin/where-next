@@ -46,6 +46,10 @@ for a manual task-start hint.
 - **Breadth.** The history replay covers a single project. Only source and config files are indexed
   today (docs, logs and CLI help are planned). For exact strings and identifiers, `rg` is usually the
   better tool; see the [FAQ](faq.md).
+- **Ranking across repositories.** Workspace search (from `~` or another directory of repositories)
+  merges each repository's ranking by rank, not by score, because scores from different adapters
+  are not strictly comparable: every matching repository's best file is listed before any
+  repository's second, even a strong one. Repositories that abstain drop out. Not benchmarked yet.
 - **The adapter's gain on one repository.** On ContextBench a shuffled-pair control shows the adapter
   learns which descriptions map to which files. On the single-repository history replay, much of its
   gain can also be had from simple history and file-frequency signals.

@@ -43,6 +43,11 @@ functions; the first call indexes every definition, which can take minutes in a 
 `--start` (opt-in task-start mode; skipped in repositories under 3,000 source files; in trials it did
 not lower agent cost, so don't add it by default).
 
+Outside a repository (in `~` or another directory of repositories), `wn ask` searches every
+repository indexed below that directory and prints paths relative to it, so they open from there;
+in `--json`, `repo` names each file's repository and `repos` lists which repositories matched. Run it
+inside a repository to search only that one.
+
 ## Reading the answer
 
 JSON fields: `state`, `files` (up to 3 `{path, similarity}`; `"evidence": "exact"` when a name or
@@ -57,4 +62,5 @@ can differ from similarity order.
 - `empty_index`, `unsupported_scope`, `error`: nothing usable; search normally.
 
 If `wn` reports the repository is not indexed, run `wn init` once (seconds to a few minutes; it also
-learns from git history). `wn status` shows the index, adapter and model.
+learns from git history). `wn status` shows the index, adapter and model; in a directory of
+repositories it lists which ones are indexed.
