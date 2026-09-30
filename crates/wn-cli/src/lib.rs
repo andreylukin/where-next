@@ -62,6 +62,7 @@ pub struct Cli {
 
 const TOP_EXAMPLES: &str = "\
 Examples:
+  wn model pull                            install the default model (once, ~1.2 GB)
   wn init                                  index this repository, fit its adapter from git history
   wn status                                which model answers (\"lexical fallback\" = no model installed)
   wn ask \"where is the retry logic for S3 upload timeouts\"
@@ -112,6 +113,14 @@ Examples:
   wn report                                show it, then post it as a GitHub issue if you answer y
   wn --json report --dry-run               the report as JSON";
 
+const MCP_EXAMPLES: &str = "\
+Most agents only need the skill (`wn skill sync`), which calls `wn ask` directly. Use the MCP
+server for clients that prefer tools; it answers for the repository it is started in.
+
+Examples:
+  claude mcp add where-next -- wn mcp      register with Claude Code
+  wn --path ~/src/project mcp              serve a specific repository";
+
 /// Subcommands.
 #[derive(Debug, Subcommand)]
 pub enum Command {
@@ -158,6 +167,7 @@ pub enum Command {
     /// Restore the previous adapter (or remove the only one).
     Rollback,
     /// Serve hints over MCP (stdio).
+    #[command(after_help = MCP_EXAMPLES)]
     Mcp,
     /// Measure hit@k on this repository's own history (default) or on ContextBench.
     #[command(after_help = BENCH_EXAMPLES)]
@@ -199,8 +209,7 @@ pub enum Command {
         #[arg(long)]
         force: bool,
     },
-    /// Show an anonymous usage report (numbers and buckets only) and, if you confirm, post it as
-    /// a GitHub issue to help improve wn. Nothing is sent without your confirmation.
+    /// Share an anonymous usage report as a GitHub issue (shown first; asks before sending).
     #[command(after_help = REPORT_EXAMPLES)]
     Report {
         /// Show the report and the issue link without posting.
@@ -574,11 +583,11 @@ pub fn render_status(s: &StatusReport) -> String {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let mut lines = vec![format!(
-        "where-next: {} source files, {} config files{} indexed in {name} ({})",
-        s.files,
-        s.configs,
+        "where-next: {}, {}{} indexed in {name} ({})",
+        count(s.files, "source file"),
+        count(s.configs, "config file"),
         if s.functions > 0 {
-            format!(", {} functions", s.functions)
+            format!(", {}", count(s.functions, "function"))
         } else {
             String::new()
         },
@@ -592,8 +601,8 @@ pub fn render_status(s: &StatusReport) -> String {
             .map(|(e, n)| format!("{e} {n}"))
             .collect();
         lines.push(format!(
-            "not indexed: {} files ({})",
-            s.coverage.unsupported,
+            "not indexed: {} ({})",
+            count(s.coverage.unsupported, "file"),
             exts.join(", ")
         ));
     }
@@ -611,15 +620,24 @@ pub fn render_status(s: &StatusReport) -> String {
     });
     lines.push(match (&s.encoder.model, &s.encoder.reason) {
         (Some(name), _) => format!("model: {name} ({})", s.encoder.fingerprint),
-        (None, reason) => match reason.as_deref().unwrap_or(NO_MODEL) {
-            NO_MODEL => format!("model: {} ({NO_MODEL_HINT})", s.encoder.fingerprint),
-            reason => format!(
-                "model: {} (lexical fallback: {reason})",
-                s.encoder.fingerprint
-            ),
-        },
+        (None, reason) => format!(
+            "model: lexical fallback ({})",
+            fallback_why(reason.as_deref())
+        ),
     });
     lines.join("\n")
+}
+
+fn count(n: usize, noun: &str) -> String {
+    format!("{n} {noun}{}", if n == 1 { "" } else { "s" })
+}
+
+/// Why the lexical fallback answers, with what to do about it.
+fn fallback_why(reason: Option<&str>) -> String {
+    match reason.unwrap_or(NO_MODEL) {
+        NO_MODEL => format!("{NO_MODEL}; run `wn model pull`"),
+        reason => format!("{reason}; check --model / $WN_MODEL_DIR, or run `wn model pull`"),
+    }
 }
 
 fn read_context(path: &Option<PathBuf>) -> String {
@@ -636,6 +654,22 @@ fn read_context(path: &Option<PathBuf>) -> String {
 
 /// Runs a parsed command, returning the text to print and the exit code.
 pub fn run(cli: Cli) -> (String, i32) {
+    let uses_repo = matches!(
+        cli.command,
+        Command::Init
+            | Command::Status
+            | Command::Train
+            | Command::Rollback
+            | Command::Ask { .. }
+            | Command::Mcp
+            | Command::Bench { .. }
+    );
+    if uses_repo && !cli.path.exists() {
+        return (
+            format!("wn: --path {} does not exist", cli.path.display()),
+            2,
+        );
+    }
     if let Command::Mcp = cli.command {
         return serve_mcp(&cli);
     }
@@ -1009,20 +1043,25 @@ pub fn ask_command_with(
             started.elapsed().as_millis(),
         );
     }
+    use wn_core::rank::AnswerState;
     if json {
-        (erased::Json::to_json(&outcome), 0)
-    } else if ws.info.fallback
-        && ws.info.reason.as_deref() == Some(NO_MODEL)
-        && matches!(
-            outcome.state,
-            wn_core::rank::AnswerState::Ok
-                | wn_core::rank::AnswerState::Abstain
-                | wn_core::rank::AnswerState::StaleIndex
-        )
-    {
-        (format!("{}\nnote: {NO_MODEL_HINT}", render(&outcome)), 0)
-    } else {
-        (render(&outcome), 0)
+        return (erased::Json::to_json(&outcome), 0);
+    }
+    let note = match outcome.state {
+        AnswerState::EmptyIndex => Some(
+            "no source files found here; run wn inside a repository (see `wn status`)".to_string(),
+        ),
+        AnswerState::Ok | AnswerState::Abstain | AnswerState::StaleIndex if ws.info.fallback => {
+            Some(match ws.info.reason.as_deref() {
+                None | Some(NO_MODEL) => NO_MODEL_HINT.to_string(),
+                Some(reason) => format!("{reason}; hints use the lexical fallback"),
+            })
+        }
+        _ => None,
+    };
+    match note {
+        Some(note) => (format!("{}\nnote: {note}", render(&outcome)), 0),
+        None => (render(&outcome), 0),
     }
 }
 

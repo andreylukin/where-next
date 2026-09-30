@@ -155,8 +155,9 @@ was trained on about 1.1M examples with mined hard negatives and a query layout 
 output first. On file-level top 5 it also scores .66 on Multi-SWE-bench (7 languages) and .70 on
 SWE-PolyBench. On all 1,136 ContextBench tasks, BM25 scores .37 and SweRankEmbed-Small, the closest
 published retriever, .62 zero-shot; on the held-out repositories the Qwen fine-tune beats symbol-aware
-lexical search by 20 points (.72 vs .53, confidence interval computed over repositories). All numbers
-are preliminary.
+lexical search by 20 points (.72 vs .53, confidence interval computed over repositories). Adding training data past
+about 1.1M examples (mostly more commits) did not help issue-style queries; see
+[training-data size](benchmarks/README.md#training-data-size). All numbers are preliminary.
 
 About the adapter: on ContextBench it adds about 5 points, and a control with shuffled training pairs
 shows that gain comes from learning which descriptions map to which files. On the single-repository

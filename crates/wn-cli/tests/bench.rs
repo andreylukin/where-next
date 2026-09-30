@@ -256,8 +256,8 @@ fn bench_command_prints_a_report_and_json() {
     assert_eq!(v["evaluated"], 20);
     assert_eq!(v["model"], "lexical fallback (no model installed)");
     let (err, code) = wn(&t.path().join("nowhere"), &home, &["bench"]);
-    assert_eq!(code, 1);
-    assert!(err.contains("wn bench:"), "{err}");
+    assert_eq!(code, 2);
+    assert!(err.contains("does not exist"), "{err}");
 }
 
 #[test]

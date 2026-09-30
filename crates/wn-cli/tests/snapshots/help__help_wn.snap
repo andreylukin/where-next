@@ -15,7 +15,7 @@ Commands:
   mcp       Serve hints over MCP (stdio)
   bench     Measure hit@k on this repository's own history (default) or on ContextBench
   update    Rebuild wn from the tip of main (or --ref) of its source repository
-  report    Show an anonymous usage report (numbers and buckets only) and, if you confirm, post it as a GitHub issue to help improve wn. Nothing is sent without your confirmation
+  report    Share an anonymous usage report as a GitHub issue (shown first; asks before sending)
   daemon    Start, stop or inspect the background daemon that keeps models and indexes warm
   skill     Install or update the where-next skill for Claude Code, Codex and Cursor
   model     Install, list or remove models
@@ -43,6 +43,7 @@ Options:
           Print version
 
 Examples:
+  wn model pull                            install the default model (once, ~1.2 GB)
   wn init                                  index this repository, fit its adapter from git history
   wn status                                which model answers ("lexical fallback" = no model installed)
   wn ask "where is the retry logic for S3 upload timeouts"
