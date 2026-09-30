@@ -10,6 +10,7 @@ fn hints(top: f64, second: f64) -> Vec<Hint> {
         .map(|(p, s)| Hint {
             path: p.into(),
             similarity: s,
+            evidence: None,
             name: None,
             line: None,
         })

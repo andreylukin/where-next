@@ -576,13 +576,7 @@ fn model_rank(q: &[f32], task: &Task, docs: &Docs) -> Option<usize> {
     let scores: Vec<f64> = task
         .cand
         .iter()
-        .map(|&c| {
-            dot(q, docs.vecs[c].as_deref().unwrap_or(&[]))
-                + f64::from(wn_core::rank::path_prior(
-                    &docs.keys[c].0,
-                    &task.query.query,
-                ))
-        })
+        .map(|&c| dot(q, docs.vecs[c].as_deref().unwrap_or(&[])))
         .collect();
     gold_rank(&scores, &task.gold)
 }

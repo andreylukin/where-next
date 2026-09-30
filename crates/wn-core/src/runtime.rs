@@ -268,10 +268,10 @@ pub fn suggest(
     context: &str,
     opts: SuggestOptions,
 ) -> Outcome {
-    suggest_with_exact(index, adapter, encoder, query, context, opts, &[])
+    suggest_with_exact(index, adapter, encoder, query, context, opts, None)
 }
 
-/// As [`suggest`], with indexed files supported by rare literal matches in the request.
+/// As [`suggest`], with bounded source reads for rare literals in the query text.
 pub fn suggest_with_exact(
     index: &Index,
     adapter: Option<&StoredAdapter>,
@@ -279,7 +279,7 @@ pub fn suggest_with_exact(
     query: &str,
     context: &str,
     opts: SuggestOptions,
-    exact: &[String],
+    root: Option<&std::path::Path>,
 ) -> Outcome {
     let mut life = QueryLifecycle::default();
     let fail = |state: AnswerState, error: Option<String>| Outcome {
@@ -343,7 +343,22 @@ pub fn suggest_with_exact(
                 Some("identity fallback: adapter was fitted for another model".into());
         }
     }
-    let files = index.rank(&q, EntryKind::File, opts.k.max(2));
+    let query_has_literals = !wn_sources::query_literals(query).is_empty();
+    let files = index.rank(
+        &q,
+        EntryKind::File,
+        if root.is_some() && opts.start_min_files.is_none() && query_has_literals {
+            50
+        } else {
+            opts.k.max(2)
+        },
+    );
+    let exact = if opts.start_min_files.is_none() && index.state().can_serve() {
+        root.map(|r| exact_files(index, r, &files, query))
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let configs = index.rank(&q, EntryKind::Config, 1);
     let functions = if opts.with_functions {
         let fin = QueryInput {
@@ -364,7 +379,7 @@ pub fn suggest_with_exact(
         Some(format!(
             "start: {n_files} files < {min}; start hints help in large repositories"
         ))
-    } else if opts.no_abstain || !exact.is_empty() {
+    } else if opts.no_abstain {
         None
     } else {
         let kind = QueryKind::classify(query, context);
@@ -387,7 +402,8 @@ pub fn suggest_with_exact(
             },
         }
     };
-    if let Some(reason) = reason {
+    let weak = reason.is_some();
+    if let Some(reason) = reason.filter(|_| exact.is_empty()) {
         step(&mut life, QueryEvent::NotConfident);
         return Outcome {
             state: AnswerState::Abstain,
@@ -398,7 +414,10 @@ pub fn suggest_with_exact(
     }
     step(&mut life, QueryEvent::Confident);
     debug_assert_eq!(life.state(), QueryState::Answer);
-    let mut files = index.rank_for_query(&q, EntryKind::File, opts.k, query, exact);
+    let mut files = index.rank_for_query(&q, EntryKind::File, opts.k, query, &exact);
+    if weak {
+        files.retain(|h| h.evidence.as_deref() == Some("exact"));
+    }
     files.truncate(opts.k);
     let shown = |h: &Hint| h.similarity >= MIN_SHOWN_SIMILARITY;
     // Only reachable with abstaining off: keep the top hint rather than answer with nothing.
@@ -421,13 +440,14 @@ pub fn suggest_with_exact(
     ]
     .iter()
     .any(|word| query.to_ascii_lowercase().contains(word));
+    let exact_only = !exact.is_empty();
     Outcome {
         state: AnswerState::Ok,
         hints: budget_ask(
             Hints {
                 files,
-                functions,
-                configs,
+                functions: if exact_only { Vec::new() } else { functions },
+                configs: if exact_only { Vec::new() } else { configs },
             },
             opts.k,
             opts.with_functions,
@@ -437,4 +457,51 @@ pub fn suggest_with_exact(
         error: None,
         adapter: adapter_use,
     }
+}
+
+fn exact_files(
+    index: &Index,
+    root: &std::path::Path,
+    candidates: &[crate::rank::Hint],
+    query: &str,
+) -> Vec<String> {
+    use std::time::{Duration, Instant};
+    // Only vector candidates incur file IO; the deadline bounds time spent under a daemon lock.
+    let literals = wn_sources::query_literals(query);
+    if literals.is_empty() {
+        return Vec::new();
+    }
+    let started = Instant::now();
+    let mut hits = vec![Vec::new(); literals.len()];
+    for path in index.paths(EntryKind::File) {
+        for (i, literal) in literals.iter().enumerate() {
+            if path.rsplit('/').next() == Some(literal.as_str()) {
+                hits[i].push(path.to_string());
+            }
+        }
+    }
+    for candidate in candidates.iter().take(50) {
+        if started.elapsed() >= Duration::from_millis(75) {
+            break;
+        }
+        if let Ok(raw) =
+            wn_sources::read_text(&root.join(&candidate.path), wn_sources::MAX_SOURCE_BYTES)
+        {
+            for (i, literal) in literals.iter().enumerate() {
+                if raw.contains(literal) && !hits[i].contains(&candidate.path) {
+                    hits[i].push(candidate.path.clone());
+                }
+            }
+        }
+    }
+    let mut rare: Vec<_> = hits
+        .iter()
+        .enumerate()
+        .filter(|(_, paths)| (1..=3).contains(&paths.len()))
+        .map(|(i, paths)| (i, paths.len()))
+        .collect();
+    rare.sort_by_key(|&(i, count)| (count, std::cmp::Reverse(literals[i].len())));
+    rare.first()
+        .map(|&(i, _)| hits[i].clone())
+        .unwrap_or_default()
 }

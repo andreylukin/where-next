@@ -105,18 +105,52 @@ fn ask_rejects_more_than_three_hints() {
 fn exact_error_text_points_to_its_source_file() {
     let repo = project();
     let home = tempfile::tempdir().unwrap();
+    let mut source = fs::read_to_string(repo.path().join("src/auth.py")).unwrap();
+    source.push_str("\n# This literal occurs deep in the file, away from the skeleton.\n");
+    source.push_str(&"# padding\n".repeat(200));
+    source.push_str("# panic: Peacock teapot quantum failure\n");
+    fs::write(repo.path().join("src/auth.py"), source).unwrap();
+    let (out, code) = wn(
+        repo.path(),
+        home.path(),
+        &["ask", "panic: Peacock teapot quantum failure", "--json"],
+    );
+    assert_eq!(code, 0, "{out}");
+    let answer: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(answer["files"][0]["path"], "src/auth.py");
+    assert_eq!(answer["files"][0]["evidence"], "exact");
+}
+
+#[test]
+fn context_literal_does_not_turn_garbage_into_hints() {
+    let repo = project();
+    let home = tempfile::tempdir().unwrap();
+    write(
+        repo.path(),
+        "src/auth.py",
+        "# Rare peacock teapot literal\n",
+    );
+    let context = home.path().join("context.txt");
+    fs::write(&context, "`Rare peacock teapot literal`").unwrap();
     let (out, code) = wn(
         repo.path(),
         home.path(),
         &[
             "ask",
-            "panic: Login sessions and token verification",
+            "zzzz qqqq",
+            "--context-file",
+            context.to_str().unwrap(),
             "--json",
         ],
     );
     assert_eq!(code, 0, "{out}");
     let answer: serde_json::Value = serde_json::from_str(&out).unwrap();
-    assert_eq!(answer["files"][0]["path"], "src/auth.py");
+    assert!(
+        answer["files"]
+            .as_array()
+            .is_none_or(|f| f.iter().all(|h| h["evidence"].is_null())),
+        "{out}"
+    );
 }
 
 fn redact(text: &str, repo: &Path) -> String {

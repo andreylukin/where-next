@@ -23,22 +23,43 @@ pub fn path_prior(path: &str, query: &str) -> f32 {
     if q.is_empty() {
         return 0.0;
     }
-    if ["test", "example", "tutorial", "fixture", "sample", "docs"]
-        .iter()
-        .any(|word| q.contains(word))
-    {
+    if q.split(|c: char| !c.is_ascii_alphanumeric()).any(|word| {
+        [
+            "test", "tests", "example", "examples", "tutorial", "fixture", "sample", "docs",
+            "spec", "mocks",
+        ]
+        .contains(&word)
+    }) {
         return 0.0;
     }
-    if path.split('/').any(|part| {
-        matches!(
-            part,
-            "tests" | "test" | "__tests__" | "docs_src" | "examples" | "fixtures" | "testdata"
-        )
-    }) {
-        -0.12
+    let filename = path.rsplit('/').next().unwrap_or(path);
+    if auxiliary_dir(path)
+        || filename.starts_with("test_")
+        || filename.contains("_test.")
+        || filename.contains("_spec.")
+    {
+        -0.06
     } else {
         0.0
     }
+}
+
+/// Whether a path is located under an auxiliary directory.
+pub fn auxiliary_dir(path: &str) -> bool {
+    path.split('/').any(|part| {
+        matches!(
+            part,
+            "tests"
+                | "test"
+                | "__tests__"
+                | "docs_src"
+                | "examples"
+                | "fixtures"
+                | "testdata"
+                | "spec"
+                | "__mocks__"
+        )
+    })
 }
 
 /// Abstain thresholds on the top cosine similarity and its margin over the second result.
@@ -292,6 +313,9 @@ pub struct Hint {
     pub path: String,
     /// Cosine similarity to the query (not a probability).
     pub similarity: f64,
+    /// Ranking evidence beyond cosine similarity, when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
     /// Definition name, for function hints.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -497,12 +521,14 @@ pub fn budget_ask(mut hints: Hints, k: usize, with_functions: bool, wants_config
             .collect::<Vec<_>>(),
     ) > TOKEN_BUDGET
     {
-        if !hints.files.is_empty() {
-            hints.files.pop();
+        if !hints.functions.is_empty() {
+            hints.functions.pop();
         } else if !hints.configs.is_empty() {
             hints.configs.pop();
+        } else if hints.files.len() > 1 {
+            hints.files.pop();
         } else {
-            hints.functions.pop();
+            break;
         }
     }
     hints
@@ -532,7 +558,16 @@ pub fn render(out: &Outcome) -> String {
                 if out.adapter.applied { "on" } else { "off" }
             )];
             for h in &out.hints.files {
-                lines.push(format!("{:.2}  {}", h.similarity, h.path));
+                lines.push(format!(
+                    "{:.2}  {}{}",
+                    h.similarity,
+                    h.path,
+                    if h.evidence.as_deref() == Some("exact") {
+                        "  (exact)"
+                    } else {
+                        ""
+                    }
+                ));
             }
             for h in &out.hints.functions {
                 lines.push(format!(

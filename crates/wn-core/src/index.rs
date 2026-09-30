@@ -18,7 +18,7 @@ use wn_sources::{config_doc, file_doc, function_docs, Kind, CONFIG_LINES};
 
 use crate::encoder::{EncodeError, Encoder};
 use crate::index_lifecycle::{IndexEvent, IndexLifecycle, IndexState};
-use crate::rank::{path_prior, round4, select_top, Hint};
+use crate::rank::{auxiliary_dir, path_prior, round4, select_top, Hint};
 
 /// Documents embedded between checkpoints by default.
 pub const CHECKPOINT_EVERY: usize = 1024;
@@ -383,6 +383,14 @@ impl Index {
             return Vec::new();
         }
         let d = self.dim;
+        let file_count = self.count(EntryKind::File);
+        let mostly_auxiliary = file_count > 0
+            && self
+                .paths(EntryKind::File)
+                .filter(|p| auxiliary_dir(p))
+                .count()
+                * 2
+                > file_count;
         let scored: Vec<(usize, f32)> = self
             .entries
             .iter()
@@ -392,7 +400,7 @@ impl Index {
                 let row = &self.vecs[i * d..(i + 1) * d];
                 let raw: f32 = row.iter().zip(q).map(|(a, b)| a * b).sum();
                 let path = &self.entries[i].path;
-                let prior = if kind == EntryKind::File {
+                let prior = if kind == EntryKind::File && !mostly_auxiliary {
                     path_prior(path, query)
                 } else {
                     0.0
@@ -415,6 +423,8 @@ impl Index {
                 Hint {
                     path: e.path.clone(),
                     similarity: round4(score),
+                    evidence: (kind == EntryKind::File && exact.iter().any(|p| p == &e.path))
+                        .then(|| "exact".to_string()),
                     name: if func { e.name.clone() } else { None },
                     line: if func { Some(e.line) } else { None },
                 }

@@ -26,7 +26,7 @@ use wn_core::runtime::{
     StoredAdapter, SuggestOptions,
 };
 use wn_git::{commits_since, history, repo_root, scan, Coverage};
-use wn_sources::{query_literals, read_text, Kind, MAX_CONFIG_BYTES, MAX_SOURCE_BYTES};
+use wn_sources::{read_text, Kind, MAX_CONFIG_BYTES, MAX_SOURCE_BYTES};
 
 #[cfg(feature = "onnx")]
 pub mod models;
@@ -1126,58 +1126,6 @@ pub struct AskArgs {
     pub no_log: bool,
 }
 
-/// Rare exact fragments give a strong file clue without searching outside the index.
-fn exact_files(ws: &Workspace, query: &str, context: &str) -> Vec<String> {
-    let text = format!(
-        "{}\n{}",
-        query,
-        context.chars().take(8192).collect::<String>()
-    );
-    let literals = query_literals(&text);
-    if literals.is_empty() {
-        return Vec::new();
-    }
-    let mut hits: Vec<Vec<String>> = vec![Vec::new(); literals.len()];
-    for path in ws.index.paths(EntryKind::File) {
-        let direct = literals
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| path.ends_with(s.as_str()));
-        for (i, _) in direct {
-            hits[i].push(path.to_string());
-        }
-        if let Ok(raw) = read_text(&ws.root.join(path), MAX_SOURCE_BYTES) {
-            for (i, literal) in literals.iter().enumerate() {
-                if raw.contains(literal) && !hits[i].iter().any(|p| p == path) {
-                    hits[i].push(path.to_string());
-                }
-            }
-        }
-    }
-    for paths in &mut hits {
-        if paths.len() > 3 {
-            let production: Vec<_> = paths
-                .iter()
-                .filter(|p| wn_core::rank::path_prior(p, query) == 0.0)
-                .cloned()
-                .collect();
-            if !production.is_empty() {
-                *paths = production;
-            }
-        }
-    }
-    let mut rare: Vec<(usize, usize)> = hits
-        .iter()
-        .enumerate()
-        .filter(|(_, paths)| (1..=3).contains(&paths.len()))
-        .map(|(i, paths)| (i, paths.len()))
-        .collect();
-    rare.sort_by_key(|&(i, count)| (count, std::cmp::Reverse(literals[i].len())));
-    rare.first()
-        .map(|&(i, _)| hits[i].clone())
-        .unwrap_or_default()
-}
-
 /// `wn ask` on an opened workspace: text or JSON, and the exit code. Shared by the in-process
 /// path and the daemon so both print the same thing.
 pub fn ask_command(ws: &mut Workspace, args: &AskArgs, context: &str, json: bool) -> (String, i32) {
@@ -1231,7 +1179,6 @@ pub fn ask_command_with(
     } else {
         None
     };
-    let exact = exact_files(ws, &args.query, context);
     let outcome: Outcome = suggest_with_exact(
         &ws.index,
         adapter,
@@ -1239,7 +1186,7 @@ pub fn ask_command_with(
         &args.query,
         context,
         opts,
-        &exact,
+        Some(&ws.root),
     );
     if !args.no_log {
         record_query(

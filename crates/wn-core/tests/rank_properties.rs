@@ -12,6 +12,12 @@ fn production_paths_win_unless_requested() {
     assert_eq!(path_prior("src/routes.py", "where are routes matched"), 0.0);
     assert_eq!(path_prior("tests/test_routes.py", "fix routing tests"), 0.0);
     assert_eq!(path_prior("tests/test_routes.py", ""), 0.0);
+    assert!(path_prior("tests/test_routes.py", "latest routes") < 0.0);
+    assert!(path_prior("src/test_routes.py", "routes") < 0.0);
+    assert!(path_prior("src/routes_test.go", "routes") < 0.0);
+    assert!(path_prior("src/routes_spec.ts", "routes") < 0.0);
+    assert!(path_prior("src/__mocks__/routes.ts", "routes") < 0.0);
+    assert_eq!(path_prior("src/routes_spec.ts", "fix spec failure"), 0.0);
 }
 
 #[test]
@@ -37,10 +43,24 @@ fn ask_budget_respects_k_and_reserves_requested_kinds() {
     );
 }
 
+#[test]
+fn ask_budget_keeps_last_file_before_optional_slots() {
+    let h = Hints {
+        files: vec![hint(900, 0.9, None)],
+        functions: vec![hint(900, 0.8, Some(20))],
+        configs: vec![hint(900, 0.7, None)],
+    };
+    let out = budget_ask(h, 3, true, true);
+    assert_eq!(out.files.len(), 1);
+    assert!(out.functions.is_empty());
+    assert!(out.configs.is_empty());
+}
+
 fn hint(path_len: usize, sim: f64, name: Option<usize>) -> Hint {
     Hint {
         path: "p".repeat(path_len.max(1)),
         similarity: sim,
+        evidence: None,
         name: name.map(|n| "n".repeat(n)),
         line: name.map(|_| 1),
     }

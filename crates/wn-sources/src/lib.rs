@@ -32,7 +32,15 @@ pub fn query_literals(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for hit in pattern.captures_iter(text).flatten() {
         if let Some(m) = hit.get(1).or_else(|| hit.get(2)) {
-            let literal = m.as_str().split(':').next().unwrap_or("").trim();
+            let literal = if hit.get(2).is_some() {
+                m.as_str().split(':').next().unwrap_or("")
+            } else {
+                m.as_str()
+            }
+            .trim();
+            if ["TODO", "HTTP", "JSON"].contains(&literal) {
+                continue;
+            }
             if literal.len() >= 4 && !out.iter().any(|s| s == literal) {
                 out.push(literal.to_string());
             }
@@ -78,6 +86,16 @@ mod literal_tests {
         assert!(gin.contains(&"handlers are already registered for path".to_string()));
         let axum = query_literals("thread 'main' panicked: Overlapping method route. Handler for `GET /users` already exists");
         assert!(axum.contains(&"Overlapping method route".to_string()));
+    }
+
+    #[test]
+    fn quoted_colons_stay_intact_and_common_acronyms_are_not_literals() {
+        let hits = query_literals("`panic: uncommon route failure` TODO HTTP JSON tree.go:243");
+        assert!(hits.contains(&"panic: uncommon route failure".to_string()));
+        assert!(hits.contains(&"tree.go".to_string()));
+        assert!(!hits
+            .iter()
+            .any(|h| ["TODO", "HTTP", "JSON"].contains(&h.as_str())));
     }
 }
 
@@ -547,7 +565,10 @@ pub fn config_doc(path: &str, text: &str, lines: usize) -> String {
 
 /// Read up to `max_bytes` of a file as text, replacing invalid UTF-8 like the reference does.
 pub fn read_text(path: &Path, max_bytes: usize) -> io::Result<String> {
-    let bytes = std::fs::read(path)?;
-    let cut = &bytes[..bytes.len().min(max_bytes)];
-    Ok(String::from_utf8_lossy(cut).into_owned())
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take(max_bytes as u64)
+        .read_to_end(&mut bytes)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
