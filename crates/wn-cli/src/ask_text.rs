@@ -55,7 +55,10 @@ struct Row {
 }
 
 fn path_row(h: &Hint) -> (String, usize) {
-    let (dir, file) = h.path.rsplit_once('/').map_or(("", h.path.as_str()), |(d, f)| (d, f));
+    let (dir, file) = h
+        .path
+        .rsplit_once('/')
+        .map_or(("", h.path.as_str()), |(d, f)| (d, f));
     let dir = if dir.is_empty() {
         String::new()
     } else {
@@ -83,7 +86,11 @@ fn rows(out: &Outcome) -> Vec<Row> {
     }
     for h in &out.hints.functions {
         let (mut styled, mut width) = path_row(h);
-        let tail = format!(":{}  {}", h.line.unwrap_or(0), h.name.as_deref().unwrap_or(""));
+        let tail = format!(
+            ":{}  {}",
+            h.line.unwrap_or(0),
+            h.name.as_deref().unwrap_or("")
+        );
         styled.push_str(&paint(LOC, &tail));
         width += tail.chars().count();
         rows.push(Row {

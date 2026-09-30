@@ -37,16 +37,24 @@ than indexing everything under them. `wn init` does two things, once per reposit
 2. Learns from the repository's recent commit history (fits a small per-repo adapter), in seconds
    on CPU.
 
-`wn status` shows which model answers. `wn ask` returns at most 3 files with their similarity
-scores, or says "no confident hint" when nothing scores above a calibrated threshold; then use
-your normal search. Scores rank the files; they are not probabilities. On a clone of ripgrep:
+`wn status` shows which model answers. `wn ask` returns at most 3 files, one per line with its
+similarity score at the end, or says "no confident hint" when nothing scores above a calibrated
+threshold; then use your normal search. Scores rank the files; they are not probabilities. On a
+clone of ripgrep:
 
 ```text
 $ wn ask "where are gitignore rules matched against paths"
 crates/ignore/src/gitignore.rs  0.50
 crates/ignore/src/dir.rs        0.42
 crates/ignore/src/overrides.rs  0.42
+
+$ wn ask "fix the bug"
+no confident hint (request: top similarity 0.07 < 0.20); try rg for exact names, or add detail
 ```
+
+On a terminal the file names are bold and the scores dimmed; piped output is plain text. Use
+`--color always|never` to override (`NO_COLOR` and `CLICOLOR_FORCE` are honored), and `--json`
+for scripts and agents.
 
 ## Writing good queries
 
