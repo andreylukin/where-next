@@ -957,6 +957,29 @@ pub fn run(cli: Cli) -> (String, i32) {
 }
 
 fn run_command(cli: Cli) -> (String, i32) {
+    if matches!(
+        cli.command,
+        Command::Init
+            | Command::Status
+            | Command::Train
+            | Command::Rollback
+            | Command::Ask { .. }
+            | Command::Mcp
+            | Command::Bench { .. }
+            | Command::Daemon { .. }
+            | Command::Stats { .. }
+            | Command::Report { .. }
+            | Command::Hook { .. }
+    ) {
+        if let Err(e) =
+            wn_daemon::usage::prepare_home(&home(), std::env::var_os("WHERE_NEXT_HOME").is_none())
+        {
+            if matches!(cli.command, Command::Hook { .. }) {
+                return (String::new(), 0);
+            }
+            return (format!("wn: cannot prepare cache home: {e}"), 1);
+        }
+    }
     let uses_repo = matches!(
         cli.command,
         Command::Init

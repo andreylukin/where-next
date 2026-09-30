@@ -7,6 +7,14 @@ explicitly.
 
 ## [Unreleased]
 
+### Fixed
+
+- Daemon fallback sockets now live in a private per-user temporary directory, and clients check
+  socket ownership before sending requests. New cache homes are private, and existing default
+  cache homes are tightened on startup. Existing explicit cache homes are left untouched.
+- Repository scans skip symlinks, including tracked git symlinks, so indexing cannot follow them
+  outside the repository.
+
 ## [0.1.1] - 2026-09-30
 
 ### Added

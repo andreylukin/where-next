@@ -116,6 +116,34 @@ fn scan_walks_plain_directories() {
     assert_eq!(cov.unsupported, 1);
 }
 
+#[cfg(unix)]
+#[test]
+fn scan_skips_tracked_and_untracked_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let t = repo();
+    let outside = tempfile::tempdir().unwrap();
+    write(outside.path(), "private.py", "def private_symbol(): pass\n");
+    write(t.path(), "safe.py", "def safe_symbol(): pass\n");
+    symlink(
+        outside.path().join("private.py"),
+        t.path().join("linked.py"),
+    )
+    .unwrap();
+    git(t.path(), &["add", "safe.py", "linked.py"]);
+    let (files, _) = scan(t.path());
+    assert!(files.contains_key("safe.py"));
+    assert!(!files.contains_key("linked.py"));
+
+    symlink(
+        outside.path().join("private.py"),
+        t.path().join("untracked.py"),
+    )
+    .unwrap();
+    let (files, _) = scan(t.path());
+    assert!(!files.contains_key("untracked.py"));
+}
+
 #[test]
 fn history_lists_non_merge_commits_newest_first_with_paths() {
     let t = repo();
