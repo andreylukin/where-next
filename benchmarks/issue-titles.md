@@ -117,8 +117,8 @@ person. The grep side used one natural keyword per question (for example `evicti
 
 ## Reproducing
 
-The scripts are in [issue-titles/](issue-titles/), copied as they ran (paths inside them point at the
-original machine; edit them before rerunning). They need `gh`, `rg`, Python 3 and `wn` on `PATH`.
+The scripts are in [issue-titles/](issue-titles/), copied as they ran (set `WN_EVAL_DIR` to the directory holding the repository clones; other paths
+may need editing). They They need `gh`, `rg`, Python 3 and `wn` on `PATH`.
 
 - [`fetch.py`](issue-titles/fetch.py) `<owner/repo> <out.json> <issue numbers…>`: fetches each issue
   and its merged closing pull request's changed files.

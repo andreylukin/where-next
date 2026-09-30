@@ -1,6 +1,7 @@
 import json, subprocess, time, os, sys
-S = "/private/tmp/claude-501/-Users-andrey/fa95657f-fe28-42fa-84cd-3edf5bf845ed/scratchpad/edge"
-R = {"flask": S+"/repos/flask", "redis": S+"/repos/redis", "react": S+"/repos/react", "k8s": "/private/tmp/wnbench/kubernetes"}
+import os
+S = os.environ.get("WN_EVAL_DIR", "eval")  # directory holding the repo clones (see issue-titles.md)
+R = {"flask": S+"/repos/flask", "redis": S+"/repos/redis", "react": S+"/repos/react", "k8s": S+"/repos/kubernetes"}
 Q = [
  ("flask","where is the session cookie signed","session",["src/flask/sessions.py"]),
  ("flask","how does `flask run` find my app","find_app|locate_app",["src/flask/cli.py"]),

@@ -66,7 +66,9 @@ Not measurably, for a cheap, capable agent. Three controlled trials (a pilot, a 
 and a pre-declared confirmatory trial on repositories with 3,000–13,600 files) found that automatic
 start hints didn't lower cost per resolved task or raise success. In the confirmatory trial the hint
 roughly halved the tokens spent before the agent first read a right file, but finding the file wasn't
-where that agent spent its budget. The full numbers are in
+where that agent spent its budget. A fourth trial gave the agent the files the real fix touched
+(an upper bound for any hint): 34 of 58 solved vs 32 without hints, so finding files isn't the
+bottleneck for a capable agent. The full numbers are in
 [benchmarks/agent-trial.md](../benchmarks/agent-trial.md).
 
 Still open: people navigating by hand, and more expensive agents. Until one of those shows a real
