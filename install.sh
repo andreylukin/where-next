@@ -1,33 +1,12 @@
 #!/bin/sh
-# Install or update `wn` (where-next). Run it again any time to update to the latest main.
-#
-#   curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh
-#
-# Default (source): clones https://github.com/andreylukin/where-next into $WN_HOME/src (a private
-# clone; your other checkouts are never touched), checks out --ref (default: main) and builds it
-# with `cargo install --path crates/wn-cli --locked`. Later runs fetch, and rebuild only when the
-# ref moved. `wn update` does the same from inside wn. Then it offers the default model
-# (gemma-xl1, ~1.2 GB from Hugging Face, Gemma Terms of Use) if it is missing or its pin moved.
-#
-# Options:
-#   --ref <branch|tag|sha>  what to build (default: main)
-#   --yes, -y               no prompts (install Rust with rustup if cargo is missing)
-#   --force                 rebuild even if already up to date
-#   --dry-run               print what would happen, change nothing
-#   --uninstall             remove the wn binary and the private clone (keeps caches and models)
-#   --no-model              do not download the default model (wn then uses a lexical fallback)
-#
-# Environment:
-#   WN_HOME       private clone lives in $WN_HOME/src (default: ~/.local/share/where-next)
-#   WN_BIN_ROOT   cargo install --root (default: cargo's default, usually ~/.cargo -> ~/.cargo/bin/wn)
-#   WN_REPO_URL   source repository (default: https://github.com/andreylukin/where-next)
-#   WN_YES=1      same as --yes
-#   WN_NO_MODEL=1 same as --no-model
-#   WN_MODEL_SOURCE  pull the model from here instead (local dir, https:// URL, hf:owner/repo[@rev])
-#   WN_FROM=release  install a prebuilt, checksum-verified release binary instead (no releases yet):
-#     WN_VERSION (default: latest), WN_INSTALL_DIR (default: ~/.local/bin), WN_DOWNLOAD_BASE, WN_TARGET
+# Install or update `wn` from a checksum-verified release binary by default.
+# Usage: sh install.sh [--ref branch|tag|sha] [--yes] [--no-model] [--dry-run] [--uninstall]
+# --ref and WN_FROM=source build from source; source defaults to the latest release tag.
+# WN_RELEASE_BASE overrides the release download URL (useful for local mirrors/tests).
+# WN_GLIBC overrides detected glibc for installer tests.
 set -eu
 
+main() {
 repo="andreylukin/where-next"
 
 say() { printf 'wn-install: %s\n' "$*" >&2; }
@@ -43,6 +22,20 @@ fetch() { # url dest
   fi
 }
 
+fetch_archive() { # url dest; 2 means archive absent
+  case "$1" in file://*) [ -f "${1#file://}" ] || return 2 ;; esac
+  if command -v curl >/dev/null 2>&1; then
+    status="$(curl --proto '=https,file' --tlsv1.2 -sSL -w '%{http_code}' "$1" -o "$2")" || die "release download failed for $1 (HTTP ${status:-unknown})"
+    case "$status" in 200 | 000) return 0 ;; 404) return 2 ;; *) die "release download failed for $1 (HTTP $status)" ;; esac
+  elif command -v wget >/dev/null 2>&1; then
+    if wget -q --server-response "$1" -O "$2" 2>"$tmp/wget.err"; then return 0; fi
+    if awk '/^[[:space:]]*HTTP\// { code=$2 } END { exit code == 404 ? 0 : 1 }' "$tmp/wget.err"; then return 2; fi
+    die "release download failed for $1 ($(cat "$tmp/wget.err"))"
+  else
+    die "need curl or wget"
+  fi
+}
+
 # ---------------------------------------------------------------- release mode (WN_FROM=release)
 
 detect_target() {
@@ -51,15 +44,16 @@ detect_target() {
   case "$arch" in
     arm64 | aarch64) arch="aarch64" ;;
     x86_64 | amd64) arch="x86_64" ;;
-    *) die "unsupported architecture: $arch" ;;
+    *) return 1 ;;
   esac
   case "$os" in
     Darwin)
-      [ "$arch" = "aarch64" ] || die "Intel Macs are not supported yet (no prebuilt ONNX Runtime); build from source"
+      if [ "$arch" = x86_64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || true)" = 1 ]; then arch=aarch64; fi
+      [ "$arch" = "aarch64" ] || return 1
       echo "$arch-apple-darwin"
       ;;
     Linux) echo "$arch-unknown-linux-gnu" ;;
-    *) die "unsupported OS: $os (Windows: download the .zip from the releases page)" ;;
+    *) return 1 ;;
   esac
 }
 
@@ -69,72 +63,109 @@ sha256_of() {
   else die "need sha256sum or shasum to verify the download"; fi
 }
 
+glibc_version() {
+  if [ -n "${WN_GLIBC:-}" ]; then printf '%s\n' "$WN_GLIBC"; return; fi
+  if command -v getconf >/dev/null 2>&1; then
+    detected="$(getconf GNU_LIBC_VERSION 2>/dev/null || true)"
+    case "$detected" in 'glibc '*) printf '%s\n' "${detected#glibc }"; return ;; esac
+  fi
+  ldd --version 2>&1 | head -n 1 | sed -n 's/.* \([0-9][0-9]*\.[0-9][0-9]*\).*$/\1/p'
+}
+
+require_compatible_glibc() {
+  if [ "$(uname -s)" != Linux ] && [ -z "${WN_GLIBC:-}" ]; then return 0; fi
+  libc="$(glibc_version)"
+  case "$libc" in
+    *.*)
+      major="${libc%%.*}"; minor="${libc#*.}"
+      case "$major:$minor" in :* | *: | *[!0-9:]*) libc="unknown" ;; esac
+      ;;
+    *) libc="unknown" ;;
+  esac
+  if [ "$libc" = unknown ] || [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 39 ]; }; then
+    say "detected glibc version: $libc"
+    say "prebuilt binaries need glibc >= 2.39 (Ubuntu 24.04+, Debian 13+)"
+    say "a source build will also fail on this system (ONNX Runtime needs newer glibc/GCC)"
+    die "run in an ubuntu:24.04 container, or set WN_FROM=source to try anyway"
+  fi
+}
+
 install_release() {
   install_dir="${WN_INSTALL_DIR:-$HOME/.local/bin}"
   version="${WN_VERSION:-latest}"
   target="${WN_TARGET:-$(detect_target)}"
   archive="wn-$target.tar.gz"
-  if [ -n "${WN_DOWNLOAD_BASE:-}" ]; then
-    base="$WN_DOWNLOAD_BASE"
+  if [ -n "${WN_RELEASE_BASE:-${WN_DOWNLOAD_BASE:-}}" ]; then
+    base="${WN_RELEASE_BASE:-$WN_DOWNLOAD_BASE}"
   elif [ "$version" = "latest" ]; then
     base="https://github.com/$repo/releases/latest/download"
   else
     base="https://github.com/$repo/releases/download/$version"
   fi
 
-  tmp="$(mktemp -d)"
+  tmp="$(mktemp -d)" || die "could not create temporary directory"
   trap 'rm -rf "$tmp"' EXIT
+  trap 'exit 1' INT TERM
 
   say "downloading $archive"
-  fetch "$base/$archive" "$tmp/$archive" || die "download failed (no release for $target yet?)"
+  archive_status=0
+  fetch_archive "$base/$archive" "$tmp/$archive" || archive_status=$?
+  if [ "$archive_status" -eq 2 ]; then
+    rm -rf "$tmp" || die "could not clean temporary directory"
+    trap - EXIT INT TERM
+    return 2
+  fi
+  [ "$archive_status" -eq 0 ] || die "release download failed for $archive"
   fetch "$base/$archive.sha256" "$tmp/$archive.sha256" || die "checksum file missing; refusing to install"
 
-  expected="$(cut -d' ' -f1 < "$tmp/$archive.sha256")"
-  actual="$(sha256_of "$tmp/$archive")"
+  expected="$(cut -d' ' -f1 < "$tmp/$archive.sha256")" || die "could not read checksum file"
+  actual="$(sha256_of "$tmp/$archive")" || die "could not calculate checksum"
   [ -n "$expected" ] || die "empty checksum file; refusing to install"
   [ "$expected" = "$actual" ] || die "checksum mismatch for $archive (expected $expected, got $actual)"
   say "checksum ok ($actual)"
 
-  tar -xzf "$tmp/$archive" -C "$tmp"
+  tar -xzf "$tmp/$archive" -C "$tmp" || die "could not extract $archive"
   [ -f "$tmp/wn-$target/wn" ] || die "archive does not contain wn"
-  mkdir -p "$install_dir"
-  install -m 0755 "$tmp/wn-$target/wn" "$install_dir/wn"
+  mkdir -p "$install_dir" || die "could not create $install_dir"
+  if [ -x "$install_dir/wn" ]; then "$install_dir/wn" daemon stop >/dev/null 2>&1 || true; fi
+  install -m 0755 "$tmp/wn-$target/wn" "$install_dir/wn" || die "could not install $install_dir/wn"
+  printf 'release\n' > "$install_dir/wn.install-method" || die "could not write install marker"
+  bin_dir="$install_dir"
   say "installed $install_dir/wn"
   case ":$PATH:" in
     *":$install_dir:"*) ;;
     *) say "add $install_dir to your PATH" ;;
   esac
-  say "next: cd your-repo && wn init"
+  rm -rf "$tmp" || die "could not clean temporary directory"
+  trap - EXIT INT TERM
+  return 0
 }
 
 # ---------------------------------------------------------------- source mode (default)
 
-git_ref="main"
+git_ref=""
+from="${WN_FROM:-auto}"
 yes="${WN_YES:-}"
 force=""
 dry_run=""
 uninstall=""
 no_model="${WN_NO_MODEL:-}"
+model_skipped=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --ref) [ $# -ge 2 ] || die "--ref needs a value"; git_ref="$2"; shift ;;
-    --ref=*) git_ref="${1#--ref=}" ;;
+    --ref) [ $# -ge 2 ] || die "--ref needs a value"; git_ref="$2"; from=source; shift ;;
+    --ref=*) git_ref="${1#--ref=}"; from=source ;;
     --yes | -y) yes=1 ;;
     --force) force=1 ;;
     --dry-run) dry_run=1 ;;
     --uninstall) uninstall=1 ;;
     --no-model) no_model=1 ;;
-    -h | --help) sed -n '2,28p' "$0" 2>/dev/null || say "see https://github.com/$repo/blob/main/install.sh"; exit 0 ;;
+    -h | --help) say "usage: install.sh [--ref REF] [--yes] [--no-model] [--dry-run] [--uninstall]"; return 0 ;;
     *) die "unknown option: $1 (try --help)" ;;
   esac
   shift
 done
-
-if [ "${WN_FROM:-source}" = "release" ]; then
-  install_release
-  exit 0
-fi
 
 repo_url="${WN_REPO_URL:-https://github.com/$repo}"
 wn_home="${WN_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/where-next}"
@@ -172,6 +203,7 @@ model_pull() { # extra args... ; honours WN_MODEL_SOURCE
 
 ensure_model() { # offer the default model when it is missing or its pinned source moved
   if [ -n "$no_model" ]; then
+    model_skipped=1
     say "skipping the model (--no-model); install it later with: wn model pull"
     return 0
   fi
@@ -190,10 +222,19 @@ ensure_model() { # offer the default model when it is missing or its pinned sour
   say "  fine-tuned from Google's EmbeddingGemma and provided under the Gemma Terms of Use"
   say "  (https://ai.google.dev/gemma/terms). Without it, wn uses a lexical fallback."
   if ask "download the model now?"; then
-    model_pull || say "model download failed; retry with: wn model pull"
+    model_pull || { model_skipped=1; say "model download failed; retry with: wn model pull"; }
   else
+    model_skipped=1
     say "skipped the model; install it later with: wn model pull   (or re-run with --yes)"
   fi
+}
+
+next_steps() {
+  say "next steps:"
+  if [ -n "$model_skipped" ]; then say "  wn model pull                 # download the default model for semantic hints"; fi
+  say "  cd your-repo && wn init        # index and learn from git history"
+  say "  wn ask \"where is X handled?\"   # ranked files to open next"
+  say "  wn skill sync                  # install agent skills"
 }
 
 installed_commit() { # short sha from `wn --version`, if an installed wn reports one
@@ -202,7 +243,33 @@ installed_commit() { # short sha from `wn --version`, if an installed wn reports
   fi
 }
 
+if [ -z "$uninstall" ] && [ "$from" != source ]; then
+  if [ "$from" != auto ] && [ "$from" != release ]; then die "WN_FROM must be auto, release, or source"; fi
+  require_compatible_glibc
+  if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = x86_64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || true)" != 1 ]; then
+    die "Intel Macs aren't supported yet (ONNX Runtime has no macOS x86_64 prebuilt)"
+  fi
+  if target="${WN_TARGET:-$(detect_target)}"; then
+    if [ -n "$dry_run" ]; then
+      say "would install checksum-verified release binary for $target"
+      return 0
+    fi
+    if install_release; then
+      ensure_model
+      say "update later with: wn update"
+      next_steps
+      return 0
+    fi
+    say "release archive absent for $target; falling back to source build"
+  else
+    die "no release binary for this target"
+  fi
+fi
+
 if [ -n "$uninstall" ]; then
+  release_bin="${WN_INSTALL_DIR:-$HOME/.local/bin}/wn"
+  if [ -x "$release_bin" ]; then run "$release_bin" daemon stop || true; fi
+  if [ -x "$bin_dir/wn" ] && [ "$bin_dir/wn" != "$release_bin" ]; then run "$bin_dir/wn" daemon stop || true; fi
   cargo_bin="$(find_cargo)"
   if [ -n "$cargo_bin" ] && [ -x "$bin_dir/wn" ]; then
     if [ -n "$bin_root" ]; then
@@ -213,19 +280,31 @@ if [ -n "$uninstall" ]; then
   elif [ -e "$bin_dir/wn" ]; then
     run rm -f "$bin_dir/wn"
   fi
+  [ -e "$release_bin" ] && run rm -f "$release_bin"
+  [ -e "${release_bin}.install-method" ] && run rm -f "${release_bin}.install-method"
   [ -d "$src" ] && run rm -rf "$src"
   say "uninstalled wn (binary and $src)"
+  say "agent skill files remain in ~/.claude/skills/where-next, ~/.agents/skills/where-next, ~/.cursor/skills/where-next (and project equivalents); reinstall wn to run: wn skill sync --uninstall"
   say "caches and models are kept: ~/.cache/where-next and ~/.cache/where-next-models (remove them yourself if you want)"
   exit 0
 fi
 
+if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = x86_64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || true)" != 1 ]; then
+  die "Intel Macs aren't supported yet (ONNX Runtime has no macOS x86_64 prebuilt)"
+fi
+
 command -v git >/dev/null 2>&1 || die "git is required (install it and re-run)"
+if [ -z "$git_ref" ]; then
+  git_ref="$(git ls-remote --tags --refs "$repo_url" 'refs/tags/v*' | sed 's@.*refs/tags/@@' | awk '/^v[0-9]+(\.[0-9]+)*$/ { split(substr($0,2), n, "."); printf "%010d.%010d.%010d.%010d %s\n", n[1], n[2], n[3], n[4], $0 }' | sort | tail -n 1 | cut -d' ' -f2)"
+  [ -n "$git_ref" ] || die "could not find a release tag in $repo_url (use --ref main for the development branch)"
+fi
 
 cargo_bin="$(find_cargo)"
 if [ -z "$cargo_bin" ]; then
   rustup_cmd="curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal"
   say "cargo (Rust) is needed to build wn from source. Install it with:"
   say "  $rustup_cmd"
+  say "rustup will edit your shell startup files to add cargo to PATH"
   if [ -n "$dry_run" ]; then
     say "would install Rust with rustup"
     cargo_bin="cargo"
@@ -286,6 +365,7 @@ if [ -n "$dry_run" ]; then
   exit 0
 fi
 
+rm -f "$bin_dir/wn.install-method"
 if [ -n "$current" ]; then
   say "updated wn: $current -> $short_target ($git_ref)"
   # Replace a daemon from the old build and re-sync agent skills installed by `wn skill sync`.
@@ -300,7 +380,7 @@ case ":$PATH:" in
 esac
 ensure_model
 say "update later with: wn update   (or re-run this installer)"
-say "next steps:"
-say "  cd your-repo && wn init        # index + learn from this repo's git history"
-say "  wn ask \"where is X handled?\"   # ranked files to open next"
-say "  wn skill sync                  # teach Claude Code / Codex / Cursor when to call wn"
+next_steps
+
+}
+main "$@"
