@@ -160,7 +160,6 @@ impl ModelStore {
     #[cfg(feature = "remote")]
     fn fetch_remote(&self, source: &ModelSource) -> Result<(), StoreError> {
         let staging = staging_dir(&self.dir);
-        let _ = fs::remove_dir_all(&staging);
         fs::create_dir_all(&staging).map_err(|e| StoreError::Fetch(e.to_string()))?;
         let result = (|| {
             crate::remote::download(source, MANIFEST_FILE, &staging.join(MANIFEST_FILE))?;
@@ -180,9 +179,6 @@ impl ModelStore {
             }
             fs::rename(&staging, &self.dir).map_err(|e| StoreError::Fetch(e.to_string()))
         })();
-        if result.is_err() {
-            let _ = fs::remove_dir_all(&staging);
-        }
         result
     }
 

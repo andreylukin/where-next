@@ -251,6 +251,7 @@ impl Fixture {
             cargo: self.cargo.clone(),
             current,
             show_build_output: false,
+            release_install_dir: None,
         }
     }
 
@@ -384,4 +385,39 @@ fn version_embeds_the_build_commit_when_available() {
     if !update::BUILD_COMMIT.is_empty() {
         assert!(v.contains(&update::BUILD_COMMIT[..7]), "{v}");
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn release_update_reinstalls_without_cargo() {
+    let f = Fixture::new();
+    let script = f.root.join("install.sh");
+    fs::create_dir_all(&f.root).unwrap();
+    fs::write(
+        &script,
+        "#!/bin/sh\nmkdir -p \"$WN_INSTALL_DIR\"\nprintf updated > \"$WN_INSTALL_DIR/wn\"\n",
+    )
+    .unwrap();
+    let mut opts = f.opts(None);
+    opts.release_install_dir = Some(f.root.join("release-bin"));
+    std::env::set_var("WN_INSTALL_SCRIPT", &script);
+    std::env::set_var("WN_VERSION", "v0.0.2");
+    let mut check = opts.clone();
+    check.check_only = true;
+    let checked = update::run(&check, &mut yes());
+    assert_eq!(checked.state, S::UpdateAvailable);
+    assert_eq!(checked.new.as_deref(), Some("v0.0.2"));
+    assert_eq!(f.cargo_calls(), 0);
+    let r = update::run(&opts, &mut yes());
+    std::env::set_var("WN_VERSION", format!("v{}", env!("CARGO_PKG_VERSION")));
+    let current = update::run(&check, &mut yes());
+    assert_eq!(current.state, S::UpToDate);
+    std::env::remove_var("WN_VERSION");
+    std::env::remove_var("WN_INSTALL_SCRIPT");
+    assert_eq!(r.state, S::Installed, "{}", r.message);
+    assert_eq!(f.cargo_calls(), 0);
+    assert_eq!(
+        fs::read_to_string(f.root.join("release-bin/wn")).unwrap(),
+        "updated"
+    );
 }

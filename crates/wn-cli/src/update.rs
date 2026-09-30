@@ -1,4 +1,4 @@
-//! `wn update`: rebuild `wn` from the tip of `main` (or any ref) of the source repository.
+//! `wn update`: re-install a release binary, or rebuild a source installation from its repository.
 //!
 //! The installer (`install.sh`) and this command share one layout: a private clone at
 //! `$WN_HOME/src` (default `~/.local/share/where-next/src`), built with
@@ -36,7 +36,7 @@ pub enum UpdateState {
     UpToDate,
     /// The requested ref differs from the installed binary.
     UpdateAvailable,
-    /// `cargo install` is running.
+    /// The release installer or `cargo install` is running.
     Building,
     /// The new binary is installed.
     Installed,
@@ -68,7 +68,7 @@ pub enum UpdateEvent {
     FetchedNewer,
     /// Cloning or fetching failed.
     FetchFailed,
-    /// Start `cargo install`.
+    /// Start the release installer or `cargo install`.
     Build,
     /// `cargo install` succeeded.
     BuildSucceeded,
@@ -188,6 +188,8 @@ pub struct UpdateOptions {
     pub current: Option<String>,
     /// Stream cargo's progress to stderr.
     pub show_build_output: bool,
+    /// Installer-owned release binary directory, when this executable carries the marker.
+    pub release_install_dir: Option<PathBuf>,
 }
 
 impl UpdateOptions {
@@ -203,6 +205,14 @@ impl UpdateOptions {
             cargo: find_cargo(),
             current: (!BUILD_COMMIT.is_empty()).then(|| BUILD_COMMIT.to_string()),
             show_build_output: true,
+            release_install_dir: std::env::current_exe().ok().and_then(|exe| {
+                let dir = exe.parent()?;
+                (std::fs::read_to_string(dir.join("wn.install-method"))
+                    .ok()?
+                    .trim()
+                    == "release")
+                    .then(|| dir.to_path_buf())
+            }),
         }
     }
 }
@@ -276,6 +286,11 @@ fn short(c: &Option<String>) -> String {
 
 /// Text form of a report.
 pub fn render(r: &UpdateReport) -> String {
+    if r.state == UpdateState::Installed
+        && r.message.starts_with("installed the latest release binary")
+    {
+        return r.message.clone();
+    }
     match r.state {
         UpdateState::UpToDate => format!("wn is up to date ({} on {})", short(&r.new), r.git_ref),
         UpdateState::UpdateAvailable => format!(
@@ -430,6 +445,53 @@ pub fn run(opts: &UpdateOptions, confirm: &mut dyn FnMut(&UpdateReport) -> bool)
             .expect("update flow follows the transition table");
     };
     step(&mut life, &mut report, E::Start);
+    if let Some(dir) = &opts.release_install_dir {
+        report.git_ref = "release".into();
+        report.old = Some(format!("v{}", env!("CARGO_PKG_VERSION")));
+        let tag = match requested_release_tag() {
+            Ok(tag) => tag,
+            Err(e) => {
+                report.message = e;
+                step(&mut life, &mut report, E::FetchFailed);
+                return report;
+            }
+        };
+        let same = report.old.as_deref() == Some(tag.as_str());
+        report.new = Some(tag.clone());
+        step(
+            &mut life,
+            &mut report,
+            if same {
+                E::FetchedSame
+            } else {
+                E::FetchedNewer
+            },
+        );
+        if opts.check_only || (same && !opts.force) {
+            return report;
+        }
+        if !confirm(&report) {
+            report.message = "cancelled".into();
+            return report;
+        }
+        step(&mut life, &mut report, E::Build);
+        match reinstall_release(dir, &tag) {
+            Ok(()) => {
+                step(&mut life, &mut report, E::BuildSucceeded);
+                let notes = after_install(&dir.join(if cfg!(windows) { "wn.exe" } else { "wn" }));
+                report.message = if notes.is_empty() {
+                    "installed the latest release binary".into()
+                } else {
+                    format!("installed the latest release binary; {}", notes.join("; "))
+                };
+            }
+            Err(e) => {
+                report.message = e;
+                step(&mut life, &mut report, E::BuildFailed);
+            }
+        }
+        return report;
+    }
     let target = match fetch(opts) {
         Ok(t) => t,
         Err(e) => {
@@ -468,6 +530,75 @@ pub fn run(opts: &UpdateOptions, confirm: &mut dyn FnMut(&UpdateReport) -> bool)
         }
     }
     report
+}
+
+fn requested_release_tag() -> Result<String, String> {
+    let tag = match std::env::var("WN_VERSION") {
+        Ok(tag) if tag != "latest" => tag,
+        _ => {
+            let output = Command::new("curl")
+                .args([
+                    "--proto",
+                    "=https",
+                    "--tlsv1.2",
+                    "-fsSL",
+                    "https://api.github.com/repos/andreylukin/where-next/releases/latest",
+                ])
+                .output()
+                .map_err(|e| format!("could not find latest release: {e}"))?;
+            if !output.status.success() {
+                return Err(format!("could not find latest release: {}", output.status));
+            }
+            let release: serde_json::Value = serde_json::from_slice(&output.stdout)
+                .map_err(|e| format!("invalid release response: {e}"))?;
+            release["tag_name"]
+                .as_str()
+                .ok_or("latest release has no tag")?
+                .to_string()
+        }
+    };
+    if !tag.starts_with('v')
+        || !tag[1..]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+    {
+        return Err(format!("invalid release tag: {tag}"));
+    }
+    Ok(tag)
+}
+
+fn reinstall_release(dir: &Path, tag: &str) -> Result<(), String> {
+    let downloaded = std::env::temp_dir().join(format!("wn-install-{}.sh", std::process::id()));
+    let script = if let Some(path) = std::env::var_os("WN_INSTALL_SCRIPT") {
+        PathBuf::from(path)
+    } else {
+        let url =
+            format!("https://raw.githubusercontent.com/andreylukin/where-next/{tag}/install.sh");
+        let status = Command::new("curl")
+            .args(["--proto", "=https", "--tlsv1.2", "-fsSL", &url, "-o"])
+            .arg(&downloaded)
+            .status()
+            .map_err(|e| format!("could not download release installer: {e}"))?;
+        if !status.success() {
+            return Err(format!("could not download release installer: {status}"));
+        }
+        downloaded.clone()
+    };
+    let status = Command::new("sh")
+        .arg(&script)
+        .arg("--no-model")
+        .env("WN_FROM", "release")
+        .env("WN_VERSION", tag)
+        .env("WN_INSTALL_DIR", dir)
+        .status()
+        .map_err(|e| format!("could not run release installer: {e}"));
+    let _ = std::fs::remove_file(&downloaded);
+    let status = status?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("release installer failed: {status}"))
+    }
 }
 
 /// Where `cargo install` put the new `wn`: `--root`, else `$CARGO_INSTALL_ROOT`, `$CARGO_HOME` or
@@ -530,12 +661,20 @@ pub fn confirm_on_tty(yes: bool) -> impl FnMut(&UpdateReport) -> bool {
         if yes || !std::io::stdin().is_terminal() {
             return true;
         }
-        eprint!(
-            "rebuild wn {} -> {} from {} (takes a few minutes)? [Y/n] ",
-            short(&r.old),
-            short(&r.new),
-            r.git_ref
-        );
+        if r.git_ref == "release" {
+            eprint!(
+                "install wn release {} -> {}? [Y/n] ",
+                short(&r.old),
+                short(&r.new)
+            );
+        } else {
+            eprint!(
+                "rebuild wn {} -> {} from {} (takes a few minutes)? [Y/n] ",
+                short(&r.old),
+                short(&r.new),
+                r.git_ref
+            );
+        }
         let mut line = String::new();
         let _ = std::io::stdin().read_line(&mut line);
         !matches!(line.trim(), "n" | "N" | "no" | "No")

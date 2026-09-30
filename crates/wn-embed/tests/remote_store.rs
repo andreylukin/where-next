@@ -113,7 +113,7 @@ fn tampered_remote_file_is_corrupt_and_never_loaded() {
 }
 
 #[test]
-fn missing_remote_file_fails_back_to_missing_without_a_partial_dir() {
+fn missing_remote_file_keeps_staging_but_not_the_model() {
     let mut files = with_manifest(model_files());
     files.remove("model.onnx");
     let (base, _) = serve(files);
@@ -123,7 +123,7 @@ fn missing_remote_file_fails_back_to_missing_without_a_partial_dir() {
     assert!(err.to_string().contains("HTTP 404"), "{err}");
     assert_eq!(s.state(), ModelState::Missing);
     assert!(!cache.path().join("m").exists());
-    assert!(!cache.path().join("m.download").exists());
+    assert!(cache.path().join("m.download").exists());
 }
 
 #[test]
@@ -146,4 +146,43 @@ fn remote_manifest_with_traversal_is_refused() {
         1,
         "nothing but the manifest was requested"
     );
+}
+
+#[test]
+fn remote_download_resumes_part_with_range() {
+    use std::io::Read;
+    let body = vec![42u8; 100_000];
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}/model", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let mut headers = String::new();
+        loop {
+            line.clear();
+            reader.read_line(&mut line).unwrap();
+            if line == "\r\n" {
+                break;
+            }
+            headers.push_str(&line);
+        }
+        assert!(headers.contains("Range: bytes=1000-"), "{headers}");
+        write!(stream, "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 1000-99999/100000\r\nContent-Length: 99000\r\nConnection: close\r\n\r\n").unwrap();
+        stream.write_all(&body[1000..]).unwrap();
+    });
+    let temp = tempfile::tempdir().unwrap();
+    let dest = temp.path().join("model.onnx");
+    std::fs::write(temp.path().join("model.onnx.part"), vec![42u8; 1000]).unwrap();
+    let source = ModelSource::parse(&base).unwrap();
+    wn_embed::remote::download(&source, "model.onnx", &dest).unwrap();
+    let mut actual = Vec::new();
+    std::fs::File::open(&dest)
+        .unwrap()
+        .read_to_end(&mut actual)
+        .unwrap();
+    assert_eq!(actual, vec![42u8; 100_000]);
+    assert!(!temp.path().join("model.onnx.part").exists());
+    server.join().unwrap();
 }

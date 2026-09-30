@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Tests install.sh.
-# Release mode (WN_FROM=release), against a local fixture release (file:// URLs): a good archive
+# Release mode (the default), against a local fixture release (file:// URLs): a good archive
 # installs, a tampered archive or a missing checksum file is refused and installs nothing.
-# Source mode (the default), against a local upstream repository and a fake cargo: first run
+# Source mode (WN_FROM=source), against a local upstream repository and a fake cargo: first run
 # installs, a rerun is a no-op, a new upstream commit updates, --ref pins, --dry-run changes
 # nothing, a missing cargo is refused without --yes, --uninstall removes the binary and clone.
 # Model step: --yes pulls the default model once, a rerun keeps a current model, a moved source is
@@ -19,7 +19,8 @@ sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum 
 make_release() { # dir
   local dir="$1"
   mkdir -p "$dir/stage/wn-$target"
-  printf '#!/bin/sh\necho wn-fixture\n' > "$dir/stage/wn-$target/wn"
+  # shellcheck disable=SC2016
+  printf '#!/bin/sh\n[ "$1 $2 $3" = "model pull --check" ] && exit 10\necho wn-fixture\n' > "$dir/stage/wn-$target/wn"
   chmod +x "$dir/stage/wn-$target/wn"
   tar -czf "$dir/wn-$target.tar.gz" -C "$dir/stage" "wn-$target"
   (cd "$dir" && sha256 "wn-$target.tar.gz" > "wn-$target.tar.gz.sha256")
@@ -51,12 +52,13 @@ if run_install "file://$work/nosum" "$work/bin3" 2>/dev/null; then fail "install
 echo "install.sh: 3 release-mode tests passed"
 
 # ---- source mode ----
-g() { git -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false "$@"; }
+g() { git -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
 up="$work/upstream"
 mkdir -p "$up/crates/wn-cli"
 g -C "$up" init -q -b main
 printf '[package]\nname = "where-next"\n' > "$up/crates/wn-cli/Cargo.toml"
 g -C "$up" add -A && g -C "$up" commit -q -m first
+g -C "$up" tag v0.0.1
 first="$(git -C "$up" rev-parse HEAD)"
 
 fake="$work/fakebin"
@@ -98,7 +100,7 @@ export FAKE_CARGO_LOG="$work/cargo.log" FAKE_ROOT="$work/wnroot" FAKE_WN="$fake/
   FAKE_MODEL_LOG="$work/model.log"
 src_install() { # extra args... (no model unless a test asks: the prompt would read /dev/tty)
   HOME="$work/home" PATH="$fake:$PATH" WN_HOME="$work/wnhome" WN_BIN_ROOT="$FAKE_ROOT" \
-    WN_REPO_URL="$up" WN_NO_MODEL="${WN_NO_MODEL-1}" sh "$root/install.sh" "$@"
+    WN_REPO_URL="$up" WN_FROM=source WN_NO_MODEL="${WN_NO_MODEL-1}" sh "$root/install.sh" --ref main "$@"
 }
 pulls() { if [ -f "$FAKE_MODEL_LOG" ]; then wc -l < "$FAKE_MODEL_LOG" | tr -d ' '; else echo 0; fi; }
 calls() { if [ -f "$FAKE_CARGO_LOG" ]; then wc -l < "$FAKE_CARGO_LOG" | tr -d ' '; else echo 0; fi; }
@@ -134,7 +136,7 @@ src_install --ref "$first" 2>/dev/null
 # 9. Missing cargo is refused without --yes (and nothing is built).
 before="$(calls)"
 if HOME="$work/home2" PATH="/usr/bin:/bin" WN_HOME="$work/wnhome2" WN_BIN_ROOT="$work/root2" \
-  WN_REPO_URL="$up" CARGO_HOME="" sh "$root/install.sh" 2>"$work/nocargo.err" </dev/null; then
+  WN_REPO_URL="$up" WN_FROM=source CARGO_HOME="" sh "$root/install.sh" 2>"$work/nocargo.err" </dev/null; then
   fail "installed without cargo"
 fi
 grep -q "rustup" "$work/nocargo.err" || fail "missing cargo did not print the rustup command"
@@ -167,3 +169,33 @@ src_install --uninstall 2>/dev/null
 [ ! -e "$work/wnhome/src" ] || fail "uninstall left the clone"
 
 echo "install.sh: 11 source-mode tests passed"
+
+# Default path selects release; a missing archive selects source without changing the checksum policy.
+HOME="$work/auto-home" WN_RELEASE_BASE="file://$work/good" WN_INSTALL_DIR="$work/auto-bin" WN_TARGET="$target" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/auto.err"
+[ "$("$work/auto-bin/wn")" = "wn-fixture" ] || fail "default did not install the release"
+[ -f "$work/auto-bin/wn.install-method" ] || fail "release install marker missing"
+grep -q 'wn model pull' "$work/auto.err" || fail "model next step missing"
+HOME="$work/fallback-home" PATH="$fake:$PATH" WN_RELEASE_BASE="file://$work/missing" WN_INSTALL_DIR="$work/fallback-bin" WN_TARGET="$target" WN_HOME="$work/fallback-wnhome" WN_BIN_ROOT="$work/fallback-root" WN_REPO_URL="$up" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/fallback.err"
+[ -x "$work/fallback-root/bin/wn" ] || fail "source fallback did not build"
+
+# Old glibc selects source before fetching an incompatible release.
+HOME="$work/old-home" WN_GLIBC=2.36 WN_DECISION_ONLY=1 WN_RELEASE_BASE="file://$work/good" WN_TARGET="$target" sh "$root/install.sh" 2>"$work/old.err"
+grep -q 'glibc 2.36 is below' "$work/old.err" || fail "old glibc explanation missing"
+grep -q 'source fallback selected' "$work/old.err" || fail "old glibc did not select source"
+
+# Uninstall removes a release install and explains retained skill files.
+HOME="$work/auto-home" WN_INSTALL_DIR="$work/auto-bin" sh "$root/install.sh" --uninstall 2>"$work/release-uninstall.err"
+[ ! -e "$work/auto-bin/wn" ] || fail "release binary remained after uninstall"
+[ ! -e "$work/auto-bin/wn.install-method" ] || fail "release marker remained after uninstall"
+grep -q 'wn skill sync --uninstall' "$work/release-uninstall.err" || fail "uninstall omitted agent skills"
+echo "install.sh: 4 additional auto/release tests passed"
+
+# A non-TTY release install that declines the model includes a pull command in next steps.
+HOME="$work/non-tty-home" WN_RELEASE_BASE="file://$work/good" WN_INSTALL_DIR="$work/non-tty-bin" WN_TARGET="$target" WN_NO_MODEL="" sh "$root/install.sh" </dev/null 2>"$work/non-tty.err"
+grep -A5 'next steps:' "$work/non-tty.err" | grep -q 'wn model pull' || fail "non-TTY next steps omitted model pull"
+echo "install.sh: non-TTY model next step passed"
+
+# Explicit source mode without --ref uses the latest release tag, not the moving main branch.
+HOME="$work/tag-home" PATH="$fake:$PATH" WN_FROM=source WN_HOME="$work/tag-wnhome" WN_BIN_ROOT="$work/tag-root" WN_REPO_URL="$up" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/tag.err"
+"$work/tag-root/bin/wn" | grep -q "$(short "$first")" || fail "source default was not pinned to release tag"
+echo "install.sh: source tag pin passed"

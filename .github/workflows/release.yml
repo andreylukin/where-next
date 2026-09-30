@@ -4,7 +4,7 @@
 #   target, package it, write checksums and an SBOM, and upload them as workflow artifacts.
 #   Nothing is published.
 # - Only a pushed `v*` tag publishes: it attests build provenance (Sigstore) for every archive
-#   and creates a draft GitHub release with the archives, checksums and SBOMs attached.
+#   and creates a public GitHub release with the archives, checksums and SBOMs attached.
 
 name: Release
 
@@ -32,7 +32,7 @@ jobs:
       fail-fast: false
       matrix:
         # No x86_64 macOS: ONNX Runtime ships no prebuilt binaries for it. Linux builds use
-        # Ubuntu 24.04 because the prebuilt ONNX Runtime needs its newer libstdc++ (glibc 2.39+).
+        # Ubuntu 24.04 because the static ONNX Runtime needs GCC 13 and glibc 2.39+.
         include:
           - { target: aarch64-apple-darwin, os: macos-14 }
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-24.04 }
@@ -48,6 +48,14 @@ jobs:
           key: release-${{ matrix.target }}
       - name: Build
         run: cargo build --release --locked -p where-next --target ${{ matrix.target }}
+      - name: Smoke test
+        shell: bash
+        run: |
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            "target/${{ matrix.target }}/release/wn.exe" --version
+          else
+            "target/${{ matrix.target }}/release/wn" --version
+          fi
       - name: Package
         shell: bash
         run: packaging/package.sh "${{ matrix.target }}" "${GITHUB_REF_NAME}"
@@ -111,10 +119,10 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: "dist/wn-*.tar.gz, dist/wn-*.zip"
-      - name: Draft release
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" dist/* \
-            --repo "${GITHUB_REPOSITORY}" --draft --verify-tag \
+            --repo "${GITHUB_REPOSITORY}" --verify-tag \
             --title "${GITHUB_REF_NAME}" --notes "See CHANGELOG.md."
