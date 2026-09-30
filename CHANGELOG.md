@@ -7,6 +7,8 @@ explicitly.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-30
+
 ### Added
 
 - **`wn setup`** connects Claude Code, Codex and Cursor in one step: the where-next skill plus hooks
@@ -29,6 +31,8 @@ explicitly.
 
 ### Changed
 
+- The default model is pinned to the Hugging Face revision that ships `calibration.json` (abstain
+  thresholds, checksum-verified). Weights are unchanged; `wn model pull` upgrades an existing install.
 - The old `--with-hook` Claude Code hook (first prompt only, 3,000+ files) is replaced by the
   hooks above; `wn update` moves existing installs over.
 
