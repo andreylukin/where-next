@@ -1,5 +1,6 @@
 ---
 source: crates/wn-cli/tests/report.rs
+assertion_line: 225
 expression: render_markdown(&r)
 ---
 <!-- wn-usage-report v1 -->
