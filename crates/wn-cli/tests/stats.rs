@@ -487,6 +487,9 @@ fn stats_follow_agent_transcripts_end_to_end() {
     ] {
         let (out, code) = wn(d, &env, &["--json", "ask", "--no-abstain", q]);
         assert_eq!(code, 0, "{out}");
+        // Distinct log timestamps (whole seconds), so each transcript call matches its answer:
+        // the two answers no longer share hints now that zero-similarity rows are dropped.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
     }
 
     // The usage log holds the answers; build transcripts that call wn at those times.

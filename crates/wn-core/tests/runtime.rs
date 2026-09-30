@@ -20,6 +20,8 @@ struct Probe {
     docs: Cell<usize>,
     fail: bool,
     calibrated: bool,
+    /// Calibrated with explicit "never abstain" (negative) thresholds.
+    never: bool,
     fingerprint: &'static str,
 }
 
@@ -30,6 +32,7 @@ impl Probe {
             docs: Cell::new(0),
             fail: false,
             calibrated: false,
+            never: false,
             fingerprint: "probe-a",
         }
     }
@@ -40,6 +43,14 @@ impl Encoder for Probe {
         self.fingerprint.to_string()
     }
     fn calibration(&self) -> Option<wn_core::rank::Calibration> {
+        if self.never {
+            let never = r#"{"model": "m", "kinds": {"default": {
+                "adapter": {"min_top": -1.0, "min_margin": 0.0},
+                "plain": {"min_top": -1.0, "min_margin": 0.0},
+                "strict_adapter": {"min_top": -1.0, "min_margin": 0.0},
+                "strict_plain": {"min_top": -1.0, "min_margin": 0.0}}}}"#;
+            return Some(serde_json::from_str(never).unwrap());
+        }
         self.calibrated.then(wn_core::rank::Calibration::v2b)
     }
     fn documents(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EncodeError> {
@@ -188,6 +199,102 @@ fn ranking_and_answers() {
     assert_eq!(out.state, AnswerState::Abstain);
     assert!(out.hints.files.is_empty());
     assert!(out.abstain.unwrap().starts_with("request: top similarity"));
+}
+
+/// An uncalibrated encoder (the lexical fallback) abstains when nothing matches at all, and
+/// never shows rows that would print as 0.00.
+#[test]
+fn nothing_matching_abstains_and_zero_rows_are_never_shown() {
+    let dir = tempfile::tempdir().unwrap();
+    let r = repo();
+    let enc = Probe::new();
+    let mut index = Index::open(dir.path(), "probe-a");
+    index
+        .refresh(&files_of(&r, "v1"), &reader(&r), &enc, true)
+        .unwrap();
+
+    let out = suggest(
+        &index,
+        None,
+        &enc,
+        "zzzz qqqq",
+        "",
+        SuggestOptions::default(),
+    );
+    assert_eq!(out.state, AnswerState::Abstain);
+    assert!(out.hints.files.is_empty());
+    assert_eq!(out.abstain.as_deref(), Some("no file matches the query"));
+
+    let out = suggest(
+        &index,
+        None,
+        &enc,
+        "retry uploads",
+        "",
+        SuggestOptions {
+            k: 5,
+            ..Default::default()
+        },
+    );
+    assert_eq!(out.state, AnswerState::Ok);
+    assert_eq!(out.hints.files[0].path, "src/upload.go");
+    let rows = [&out.hints.files, &out.hints.functions, &out.hints.configs];
+    for h in rows.into_iter().flatten() {
+        assert!(h.similarity >= 0.005, "{h:?}");
+    }
+
+    // With abstaining disabled (--no-abstain, or a calibration's explicit negative "never
+    // abstain"), a zero-score query still answers with at least the top hint.
+    let never = Probe {
+        never: true,
+        ..Probe::new()
+    };
+    for (enc, no_abstain) in [(&enc, true), (&never, false)] {
+        let out = suggest(
+            &index,
+            None,
+            enc,
+            "zzzz qqqq",
+            "",
+            SuggestOptions {
+                no_abstain,
+                ..Default::default()
+            },
+        );
+        assert_eq!(out.state, AnswerState::Ok, "no_abstain {no_abstain}");
+        assert_eq!(out.hints.files.len(), 1, "no_abstain {no_abstain}");
+        assert!(out.hints.files[0].similarity < 0.005);
+        assert!(r.contains_key(&out.hints.files[0].path));
+    }
+}
+
+/// An empty query is an error at the shared entry point, so the CLI, the daemon and MCP all
+/// report it the same way.
+#[test]
+fn an_empty_query_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let r = repo();
+    let enc = Probe::new();
+    let mut index = Index::open(dir.path(), "probe-a");
+    index
+        .refresh(&files_of(&r, "v1"), &reader(&r), &enc, true)
+        .unwrap();
+    for (q, ctx) in [("", ""), ("  \n", " ")] {
+        let out = suggest(&index, None, &enc, q, ctx, SuggestOptions::default());
+        assert_eq!(out.state, AnswerState::Error);
+        assert!(out.error.as_deref().unwrap().starts_with("empty query"));
+        assert!(out.hints.files.is_empty());
+    }
+    // Context alone (a pasted stack trace) is a query.
+    let out = suggest(
+        &index,
+        None,
+        &enc,
+        "",
+        "upload retry",
+        SuggestOptions::default(),
+    );
+    assert_eq!(out.state, AnswerState::Ok);
 }
 
 #[test]

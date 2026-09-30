@@ -3,7 +3,7 @@
 //! where-next is a search accelerator, not an oracle: it returns at most three short hints, and
 //! when the top result is not clearly better than chance it abstains so the agent falls back to
 //! its normal search. Abstain thresholds come from the model's [`Calibration`], per
-//! [`QueryKind`]; a model without one never abstains.
+//! [`QueryKind`]; a model without one abstains only when nothing matches at all.
 
 use std::collections::BTreeMap;
 
@@ -47,6 +47,20 @@ pub const ABSTAIN_STRICT_PLAIN: Thresholds = Thresholds {
     min_top: 0.5629,
     min_margin: 0.0333,
 };
+
+/// Adapter-mode thresholds used when a calibration leaves them unset (0.0/0.0). The shipped
+/// gemma calibrations fitted "never abstain" with the adapter on their fitting repository, which
+/// let gibberish through with 3 hints. Measured with gemma-xl1 + adapter on gin, axum and
+/// fastapi: 55 real questions scored 0.225-0.63 at the top, 60 vague or gibberish queries
+/// 0.05-0.33 (most below 0.2).
+pub const ADAPTER_FLOOR: Thresholds = Thresholds {
+    min_top: 0.2,
+    min_margin: 0.0,
+};
+
+/// Hints below this similarity print as 0.00: they are never shown, and a top hint below it
+/// means nothing matched.
+pub const MIN_SHOWN_SIMILARITY: f64 = 0.005;
 
 /// v2b thresholds for error queries, fitted on a held-out eval of ~1.2k error-carrying queries
 /// (SWE-bench Verified, SWE-PolyBench, Multi-SWE-bench, LCA, ContextBench, SWE-Gym mid-trajectory)
@@ -193,8 +207,9 @@ pub struct KindThresholds {
 }
 
 /// A model's abstain calibration (`calibration.json` next to the model). `kinds` maps a
-/// [`QueryKind`] name (or `default`) to thresholds; `null` means that kind never abstains.
-/// Kinds not listed use `default`; without `default` they never abstain.
+/// [`QueryKind`] name (or `default`) to thresholds; `null` (or a negative `min_top`) means that
+/// kind never abstains. Kinds not listed use `default`; without `default` they never abstain.
+/// Adapter thresholds of 0.0/0.0 count as unset and use [`ADAPTER_FLOOR`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Calibration {
     /// Model the thresholds were fitted for.
@@ -235,12 +250,14 @@ impl Calibration {
             Some(listed) => *listed,
             None => self.kinds.get("default").copied().flatten(),
         }?;
-        Some(match (strict, adapted) {
+        let th = match (strict, adapted) {
             (false, true) => entry.adapter,
             (false, false) => entry.plain,
             (true, true) => entry.strict_adapter,
             (true, false) => entry.strict_plain,
-        })
+        };
+        let unset = th.min_top == 0.0 && th.min_margin == 0.0;
+        Some(if adapted && unset { ADAPTER_FLOOR } else { th })
     }
 }
 

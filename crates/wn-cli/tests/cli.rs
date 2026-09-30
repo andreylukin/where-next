@@ -286,6 +286,35 @@ fn ask_without_a_model_says_how_to_install_one() {
 }
 
 #[test]
+fn an_empty_query_is_rejected() {
+    let home = tempfile::tempdir().unwrap();
+    let repo = project();
+    for q in ["", "   "] {
+        let (out, code) = wn(repo.path(), home.path(), &["ask", q]);
+        assert_eq!(code, 2, "{out}");
+        assert!(out.contains("empty query"), "{out}");
+        let (json, code) = wn(repo.path(), home.path(), &["ask", q, "--json"]);
+        assert_eq!(code, 2, "{json}");
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["state"], "error");
+        assert!(
+            v["error"].as_str().unwrap().contains("empty query"),
+            "{json}"
+        );
+        assert!(v["files"].as_array().is_none_or(|f| f.is_empty()));
+    }
+    // A context file alone (say, a pasted stack trace) is still a query.
+    let ctx = home.path().join("trace.txt");
+    fs::write(&ctx, "upload retry timed out\n").unwrap();
+    let (out, code) = wn(
+        repo.path(),
+        home.path(),
+        &["ask", "", "--context-file", ctx.to_str().unwrap()],
+    );
+    assert_eq!(code, 0, "{out}");
+}
+
+#[test]
 fn model_list_offers_the_default_model() {
     let home = tempfile::tempdir().unwrap();
     let repo = project();

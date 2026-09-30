@@ -1131,6 +1131,16 @@ pub fn ask_command_with(
     json: bool,
     rescan: bool,
 ) -> (String, i32) {
+    use wn_core::rank::AnswerState;
+    // The same check `suggest` makes (so the daemon and MCP agree), before touching the index.
+    if let Some(outcome) = wn_core::runtime::empty_query(&args.query, context) {
+        let text = if json {
+            erased::Json::to_json(&outcome)
+        } else {
+            format!("where-next: {}", wn_core::runtime::EMPTY_QUERY)
+        };
+        return (text, 2);
+    }
     let started = std::time::Instant::now();
     let refresh = if rescan {
         ws.refresh(args.functions).map(|_| ())
@@ -1176,7 +1186,6 @@ pub fn ask_command_with(
             started.elapsed().as_millis(),
         );
     }
-    use wn_core::rank::AnswerState;
     if json {
         return (erased::Json::to_json(&outcome), 0);
     }
