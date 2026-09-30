@@ -48,6 +48,55 @@ run_install "file://$work/good" "$work/bin1" 2>/dev/null
 [ "$("$work/bin1/wn")" = "wn-fixture" ] || fail "installed binary does not run"
 [ -f "$work/bin1/libonnxruntime.so" ] || fail "installed runtime missing"
 [ "$(cat "$work/bin1/libonnxruntime.so")" = fixture ] || fail "installed runtime differs from archive"
+# A fresh default install records directories it created and gives shell-specific PATH advice.
+for shell in zsh bash fish unknown; do
+  home="$work/path-$shell"
+  mkdir -p "$home"
+  SHELL="/bin/$shell" HOME="$home" WN_FROM=release WN_RELEASE_BASE="file://$work/good" \
+    WN_TARGET="$target" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/path-$shell.err"
+  grep -Fxq "dir:$home/.local/bin" "$home/.local/bin/wn.install-files" || fail "install did not record bin directory"
+  grep -Fxq "dir:$home/.local" "$home/.local/bin/wn.install-files" || fail "install did not record .local directory"
+  case "$shell" in
+    zsh) expected="echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc" ;;
+    bash) if [ "$(uname -s)" = Darwin ]; then profile=.bash_profile; else profile=.bashrc; fi
+      expected="echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/$profile" ;;
+    fish) expected='fish_add_path ~/.local/bin' ;;
+    *) expected="export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
+  esac
+  grep -Fq "$expected" "$work/path-$shell.err" || fail "$shell PATH advice missing"
+  if [ "$shell" = fish ]; then
+    grep -Fq 'then open a new terminal or run: fish_add_path ~/.local/bin' "$work/path-$shell.err" || fail "fish immediate PATH advice missing"
+    ! grep -Fq 'run: export PATH=' "$work/path-$shell.err" || fail "fish received POSIX PATH advice"
+  else
+    grep -Fq "then open a new terminal or run: export PATH=\"\$HOME/.local/bin:\$PATH\"" "$work/path-$shell.err" || fail "immediate PATH advice missing"
+  fi
+done
+home="$work/path-zsh"
+SHELL=/bin/zsh HOME="$home" WN_FROM=release WN_RELEASE_BASE="file://$work/good" \
+  WN_TARGET="$target" WN_NO_MODEL=1 sh "$root/install.sh" 2>/dev/null
+grep -Fxq "dir:$home/.local/bin" "$home/.local/bin/wn.install-files" || fail "reinstall lost bin ownership"
+grep -Fxq "dir:$home/.local" "$home/.local/bin/wn.install-files" || fail "reinstall lost .local ownership"
+
+mkdir -p "$work/preexisting-cache/.cache"
+HOME="$work/preexisting-cache" WN_FROM=release WN_RELEASE_BASE="file://$work/good" \
+  WN_TARGET="$target" WN_NO_MODEL=1 sh "$root/install.sh" 2>/dev/null
+! grep -Fxq "dir:$work/preexisting-cache/.cache" "$work/preexisting-cache/.local/bin/wn.install-files" || fail "pre-existing cache recorded as owned"
+
+mkdir -p "$work/preexisting-local/.local"
+HOME="$work/preexisting-local" WN_FROM=release WN_RELEASE_BASE="file://$work/good" \
+  WN_TARGET="$target" WN_NO_MODEL=1 sh "$root/install.sh" 2>/dev/null
+! grep -Fxq "dir:$work/preexisting-local/.local" "$work/preexisting-local/.local/bin/wn.install-files" || fail "pre-existing .local recorded as owned"
+grep -Fxq "dir:$work/preexisting-local/.local/bin" "$work/preexisting-local/.local/bin/wn.install-files" || fail "new bin in pre-existing .local not recorded"
+
+cat > "$work/cache-wn" <<'CACHE_WN'
+#!/bin/sh
+if [ "$1 $2 $3" = 'model pull --check' ]; then mkdir -p "$HOME/.cache"; exit 0; fi
+CACHE_WN
+make_release "$work/cache-release" "$work/cache-wn"
+mkdir -p "$work/new-cache"
+HOME="$work/new-cache" WN_FROM=release WN_RELEASE_BASE="file://$work/cache-release" \
+  WN_TARGET="$target" WN_NO_MODEL="" sh "$root/install.sh" 2>/dev/null
+grep -Fxq "dir:$work/new-cache/.cache" "$work/new-cache/.local/bin/wn.install-files" || fail "new cache not recorded"
 cat > "$work/bin1/wn" <<'OLD_WN'
 #!/bin/sh
 [ "$1 $2" = 'daemon stop' ] && printf 'stopped\n' > "$WN_DAEMON_LOG"
@@ -278,6 +327,10 @@ HOME="$work/auto-home" WN_INSTALL_DIR="$work/auto-bin" sh "$root/install.sh" --u
 [ ! -e "$work/auto-bin/libonnxruntime.so" ] || fail "release runtime remained after uninstall"
 [ ! -e "$work/auto-bin/wn.install-method" ] || fail "release marker remained after uninstall"
 grep -q 'skill and hooks in your agents' "$work/release-uninstall.err" || fail "uninstall omitted agent skills"
+rm "$work/path-zsh/.local/bin/wn"
+HOME="$work/path-zsh" WN_INSTALL_DIR="$work/path-zsh/.local/bin" sh "$root/install.sh" --uninstall 2>"$work/fallback-uninstall.err"
+grep -q 'remove where-next agent skills and hook entries by hand' "$work/fallback-uninstall.err" || fail "fallback uninstall omitted manual agent cleanup"
+! grep -q 'removed the where-next skill and hooks' "$work/fallback-uninstall.err" || fail "fallback uninstall claimed agent cleanup"
 echo "install.sh: 6 additional auto/release tests passed"
 
 # A non-TTY release install that declines the model includes a pull command in next steps.

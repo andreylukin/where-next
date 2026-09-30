@@ -92,6 +92,13 @@ require_compatible_glibc() {
 
 install_release() {
   install_dir="${WN_INSTALL_DIR:-$HOME/.local/bin}"
+  manifest="$install_dir/wn.install-files"
+  bin_owned=""; local_owned=""; cache_owned=""
+  if [ "$install_dir" = "$HOME/.local/bin" ]; then
+    if [ ! -d "$install_dir" ] || { [ -f "$manifest" ] && grep -Fxq "dir:$install_dir" "$manifest"; }; then bin_owned=1; fi
+    if [ ! -d "$HOME/.local" ] || { [ -f "$manifest" ] && grep -Fxq "dir:$HOME/.local" "$manifest"; }; then local_owned=1; fi
+  fi
+  if [ ! -d "$HOME/.cache" ] || { [ -f "$manifest" ] && grep -Fxq "dir:$HOME/.cache" "$manifest"; }; then cache_owned=1; fi
   version="${WN_VERSION:-latest}"
   target="${WN_TARGET:-$(detect_target)}"
   archive="wn-$target.tar.gz"
@@ -140,16 +147,42 @@ install_release() {
   {
     printf '%s\n' "$install_dir/wn" "$install_dir/wn.install-method" "$install_dir/wn.install-files"
     if [ -f "$install_dir/libonnxruntime.so" ]; then printf '%s\n' "$install_dir/libonnxruntime.so"; fi
+    if [ -n "$bin_owned" ]; then printf 'dir:%s\n' "$install_dir"; fi
+    if [ -n "$local_owned" ]; then printf 'dir:%s\n' "$HOME/.local"; fi
   } > "$install_dir/wn.install-files" || die "could not write $install_dir/wn.install-files"
   bin_dir="$install_dir"
   say "installed $install_dir/wn"
   case ":$PATH:" in
     *":$install_dir:"*) ;;
-    *) say "add $install_dir to your PATH" ;;
+    *)
+      if [ "$install_dir" = "$HOME/.local/bin" ]; then
+        case "${SHELL:-}" in
+          */zsh) say "add this line to your shell startup file: echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc" ;;
+          */bash)
+            if [ "$(uname -s)" = Darwin ]; then profile=.bash_profile; else profile=.bashrc; fi
+            say "add this line to your shell startup file: echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/$profile"
+            ;;
+          */fish) say 'run: fish_add_path ~/.local/bin' ;;
+          *) say "add this line to your shell startup file: export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
+        esac
+        case "${SHELL:-}" in
+          */fish) say 'then open a new terminal or run: fish_add_path ~/.local/bin' ;;
+          *) say "then open a new terminal or run: export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
+        esac
+      else
+        say "add $install_dir to your PATH"
+      fi
+      ;;
   esac
   rm -rf "$tmp" || die "could not clean temporary directory"
   trap - EXIT INT TERM
   return 0
+}
+
+record_cache_dir() {
+  if [ -n "$cache_owned" ] && [ -d "$HOME/.cache" ] && ! grep -Fxq "dir:$HOME/.cache" "$manifest"; then
+    printf 'dir:%s\n' "$HOME/.cache" >> "$manifest" || die "could not update $manifest"
+  fi
 }
 
 # ---------------------------------------------------------------- source mode (default)
@@ -304,6 +337,7 @@ if [ -z "$uninstall" ] && [ "$from" != source ]; then
     if install_release; then
       ensure_model
       connect_agents
+      record_cache_dir
       say "update later with: wn update"
       next_steps
       return 0
@@ -364,20 +398,20 @@ if [ -n "$uninstall" ]; then
     safe_root "$root" || die "refusing to remove files under '$root' (it is /, a top-level directory, your home or above it, or not absolute); nothing was removed"
   done
   # `wn uninstall` removes everything: agent skill and hooks, daemon, caches, models, the source
-  # checkout and the binary. The steps after it remove the same files when no wn is left to ask.
+  # checkout and the binary. The steps after it remove files when no wn is left to ask.
   wn_bin=""
+  agents_removed=""
   for bin in "$release_bin" "$bin_dir/wn"; do
     if [ -x "$bin" ]; then wn_bin="$bin"; break; fi
   done
   if [ -n "$wn_bin" ]; then
     if [ -n "$keep_models" ]; then
-      run "$wn_bin" uninstall --yes --keep-models >&2 || say "note: wn uninstall failed; removing files directly"
+      if run "$wn_bin" uninstall --yes --keep-models >&2; then agents_removed=1; else say "note: wn uninstall failed; removing files directly"; fi
     else
-      run "$wn_bin" uninstall --yes >&2 || say "note: wn uninstall failed; removing files directly"
+      if run "$wn_bin" uninstall --yes >&2; then agents_removed=1; else say "note: wn uninstall failed; removing files directly"; fi
     fi
-  else
-    say "no wn binary found: remove where-next entries from agent hook settings by hand if any remain"
   fi
+  if [ -z "$agents_removed" ]; then say "remove where-next agent skills and hook entries by hand"; fi
   if [ -x "$release_bin" ]; then run "$release_bin" daemon stop || true; fi
   if [ -x "$bin_dir/wn" ] && [ "$bin_dir/wn" != "$release_bin" ]; then run "$bin_dir/wn" daemon stop || true; fi
   cargo_bin="$(find_cargo)"
@@ -403,7 +437,8 @@ if [ -n "$uninstall" ]; then
   rmdir "$wn_home" 2>/dev/null || true
   if [ -d "$cache_dir" ]; then remove_cache "$cache_dir"; fi
   if [ -z "$keep_models" ] && [ -d "$models_dir" ]; then remove_models "$models_dir"; fi
-  say "uninstalled wn: binary, $src, $cache_dir$([ -n "$keep_models" ] || printf ', %s' "$models_dir"), and the where-next skill and hooks in your agents"
+  say "uninstalled wn: binary, $src, $cache_dir$([ -n "$keep_models" ] || printf ', %s' "$models_dir")"
+  if [ -n "$agents_removed" ]; then say "removed the where-next skill and hooks in your agents"; fi
   if [ -n "$keep_models" ]; then say "kept the models in $models_dir (--keep-models)"; fi
   say "installs made with wn setup --project stay in those repositories"
   exit 0

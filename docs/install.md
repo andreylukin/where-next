@@ -101,6 +101,7 @@ It removes, in this order:
 6. The `wn` binary it runs as, and the files the release installer recorded beside it in
    `wn.install-files` (`libonnxruntime.so` on Linux, `wn.install-method`); for installs from before
    that file, `libonnxruntime.so` only when `wn.install-method` says `release`.
+   Directories recorded as created by the release installer are removed only if empty.
 
 Anything else in those directories stays. It refuses, before removing anything, when one of
 them is empty, relative, `/`, a top-level directory, your home directory or a directory above
@@ -111,10 +112,10 @@ added the install directory to `PATH`, remove that line yourself. A `wn` binary 
 or npm installation is left to that package manager. For a `cargo install`, `cargo uninstall
 where-next` also clears cargo's record.
 
-Without a working `wn`, the installer does the same file removals:
+You can also run:
 `curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh -s -- --uninstall`
-(it runs `wn uninstall --yes` when `wn` is there, with the same refusals and the same list). Hook entries in agent settings can only be
-removed by `wn`; without it, delete the where-next entries (`… wn hook …`) by hand.
+It runs `wn uninstall --yes` when `wn` works. Without a working `wn`, the installer removes the
+binary, source checkout, caches and models. Remove where-next agent skills and hook entries by hand.
 
 ## Updating
 

@@ -70,7 +70,9 @@ where that agent spent its budget. The full numbers are in
 [benchmarks/agent-trial.md](../benchmarks/agent-trial.md).
 
 Still open: people navigating by hand, and more expensive agents. Until one of those shows a real
-benefit, treat where-next as fast local navigation, with the start hint as an opt-in for agents.
+benefit, treat where-next as fast local navigation. Agent integration is optional: `wn setup`
+connects Claude Code, Codex or Cursor with a skill and hooks; `wn ask --start` gives a manual
+task-start hint.
 
 ## What does it do badly?
 
@@ -93,9 +95,9 @@ installer says so before downloading anything); Windows is untested. See [instal
 
 ## Why Rust?
 
-A single static binary with instant startup is the easiest thing to install and trust. Inference
-uses ONNX Runtime; training moves to Rust once the Rust trainer matches the reference trainer's
-quality.
+A Rust CLI with quick startup is easy to install and inspect. It links system libraries on macOS;
+on Linux, the release includes `libonnxruntime.so` alongside `wn`. Inference uses ONNX Runtime;
+training moves to Rust once the Rust trainer matches the reference trainer's quality.
 
 ## Why is the model under the Gemma Terms?
 
