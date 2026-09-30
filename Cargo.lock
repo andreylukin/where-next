@@ -2439,7 +2439,7 @@ dependencies = [
 
 [[package]]
 name = "where-next"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "clap",
  "insta",
@@ -2691,7 +2691,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "wn-core"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "half",
  "ndarray",
@@ -2707,7 +2707,7 @@ dependencies = [
 
 [[package]]
 name = "wn-daemon"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -2723,7 +2723,7 @@ dependencies = [
 
 [[package]]
 name = "wn-embed"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "ort",
  "proptest",
@@ -2740,7 +2740,7 @@ dependencies = [
 
 [[package]]
 name = "wn-git"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "serde",
  "tempfile",
@@ -2749,7 +2749,7 @@ dependencies = [
 
 [[package]]
 name = "wn-mcp"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "rmcp",
  "serde",
@@ -2763,7 +2763,7 @@ dependencies = [
 
 [[package]]
 name = "wn-sources"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "fancy-regex",
  "proptest",
