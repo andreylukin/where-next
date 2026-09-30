@@ -38,6 +38,7 @@ make_release "$work/good"
 run_install "file://$work/good" "$work/bin1" 2>/dev/null
 [ "$("$work/bin1/wn")" = "wn-fixture" ] || fail "installed binary does not run"
 [ -f "$work/bin1/libonnxruntime.so" ] || fail "installed runtime missing"
+[ "$(cat "$work/bin1/libonnxruntime.so")" = fixture ] || fail "installed runtime differs from archive"
 cat > "$work/bin1/wn" <<'OLD_WN'
 #!/bin/sh
 [ "$1 $2" = 'daemon stop' ] && printf 'stopped\n' > "$WN_DAEMON_LOG"
@@ -57,6 +58,15 @@ make_release "$work/nosum"
 rm "$work/nosum/wn-$target.tar.gz.sha256"
 if run_install "file://$work/nosum" "$work/bin3" 2>/dev/null; then fail "installed without checksum"; fi
 [ ! -e "$work/bin3/wn" ] || fail "missing checksum left a binary"
+
+# A Linux archive without its shared library must be refused.
+make_release "$work/nort"
+rm "$work/nort/stage/wn-$target/libonnxruntime.so"
+tar -czf "$work/nort/wn-$target.tar.gz" -C "$work/nort/stage" "wn-$target"
+(cd "$work/nort" && sha256 "wn-$target.tar.gz" > "wn-$target.tar.gz.sha256")
+if run_install "file://$work/nort" "$work/bin4" 2>"$work/nort.err"; then fail "installed without runtime"; fi
+grep -q 'archive does not contain libonnxruntime.so' "$work/nort.err" || fail "missing runtime error not reported"
+[ ! -e "$work/bin4/wn" ] || fail "missing runtime left a binary"
 
 # A destination that cannot contain files must never report success.
 mkdir "$work/blocked-bin"
@@ -78,7 +88,7 @@ if run_install "file://$work/good" "$work/marker-bin" 2>"$work/marker.err"; then
 fi
 ! grep -q 'installed ' "$work/marker.err" || fail "failed marker write reported success"
 
-echo "install.sh: 6 release-mode tests passed"
+echo "install.sh: 7 release-mode tests passed"
 
 # A server error must fail rather than entering source mode.
 mkdir -p "$work/http-fake"

@@ -38,3 +38,17 @@ for image in debian:12 ubuntu:22.04; do
   grep -q '^wn ' "$work/out" || { cat "$work/out" >&2; exit 1; }
   echo "PASS $image"
 done
+
+echo "testing debian:11 refusal"
+container="$(docker create --platform linux/amd64 debian:11 sh /install.sh)"
+docker cp "$root/install.sh" "$container:/install.sh"
+docker start -a "$container" >"$work/out" 2>&1 || true
+code="$(docker inspect -f '{{.State.ExitCode}}' "$container")"
+docker rm "$container" >/dev/null; container=""
+if [ "$code" = 0 ] || ! grep -q 'detected glibc version: 2.31' "$work/out" ||
+   ! grep -q 'prebuilt binaries need glibc >= 2.35 (Ubuntu 22.04+, Debian 12+)' "$work/out" ||
+   grep -q 'downloading\|cloning' "$work/out"; then
+  cat "$work/out" >&2
+  exit 1
+fi
+echo "PASS debian:11 refusal"
