@@ -9,6 +9,10 @@ explicitly.
 
 ### Fixed
 
+- Text output escapes terminal controls in repository paths and symbol names, including with
+  `--color always`.
+- `wn ask --json` reports `fallback` on answers so agents can see lexical fallback use.
+- `wn update --help` describes release and source update behavior accurately.
 - `wn bench` fetches missing historical blobs in one request on partial clones, skips and counts
   commits whose candidate files remain unreadable, and discards vectors cached from empty blob text.
 

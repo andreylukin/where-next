@@ -71,8 +71,10 @@ for scripts and agents.
 - **`-k 1`–`-k 3`** sets how many hints you get (3 at most; higher values are rejected).
 - **`--functions`** also ranks functions and reserves one hint for a definition. The first call in a
   repository indexes every definition, which can take minutes in a large one.
-- **`--json`** for scripts and agents (`state`, `files` with `similarity` and, for literal matches,
-  `"evidence": "exact"`), including when `wn` has no answer or no index.
+- **`--json`** for scripts and agents (`state`, `fallback`, `files` with `similarity` and, for literal
+  matches, `"evidence": "exact"`), including when `wn` has no answer or no index. `fallback: true`
+  means the lexical encoder answered because no usable model was available; it appears on `ok`
+  and `abstain` answers too.
 
 ## The demo
 
