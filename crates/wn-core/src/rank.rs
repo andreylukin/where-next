@@ -38,7 +38,7 @@ pub fn path_prior(path: &str, query: &str) -> f32 {
         || filename.contains("_test.")
         || filename.contains("_spec.")
     {
-        -0.06
+        -0.12
     } else {
         0.0
     }
