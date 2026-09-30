@@ -49,8 +49,8 @@ What it does:
    `cargo install --path crates/wn-cli --locked`, installing `wn` into `~/.cargo/bin`.
 4. Offers the default model (~1.2 GB), shows download progress, and verifies the model against
    its SHA-256 manifest. An interrupted download resumes on the next try.
-5. If Claude Code, Codex or Cursor is installed (`~/.claude`, `~/.codex` or `~/.agents`,
-   `~/.cursor`), shows what `wn setup` would write and asks "Connect wn to … (skill + hooks)?
+5. If Claude Code, Codex, Cursor or bough is installed (`~/.claude`, `~/.codex` or `~/.agents`,
+   `~/.cursor`, `~/.bough`), shows what `wn setup` would write and asks "Connect wn to … (skill + hooks)?
    [Y/n]" (Enter means yes; it reads the answer from your terminal, so it works under
    `curl | sh`). With `--yes` it connects without asking. With no terminal and no `--yes` it skips
    this and `wn setup` is the first next step. See [skill.md](skill.md).
@@ -84,12 +84,13 @@ wn uninstall --dry-run       # only show the list
 It removes, in this order:
 
 1. The running daemon (stopped).
-2. From Claude Code, Codex and Cursor: the where-next skill (`~/.claude/skills/where-next/`,
-   `~/.agents/skills/where-next/`, `~/.cursor/skills/where-next/`, plus `wn setup --project`
-   installs it recorded) and the where-next hook entries in `~/.claude/settings.json`,
-   `~/.codex/hooks.json` and `~/.cursor/hooks.json`. Only entries `wn setup` owns are removed;
-   your other settings and hooks stay, and a file restored to what it was before `wn setup` gets
-   its original bytes back. A hooks file that `wn setup` created and that holds nothing else is
+2. From Claude Code, Codex, Cursor and bough: the where-next skill (`~/.claude/skills/where-next/`,
+   `~/.agents/skills/where-next/`, `~/.cursor/skills/where-next/`, `~/.bough/skills/where-next/`,
+   plus `wn setup --project` installs it recorded), the where-next hook entries in
+   `~/.claude/settings.json`, `~/.codex/hooks.json` and `~/.cursor/hooks.json`, and bough's
+   `~/.bough/hooks/<event>/where-next.js` files. Only entries `wn setup` owns are removed; your
+   other settings and hooks stay, and a file restored to what it was before `wn setup` gets its
+   original bytes back. A hooks file that `wn setup` created and that holds nothing else is
    deleted.
 3. In `~/.cache/where-next` (`$WHERE_NEXT_HOME`): the per-repository index directories
    (`<name>-<16 hex digits>`), `daemon.log`, `daemon.sock`, `fingerprints.json`, `skills.json`,

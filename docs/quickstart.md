@@ -162,7 +162,7 @@ of running it. See [history replay](../benchmarks/history-replay.md) for the pro
 wn setup                 # shows what it will write and asks; --yes to skip the question
 ```
 
-connects the agents found in your home directory (Claude Code, Codex, Cursor): the where-next
+connects the agents found in your home directory (Claude Code, Codex, Cursor, bough): the where-next
 skill, and hooks that add wn's hints to the agent's context on each prompt and after a search that
 found nothing or too much. A background daemon keeps the model and index warm. `wn stats` shows
 what the hooks did; `WN_HOOKS=0` or `wn setup --uninstall` turns them off. Details:

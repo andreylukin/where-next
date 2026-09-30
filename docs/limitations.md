@@ -30,8 +30,8 @@ right file sooner but didn't lower cost or raise success, so we don't claim agen
   the size trend suggested by the second trial did not replicate.
 
 So `wn` is positioned as fast local navigation for people and an **opt-in** tool for agents. Run
-`wn setup` to connect Claude Code, Codex or Cursor with a skill and hooks, or use `wn ask --start`
-for a manual task-start hint.
+`wn setup` to connect Claude Code, Codex, Cursor or bough with a skill and hooks, or use
+`wn ask --start` for a manual task-start hint.
 
 ## Not shown, or not good yet
 

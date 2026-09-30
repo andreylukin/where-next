@@ -279,11 +279,12 @@ ensure_model() { # offer the default model when it is missing or its pinned sour
   fi
 }
 
-agents_found() { # prints "Claude Code / Codex / Cursor" for the agents configured in $HOME
+agents_found() { # prints "Claude Code / Codex / Cursor / bough" for the agents configured in $HOME
   found=""
   if [ -d "$HOME/.claude" ]; then found="Claude Code"; fi
   if [ -d "$HOME/.codex" ] || [ -d "$HOME/.agents" ]; then found="${found:+$found / }Codex"; fi
   if [ -d "$HOME/.cursor" ]; then found="${found:+$found / }Cursor"; fi
+  if [ -d "$HOME/.bough" ]; then found="${found:+$found / }bough"; fi
   printf '%s' "$found"
 }
 
@@ -310,7 +311,7 @@ connect_agents() { # after the model step: connect detected agents (skill + hook
 
 next_steps() {
   say "next steps:"
-  if [ -z "$agents_connected" ]; then say "  wn setup                      # connect Claude Code / Codex / Cursor: hints arrive automatically"; fi
+  if [ -z "$agents_connected" ]; then say "  wn setup                      # connect Claude Code / Codex / Cursor / bough: hints arrive automatically"; fi
   if [ -n "$model_skipped" ]; then say "  wn model pull                 # download the default model for semantic hints"; fi
   say "  cd your-repo && wn init        # index and learn from git history"
   say "  wn ask \"where is X handled?\"   # ranked files to open next"

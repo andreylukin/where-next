@@ -19,7 +19,7 @@ agents to use it.
 wn setup                    # detected agents, your home directory; shows every file it writes, asks once
 wn setup --dry-run          # show what would change (diffs), write nothing
 wn setup --yes              # apply without asking (required when there is no terminal)
-wn setup --agent codex      # claude | codex | cursor | all (repeatable)
+wn setup --agent codex      # claude | codex | cursor | bough | all (repeatable)
 wn setup --no-hooks         # only the skill
 wn setup --project          # install into this repository instead (commit it for your team)
 wn setup --uninstall        # remove everything setup added
@@ -33,11 +33,16 @@ wn skill show               # print the skill
 | Claude Code | `~/.claude` | `~/.claude/skills/where-next/SKILL.md` | `~/.claude/settings.json` |
 | Codex | `~/.codex` or `~/.agents` | `~/.agents/skills/where-next/SKILL.md` | `~/.codex/hooks.json` |
 | Cursor | `~/.cursor` | `~/.cursor/skills/where-next/SKILL.md` | `~/.cursor/hooks.json` |
+| bough | `~/.bough` | `~/.bough/skills/where-next/SKILL.md` | `~/.bough/hooks/<event>/where-next.js` |
 
 With `--project` the same paths are used under the repository (`.claude/`, `.agents/`, `.codex/`,
-`.cursor/`). With no agent detected, Claude Code is the default. Cursor also reads `.claude` and
-`.agents` skill directories, so installing for several agents can show the skill twice there; set
-up only Cursor (`--agent cursor`) if that bothers you.
+`.cursor/`, `.bough/`). With no agent detected, Claude Code is the default. Cursor also reads
+`.claude` and `.agents` skill directories, so installing for several agents can show the skill
+twice there; set up only Cursor (`--agent cursor`) if that bothers you. bough reads a repository's
+skills from `.claude/skills` only, so with `--project` it gets the skill from a Claude Code install
+there (`--agent claude`). bough's copy of the skill says `manual: true`: bough injects a skill into
+the turn whenever its name appears in the prompt, and every prompt hint names where-next. It stays
+in bough's skill list for the model to read.
 
 Guarantees:
 
@@ -81,6 +86,9 @@ agent's context. The agent never has to remember wn exists.
 | Codex | `PostToolUse` (`Bash`) | `wn hook codex-search` |
 | Cursor | `sessionStart` | `wn hook cursor-start` |
 | Cursor | `postToolUse` (`Shell\|Grep`) | `wn hook cursor-search` |
+| bough | `session-start` | `wn hook bough-start` |
+| bough | `user-prompt-submit` | `wn hook bough-prompt` |
+| bough | `post-result` (native `bash` calls) | `wn hook bough-search` |
 
 If Codex already defines hooks inline in `~/.codex/config.toml`, append these entries there.
 `wn setup` prints the same entries with the command path it selected for your installation;
@@ -113,13 +121,25 @@ your `PATH`, else its absolute path. Cursor has no prompt hook that can add cont
 hooks only after you trust them**: open Codex, run `/hooks` and trust the where-next entries.
 Claude Code and Cursor pick them up in new sessions.
 
+bough hooks are JavaScript files, not commands: `wn setup` writes one `where-next.js` per event
+(marked ``// managed by `wn setup` ``; a file there without the marker is left alone). bough runs
+them in its code-mode VM and re-reads them on every event, so running sessions pick them up at
+once. Each passes the event, with the session's id and directory from `bough.session()`, to
+`wn hook bough-…` through `tools.bash`, and appends what wn prints to the prompt
+(`user-prompt-submit` → `input`) or to the search's output (`post-result` → `result`). bough
+shows the rewritten prompt to you as "hook user-prompt-submit rewrote your message". The prompt
+hook keeps the prompt in a VM global (`whereNextPrompt`), which the search hook sends as its
+context. bough's only limit on a hook is its 30 s script timeout; wn's 1.5 s budget bounds it.
+Only native `bash` calls count as searches: on the code-mode loop (`loop.plugin=loop`) a
+`post-result` covers a whole JavaScript block, so the search hook stays out of it.
+
 **When they fire**
 
-- *Session start* (all three): in an indexed repository, starts a background `wn ask` through the
+- *Session start* (all four): in an indexed repository, starts a background `wn ask` through the
   daemon so the model and index are loaded before the first prompt, and returns at once with no
   output.
-- *Prompt* (Claude Code, Codex): on every prompt, the prompt is asked as a query.
-- *Search* (all three): after `rg`, `grep`, `git grep`, `ag`, `ack`, `fd` or `find` in a shell, or
+- *Prompt* (Claude Code, Codex, bough): on every prompt, the prompt is asked as a query.
+- *Search* (all four): after `rg`, `grep`, `git grep`, `ag`, `ack`, `fd` or `find` in a shell, or
   the Grep/Glob tools, when the search found nothing or more than 30 results. The pattern is asked,
   with the session's latest prompt as context (read from the end of the transcript the agent names
   in the hook payload; not stored). Searches with a handful of results are left alone.
@@ -133,7 +153,7 @@ Claude Code and Cursor pick them up in new sessions.
 Only confident answers (state `ok`; an abstain prints nothing): at most 3 file paths, each file at
 most once per session, in a few lines that start with "where-next (local index of this
 repository) suggests". Claude Code and Codex receive it as `hookSpecificOutput.additionalContext`,
-Cursor as `additional_context`.
+Cursor as `additional_context`, bough's hook file as `context`.
 
 **When they stay silent**
 
