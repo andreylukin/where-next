@@ -43,14 +43,38 @@ your normal search. Scores rank the files; they are not probabilities. On a clon
 
 ```text
 $ wn ask "where are gitignore rules matched against paths"
-where-next hints (cosine similarity; adapter on):
-0.50  crates/ignore/src/gitignore.rs
-0.42  crates/ignore/src/dir.rs
-0.42  crates/ignore/src/overrides.rs
+crates/ignore/src/gitignore.rs  0.50
+crates/ignore/src/dir.rs        0.42
+crates/ignore/src/overrides.rs  0.42
 ```
 
-Query tips (self-contained queries, grep for exact strings, `--json`) are in the
-[README](../README.md#writing-good-queries).
+## Writing good queries
+
+- **One self-contained sentence** about what you're looking for, plus any error text:
+  `wn ask "why does the upload fail" --context-file error.txt`. Terse follow-ups such as
+  "now the other one" have nothing to match.
+- **Exact names and strings → `rg`.** `wn` ranks by meaning.
+- **Scores rank the files; they aren't probabilities.** Open the files and check.
+- **"No confident hint"** means `wn` chose not to guess; use your usual search. `--strict` makes it
+  stay quiet more often (fewer, more precise answers); `--no-abstain` always shows its best guesses.
+- **`(exact)`** after a file means a distinctive word from your query (an identifier or a file name)
+  literally appears in that file or is its name. Such files can outrank higher-similarity ones, and
+  when `wn` otherwise isn't confident they are the only hints it shows.
+- **`-k 1`–`-k 3`** sets how many hints you get (3 at most; higher values are rejected).
+- **`--functions`** also ranks functions and reserves one hint for a definition. The first call in a
+  repository indexes every definition, which can take minutes in a large one.
+- **`--json`** for scripts and agents (`state`, `files` with `similarity` and, for literal matches,
+  `"evidence": "exact"`), including when `wn` has no answer or no index.
+
+## The demo
+
+The GIF in the README was recorded on a kubernetes clone (~20k indexed files) with a warm daemon. The
+queries are the titles (two lightly shortened) of real bug reports
+[#141298](https://github.com/kubernetes/kubernetes/issues/141298),
+[#142526](https://github.com/kubernetes/kubernetes/issues/142526) and
+[#141488](https://github.com/kubernetes/kubernetes/issues/141488); their fixes changed
+`replica_calculator.go`, `yaml/decoder.go` and `winkernel/hns.go`, each ranked #1. The last step
+shows `rg` is still the right tool for an exact name. Script: [demo.tape](demo.tape).
 
 ## Try it on your repository
 
@@ -58,11 +82,12 @@ Query tips (self-contained queries, grep for exact strings, `--json`) are in the
 wn bench
 ```
 
-replays your repository's recent commits as if each were a new task (candidates are the files as
-they were just before the commit) and shows how often the files that commit changed were in the top
-1, 3 and 10 suggestions, for plain lexical search, the model, and the model with your repository's
-adapter. It is read-only; the first run can take several minutes (reruns reuse cached vectors).
-On the ripgrep clone:
+replays your repository's recent commits: for each one, it asks "given this commit message, which
+files would you open?" (candidates are the files as they were just before the commit) and shows how
+often a file that commit changed was in the top 1, 3 and 10 suggestions, for plain lexical search
+(BM25), the model, and the model with your repository's adapter. It only reads history and changes
+nothing. The first run embeds old file versions, so it can take several minutes on a laptop CPU;
+reruns reuse the cached vectors. On the ripgrep clone (300 commits):
 
 ```text
                       hit@1  hit@3 hit@10    MRR      n
@@ -71,7 +96,8 @@ On the ripgrep clone:
   model + adapter     0.647  0.810  0.940  0.747    300
 ```
 
-See [history replay](../benchmarks/history-replay.md) for the protocol and flags.
+That is 27% → 39% → 65% top 1 and 49% → 74% → 81% top 3. Your numbers will differ; that's the point
+of running it. See [history replay](../benchmarks/history-replay.md) for the protocol and flags.
 
 ## Use it from an agent
 

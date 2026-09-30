@@ -9,5 +9,8 @@
 | [Privacy and licensing](privacy-and-licensing.md) | What stays on your machine; code, model and data licenses |
 | [Adding a source](adding-a-source.md) | Indexing a new kind of resource or language |
 | [Building and testing](building.md) | What exists in each crate today, and how to build, test and benchmark it |
+| [Troubleshooting](troubleshooting.md) | Symptoms and fixes |
+| [Limitations](limitations.md) | What `wn` does badly and what we haven't shown, including the agent trials |
+| [Stats and reports](stats.md) | `wn stats` (is it helping?) and the opt-in `wn report` |
 | [Benchmarks](../benchmarks/README.md) | How results are measured and how to reproduce them |
 | [FAQ](faq.md) | Why not grep, why not an editor index, and other common questions |

@@ -9,6 +9,40 @@ model put a correct file in the top 3 for about 76% of the tasks in repositories
 training; on all 1,136 tasks, plain lexical ranking (BM25) managed about 37%. (Different subsets; see
 [benchmarks](../benchmarks/README.md).)
 
+## How is this different from embedding search?
+
+Plain embedding search ranks files by how similar their text is to your query. `wn` differs in three
+layers:
+
+1. **The training target is the outcome.** The default model (`gemma-xl1`, fine-tuned from
+   EmbeddingGemma-300M) learned from about 1.1M (task, files that actually changed) pairs: commit
+   message to changed files, issue to the files the fix edited, error to where the fix landed, with
+   mined hard negatives. Queries use a fixed layout: the request, then the tail of the last tool
+   output (errors, stack traces), then earlier context.
+2. **A per-repository adapter.** `wn init` fits a small linear map on the query side from your
+   repository's commit history, in seconds on CPU. It only transforms the query, so refitting never
+   re-indexes. A control fitted on commits shuffled against their files did no better than no
+   adapter, and the real adapter beat it by +.071 hit@3 on ContextBench's held-out repositories
+   (measured with an earlier fine-tune; see [benchmarks](../benchmarks/README.md#current-results-preliminary-research-prototype)).
+3. **A product layer around the ranking.** At most 3 hints; a calibrated threshold below which `wn`
+   says "no confident hint" instead of guessing; `(exact)` evidence when a distinctive name from the
+   query literally appears in a file; path priors that down-weight test and example files unless you
+   ask for them; a git-aware index (untracked files in, git-ignored files out, incremental refresh);
+   fail-open states when the index or model is missing; and a warm background daemon.
+
+ContextBench hit@3, same evaluator (the research harness):
+
+| Ranker | hit@3 | Tasks |
+|---|---|---|
+| BM25 | .37 | all 1,136 |
+| EmbeddingGemma-300M, untrained (the same base model) | .46 | official 500 |
+| SweRankEmbed-Small, zero-shot | .61 | official 500 |
+| `wn` default model | .76 | official 500 |
+| `wn` default model + per-repo adapter | .81 | official 500 |
+
+On the 994 tasks from repositories held out from fine-tuning: untrained .46, `wn` .76, with the
+adapter .80. The untrained run likely used a 512-token input limit against 1,024 for the fine-tune.
+
 ## Why not my editor's codebase index?
 
 Editor indexes are search over your code. where-next differs in three ways:
