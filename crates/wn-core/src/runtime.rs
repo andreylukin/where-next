@@ -420,9 +420,9 @@ pub fn suggest_with_exact(
     }
     files.truncate(opts.k);
     let shown = |h: &Hint| h.similarity >= MIN_SHOWN_SIMILARITY;
-    // Only reachable with abstaining off: keep the top hint rather than answer with nothing.
+    // With abstaining off, keep the top hint rather than answer with nothing.
     let top = files.first().cloned();
-    files.retain(shown);
+    files.retain(|h| shown(h) || h.evidence.as_deref() == Some("exact"));
     if files.is_empty() {
         files.extend(top);
     }
