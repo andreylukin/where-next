@@ -40,7 +40,7 @@ pub mod skill;
 pub mod stats;
 pub mod uninstall;
 
-/// `wn --version`: the crate version plus the commit it was built from, e.g. `0.2.0 (abc1234 2026-09-29)`.
+/// `wn --version`: the crate version plus the commit it was built from, e.g. `0.3.0 (abc1234 2026-09-30)`.
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("WN_VERSION_SUFFIX"));
 
 /// Command-line interface.
@@ -122,8 +122,9 @@ Examples:
   cd ~ && wn ask \"where are hook sessions deduplicated\"             every repository indexed below ~";
 
 const UPDATE_DETAILS: &str = "\
-Release installs run the installer for the latest release. Source installs fetch and rebuild
-the source repository at main, or at --ref when supplied. --ref applies only to source installs.";
+Release installs run the installer for the latest release. Use --source to build the latest main
+commit instead; future updates then follow main. Source installs fetch and rebuild main, or the
+branch, tag or commit supplied with --ref.";
 
 fn parse_hint_count(value: &str) -> Result<usize, String> {
     match value.parse::<usize>() {
@@ -258,7 +259,7 @@ pub enum Command {
         #[arg(long)]
         no_adapter: bool,
     },
-    /// Update release installs from the latest release; rebuild source installs from main (or --ref).
+    /// Update from the latest release, or build the latest commit with --source.
     #[command(after_help = UPDATE_DETAILS)]
     Update {
         /// Only report whether an update is available (exit code 10 when it is).
@@ -267,6 +268,9 @@ pub enum Command {
         /// Branch, tag or commit to build.
         #[arg(long = "ref", default_value = "main")]
         git_ref: String,
+        /// Build from the source repository instead of installing a release.
+        #[arg(long)]
+        source: bool,
         /// Do not ask before rebuilding.
         #[arg(long, short = 'y')]
         yes: bool,
@@ -1061,6 +1065,7 @@ fn run_command(cli: Cli) -> (String, i32) {
     if let Command::Update {
         check,
         git_ref,
+        source,
         yes,
         force,
     } = &cli.command
@@ -1068,6 +1073,7 @@ fn run_command(cli: Cli) -> (String, i32) {
         let mut opts = update::UpdateOptions::from_env(git_ref);
         opts.check_only = *check;
         opts.force = *force;
+        opts.source = *source;
         opts.show_build_output = !cli.json;
         let report = update::run(&opts, &mut update::confirm_on_tty(*yes));
         let code = report.exit_code();

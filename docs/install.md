@@ -38,7 +38,7 @@ What it does:
 
 1. Checks your platform. On Linux it checks the glibc version, and on an Intel Mac it stops, both
    before downloading anything.
-2. Downloads the latest release (v0.1.0) for your platform, verifies its SHA-256 checksum (a
+2. Downloads the latest release for your platform, verifies its SHA-256 checksum (a
    mismatch or missing checksum stops the install), and installs `wn` into `~/.local/bin`, plus
    `libonnxruntime.so` beside it on Linux. If `wn` is already running as a daemon, it's stopped
    first. The installer tells you if `~/.local/bin` isn't on your `PATH`.
@@ -123,10 +123,12 @@ binary, source checkout, caches and models. Remove where-next agent skills and h
 ```sh
 wn update                 # release installs: re-run the installer for the latest release
                           # source installs: fetch main (or --ref) and rebuild if it moved
+wn update --source        # build the latest main commit, including for release installs
 wn update --check         # exit 0: up to date, 10: update available, 1: error
 wn --version              # wn 0.1.0 (abc1234 2026-09-30): the commit this binary was built from
 ```
 
+After `wn update --source`, subsequent `wn update` runs follow `main` and replace the same binary.
 Re-running the installer also updates.
 
 ## Build it yourself

@@ -247,11 +247,13 @@ impl Fixture {
             git_ref: "main".into(),
             check_only: false,
             force: false,
+            source: false,
             cargo_root: Some(self.root.clone()),
             cargo: self.cargo.clone(),
             current,
             show_build_output: false,
             release_install_dir: None,
+            source_install_dir: None,
         }
     }
 
@@ -419,5 +421,59 @@ fn release_update_reinstalls_without_cargo() {
     assert_eq!(
         fs::read_to_string(f.root.join("release-bin/wn")).unwrap(),
         "updated"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn release_install_can_switch_to_latest_source_commit_in_place() {
+    let f = Fixture::new();
+    let dir = f.root.join("release-bin");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("wn"), "old release").unwrap();
+    fs::write(dir.join("wn.install-method"), "release\n").unwrap();
+    let mut opts = f.opts(None);
+    opts.release_install_dir = Some(dir.clone());
+    opts.source = true;
+    let first = f.head();
+    opts.current = Some(first.clone());
+    let r = update::run(&opts, &mut yes());
+    assert_eq!(r.state, S::Installed, "{}", r.message);
+    assert!(fs::read_to_string(dir.join("wn")).unwrap().contains(&first));
+    assert_eq!(
+        fs::read_to_string(dir.join("wn.install-method")).unwrap(),
+        "source\n"
+    );
+    assert_eq!(f.cargo_calls(), 1);
+
+    let second = f.commit("second");
+    opts.release_install_dir = None;
+    opts.source_install_dir = Some(dir.clone());
+    opts.source = false;
+    opts.current = Some(first);
+    let r = update::run(&opts, &mut yes());
+    assert_eq!(r.state, S::Installed, "{}", r.message);
+    assert!(fs::read_to_string(dir.join("wn"))
+        .unwrap()
+        .contains(&second));
+}
+
+#[cfg(unix)]
+#[test]
+fn failed_source_build_keeps_release_binary() {
+    let f = Fixture::new();
+    let dir = f.root.join("release-bin");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("wn"), "old release").unwrap();
+    fs::write(dir.join("wn.install-method"), "release\n").unwrap();
+    let mut opts = f.opts(None);
+    opts.release_install_dir = Some(dir.clone());
+    opts.source = true;
+    opts.cargo = PathBuf::from("/nonexistent/cargo");
+    assert_eq!(update::run(&opts, &mut yes()).state, S::Failed);
+    assert_eq!(fs::read_to_string(dir.join("wn")).unwrap(), "old release");
+    assert_eq!(
+        fs::read_to_string(dir.join("wn.install-method")).unwrap(),
+        "release\n"
     );
 }

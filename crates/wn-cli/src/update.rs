@@ -180,6 +180,8 @@ pub struct UpdateOptions {
     pub check_only: bool,
     /// Rebuild even when already up to date.
     pub force: bool,
+    /// Explicitly build from Git even for a release installation.
+    pub source: bool,
     /// `cargo install --root` (default: cargo's own default).
     pub cargo_root: Option<PathBuf>,
     /// The cargo executable.
@@ -190,9 +192,19 @@ pub struct UpdateOptions {
     pub show_build_output: bool,
     /// Installer-owned release binary directory, when this executable carries the marker.
     pub release_install_dir: Option<PathBuf>,
+    /// Installer-owned binary directory previously switched to source builds.
+    pub source_install_dir: Option<PathBuf>,
 }
 
 impl UpdateOptions {
+    fn source_target_dir(&self) -> Option<&Path> {
+        self.source_install_dir.as_deref().or(if self.source {
+            self.release_install_dir.as_deref()
+        } else {
+            None
+        })
+    }
+
     /// Options from the environment, as `install.sh` sets them up.
     pub fn from_env(git_ref: &str) -> Self {
         Self {
@@ -201,6 +213,7 @@ impl UpdateOptions {
             git_ref: git_ref.to_string(),
             check_only: false,
             force: false,
+            source: false,
             cargo_root: std::env::var_os("WN_BIN_ROOT").map(PathBuf::from),
             cargo: find_cargo(),
             current: (!BUILD_COMMIT.is_empty()).then(|| BUILD_COMMIT.to_string()),
@@ -211,6 +224,14 @@ impl UpdateOptions {
                     .ok()?
                     .trim()
                     == "release")
+                    .then(|| dir.to_path_buf())
+            }),
+            source_install_dir: std::env::current_exe().ok().and_then(|exe| {
+                let dir = exe.parent()?;
+                (std::fs::read_to_string(dir.join("wn.install-method"))
+                    .ok()?
+                    .trim()
+                    == "source")
                     .then(|| dir.to_path_buf())
             }),
         }
@@ -293,12 +314,21 @@ pub fn render(r: &UpdateReport) -> String {
     }
     match r.state {
         UpdateState::UpToDate => format!("wn is up to date ({} on {})", short(&r.new), r.git_ref),
-        UpdateState::UpdateAvailable => format!(
-            "update available: {} -> {} ({})\nrun `wn update` to install it",
-            short(&r.old),
-            short(&r.new),
-            r.git_ref
-        ),
+        UpdateState::UpdateAvailable => {
+            let command = if r.git_ref == "release" {
+                "wn update".to_string()
+            } else if r.git_ref == "main" {
+                "wn update --source".to_string()
+            } else {
+                format!("wn update --source --ref {}", r.git_ref)
+            };
+            format!(
+                "update available: {} -> {} ({})\nrun `{command}` to install it",
+                short(&r.old),
+                short(&r.new),
+                r.git_ref
+            )
+        }
         UpdateState::Installed if !r.message.is_empty() => format!(
             "updated wn: {} -> {} ({})\nnote: {}",
             short(&r.old),
@@ -383,13 +413,23 @@ fn build(opts: &UpdateOptions, commit: &str) -> Result<(), String> {
         Some(&opts.src),
         &["checkout", "--quiet", "--force", "--detach", commit],
     )?;
+    let install_dir = opts.source_target_dir();
+    let staging = install_dir
+        .map(|dir| {
+            tempfile::tempdir_in(dir).map_err(|e| format!("could not stage source build: {e}"))
+        })
+        .transpose()?;
     let mut cmd = Command::new(&opts.cargo);
     cmd.arg("install")
         .arg("--path")
         .arg(opts.src.join("crates").join("wn-cli"))
         .arg("--locked")
         .arg("--force");
-    if let Some(root) = &opts.cargo_root {
+    if let Some(root) = staging
+        .as_ref()
+        .map(|t| t.path())
+        .or(opts.cargo_root.as_deref())
+    {
         cmd.arg("--root").arg(root);
     }
     cmd.stdin(Stdio::null()).stdout(Stdio::null());
@@ -405,6 +445,14 @@ fn build(opts: &UpdateOptions, commit: &str) -> Result<(), String> {
         )
     })?;
     if out.status.success() {
+        if let (Some(dir), Some(staging)) = (install_dir, staging.as_ref()) {
+            let name = if cfg!(windows) { "wn.exe" } else { "wn" };
+            std::fs::rename(staging.path().join("bin").join(name), dir.join(name))
+                .map_err(|e| format!("could not install source binary: {e}"))?;
+            std::fs::write(dir.join("wn.install-method"), "source\n")
+                .map_err(|e| format!("could not record source installation: {e}"))?;
+            let _ = std::fs::remove_file(dir.join("wn.install-files"));
+        }
         Ok(())
     } else {
         let tail: String = String::from_utf8_lossy(&out.stderr)
@@ -445,7 +493,7 @@ pub fn run(opts: &UpdateOptions, confirm: &mut dyn FnMut(&UpdateReport) -> bool)
             .expect("update flow follows the transition table");
     };
     step(&mut life, &mut report, E::Start);
-    if let Some(dir) = &opts.release_install_dir {
+    if let Some(dir) = opts.release_install_dir.as_ref().filter(|_| !opts.source) {
         report.git_ref = "release".into();
         report.old = Some(format!("v{}", env!("CARGO_PKG_VERSION")));
         let tag = match requested_release_tag() {
@@ -501,7 +549,8 @@ pub fn run(opts: &UpdateOptions, confirm: &mut dyn FnMut(&UpdateReport) -> bool)
         }
     };
     report.new = Some(target.clone());
-    let same = opts.current.as_deref() == Some(target.as_str());
+    let same = opts.current.as_deref() == Some(target.as_str())
+        && !(opts.source && opts.release_install_dir.is_some());
     step(
         &mut life,
         &mut report,
@@ -606,6 +655,9 @@ fn reinstall_release(dir: &Path, tag: &str) -> Result<(), String> {
 /// `~/.cargo`.
 pub fn installed_binary(opts: &UpdateOptions) -> PathBuf {
     let exe = if cfg!(windows) { "wn.exe" } else { "wn" };
+    if let Some(dir) = opts.source_target_dir() {
+        return dir.join(exe);
+    }
     let root = opts
         .cargo_root
         .clone()

@@ -7,6 +7,18 @@ explicitly.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-30
+
+### Added
+
+- `wn update --source` builds the latest `main` commit even for a release installation. It
+  replaces the active binary after a successful build and makes later updates follow `main`.
+
+### Changed
+
+- Workspace queries rank indexed repositories in parallel with up to eight workers while sharing
+  one query embedding, reducing hook latency when sessions search multiple repositories.
+
 ## [0.2.0] - 2026-09-30
 
 ### Added

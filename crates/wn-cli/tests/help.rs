@@ -52,7 +52,8 @@ fn examples_mention_commands_that_exist() {
 #[test]
 fn update_help_describes_release_and_source_installs() {
     let text = help(&["update"]);
-    assert!(text.contains("release installs"), "{text}");
-    assert!(text.contains("source installs"), "{text}");
+    assert!(text.contains("Release installs"), "{text}");
+    assert!(text.contains("Source installs"), "{text}");
+    assert!(text.contains("--source"), "{text}");
     assert!(text.contains("--ref"), "{text}");
 }
