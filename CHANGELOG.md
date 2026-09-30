@@ -7,6 +7,8 @@ explicitly.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-30
+
 ### Added
 
 - Workspace search: in `~` or any directory of repositories, `wn init` finds the git repositories
@@ -30,6 +32,12 @@ explicitly.
 
 - The daemon keeps at most 64 repositories open, closing the least recently used idle one. Its
   protocol version is now 2 (an older daemon is replaced automatically).
+
+### Fixed
+
+- `wn setup` no longer fails as a whole when a detected agent's directory is not writable (e.g. a
+  `~/.cursor` left owned by root): that agent is skipped with a `chown` hint and the others are
+  connected, so setup never needs sudo.
 
 ## [0.1.2] - 2026-09-30
 

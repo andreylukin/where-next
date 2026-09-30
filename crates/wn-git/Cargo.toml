@@ -9,7 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-wn-sources = { version = "0.1.2", path = "../wn-sources" }
+wn-sources = { version = "0.2.0", path = "../wn-sources" }
 
 [dev-dependencies]
 tempfile = "3"
