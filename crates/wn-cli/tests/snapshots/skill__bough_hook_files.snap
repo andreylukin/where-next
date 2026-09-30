@@ -1,0 +1,52 @@
+---
+source: crates/wn-cli/tests/skill.rs
+expression: "files.join(\"\\n\")"
+---
+// session-start/where-next.js
+// Description: where-next: start wn's daemon so the first prompt gets hints.
+// managed by `wn setup`; edits here are overwritten, see https://github.com/andreylukin/where-next
+var session = {};
+try { session = bough.session(); } catch (e) {}
+var payload = JSON.stringify(Object.assign({}, event, { hook_event_name: "session-start", session_id: session.id || "", cwd: session.cwd || "" }));
+var out;
+try {
+  out = tools.bash("printf '%s' '" + payload.replace(/'/g, "'\\''") + "' | " + "wn hook bough-start" + " 2>/dev/null");
+} catch (e) {
+  return;
+}
+
+// user-prompt-submit/where-next.js
+// Description: where-next: add wn's hints for the prompt to it.
+// managed by `wn setup`; edits here are overwritten, see https://github.com/andreylukin/where-next
+var session = {};
+try { session = bough.session(); } catch (e) {}
+globalThis.whereNextPrompt = event.input;
+var payload = JSON.stringify(Object.assign({}, event, { hook_event_name: "user-prompt-submit", session_id: session.id || "", cwd: session.cwd || "" }));
+var out;
+try {
+  out = tools.bash("printf '%s' '" + payload.replace(/'/g, "'\\''") + "' | " + "wn hook bough-prompt" + " 2>/dev/null");
+} catch (e) {
+  return;
+}
+var context;
+try { context = JSON.parse(out.split("\n")[0]).context; } catch (e) { return; }
+if (!context) return;
+return { input: event.input + "\n\n" + context };
+
+// post-result/where-next.js
+// Description: where-next: add wn's hints to a search that found nothing or too much.
+// managed by `wn setup`; edits here are overwritten, see https://github.com/andreylukin/where-next
+var session = {};
+try { session = bough.session(); } catch (e) {}
+if (event.tool !== "bash") return;
+var payload = JSON.stringify(Object.assign({}, event, { hook_event_name: "post-result", session_id: session.id || "", cwd: session.cwd || "", prompt: globalThis.whereNextPrompt || "" }));
+var out;
+try {
+  out = tools.bash("printf '%s' '" + payload.replace(/'/g, "'\\''") + "' | " + "wn hook bough-search" + " 2>/dev/null");
+} catch (e) {
+  return;
+}
+var context;
+try { context = JSON.parse(out.split("\n")[0]).context; } catch (e) { return; }
+if (!context) return;
+return { result: event.result + "\n\n" + context };

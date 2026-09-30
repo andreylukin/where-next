@@ -1,12 +1,14 @@
 //! `wn hook …`: the entry points agents run (installed by `wn setup`).
 //!
 //! Two moments where navigation matters:
-//! - **prompt** (Claude Code and Codex `UserPromptSubmit`): every prompt is asked as a query;
+//! - **prompt** (Claude Code and Codex `UserPromptSubmit`, bough `user-prompt-submit`): every
+//!   prompt is asked as a query;
 //! - **search** (Claude Code `PostToolUse`/`PostToolUseFailure` on Grep, Glob and Bash; Codex
-//!   `PostToolUse` on Bash; Cursor `postToolUse` on Shell and Grep): after a search (`rg`,
-//!   `grep`, `find`, `fd`, `git grep`, the Grep/Glob tools) that found nothing or more than
-//!   [`SEARCH_MANY`] results, the pattern is asked, with the session's latest prompt (read from
-//!   the transcript named in the payload) as context.
+//!   `PostToolUse` on Bash; Cursor `postToolUse` on Shell and Grep; bough `post-result` on bash):
+//!   after a search (`rg`, `grep`, `find`, `fd`, `git grep`, the Grep/Glob tools) that found
+//!   nothing or more than [`SEARCH_MANY`] results, the pattern is asked, with the session's latest
+//!   prompt (read from the transcript named in the payload; bough's hook passes it along) as
+//!   context.
 //!
 //! Confident hints (answer state `ok`) are added to the agent's context: at most [`MAX_HINTS`]
 //! paths, each file at most once per session. Every hook fails open: it always exits 0, answers
@@ -70,10 +72,16 @@ pub enum HookKind {
     CodexStart,
     /// Cursor `sessionStart`: the same warm-up.
     CursorStart,
+    /// bough `user-prompt-submit`.
+    BoughPrompt,
+    /// bough `post-result` on a bash call.
+    BoughSearch,
+    /// bough `session-start`: the same warm-up.
+    BoughStart,
 }
 
 impl HookKind {
-    pub const ALL: [HookKind; 8] = [
+    pub const ALL: [HookKind; 11] = [
         HookKind::ClaudePrompt,
         HookKind::ClaudeSearch,
         HookKind::CodexPrompt,
@@ -82,6 +90,9 @@ impl HookKind {
         HookKind::ClaudeStart,
         HookKind::CodexStart,
         HookKind::CursorStart,
+        HookKind::BoughPrompt,
+        HookKind::BoughSearch,
+        HookKind::BoughStart,
     ];
 
     /// The subcommand name (`claude-prompt`, …).
@@ -95,27 +106,37 @@ impl HookKind {
             HookKind::ClaudeStart => "claude-start",
             HookKind::CodexStart => "codex-start",
             HookKind::CursorStart => "cursor-start",
+            HookKind::BoughPrompt => "bough-prompt",
+            HookKind::BoughSearch => "bough-search",
+            HookKind::BoughStart => "bough-start",
         }
     }
 
-    /// `claude`, `codex` or `cursor`.
+    /// `claude`, `codex`, `cursor` or `bough`.
     pub fn agent(self) -> &'static str {
         match self {
             HookKind::ClaudePrompt | HookKind::ClaudeSearch | HookKind::ClaudeStart => "claude",
             HookKind::CodexPrompt | HookKind::CodexSearch | HookKind::CodexStart => "codex",
             HookKind::CursorSearch | HookKind::CursorStart => "cursor",
+            HookKind::BoughPrompt | HookKind::BoughSearch | HookKind::BoughStart => "bough",
         }
     }
 
     pub fn is_prompt(self) -> bool {
-        matches!(self, HookKind::ClaudePrompt | HookKind::CodexPrompt)
+        matches!(
+            self,
+            HookKind::ClaudePrompt | HookKind::CodexPrompt | HookKind::BoughPrompt
+        )
     }
 
     /// A session-start warm-up (prints nothing, never waits).
     pub fn is_start(self) -> bool {
         matches!(
             self,
-            HookKind::ClaudeStart | HookKind::CodexStart | HookKind::CursorStart
+            HookKind::ClaudeStart
+                | HookKind::CodexStart
+                | HookKind::CursorStart
+                | HookKind::BoughStart
         )
     }
 
@@ -126,6 +147,9 @@ impl HookKind {
             HookKind::CursorSearch => "postToolUse",
             HookKind::ClaudeStart | HookKind::CodexStart => "SessionStart",
             HookKind::CursorStart => "sessionStart",
+            HookKind::BoughPrompt => "user-prompt-submit",
+            HookKind::BoughSearch => "post-result",
+            HookKind::BoughStart => "session-start",
         }
     }
 }
@@ -158,6 +182,8 @@ pub struct Trigger {
     pub moment: Moment,
     /// The session transcript, when the agent names one.
     pub transcript: Option<PathBuf>,
+    /// The session's latest prompt, when the payload carries it (bough's search hook).
+    pub prompt: Option<String>,
 }
 
 fn s<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
@@ -282,6 +308,25 @@ fn search_moment(
     }
 }
 
+/// bough's `post-result` after a native call: `{tool, code, result, error}`. For `bash`, `code` is
+/// the command, `result` its output and `error` `exit status N` when it exited non-zero (`""` on
+/// success).
+fn bough_search(v: &Value) -> Option<Moment> {
+    if s(v, "tool")? != "bash" {
+        return None;
+    }
+    let pattern = search_pattern(s(v, "code")?)?;
+    let exit = match s(v, "error").unwrap_or("") {
+        "" => Some(0),
+        e => e
+            .strip_prefix("exit status ")
+            .and_then(|c| c.trim().parse().ok())
+            .or(Some(-1)),
+    };
+    let results = shell_results(s(v, "result").unwrap_or(""), exit);
+    Some(Moment::Search { pattern, results })
+}
+
 /// Parses one hook payload. `None` when it is not something this hook answers.
 pub fn parse(kind: HookKind, input: &str) -> Option<Trigger> {
     let v: Value = serde_json::from_str(input).ok()?;
@@ -300,7 +345,8 @@ pub fn parse(kind: HookKind, input: &str) -> Option<Trigger> {
                 .map(PathBuf::from)
         })
         .or_else(|| {
-            (kind == HookKind::CursorStart)
+            // bough's hooks run `wn` in the session's directory.
+            (kind == HookKind::CursorStart || kind.agent() == "bough")
                 .then(std::env::current_dir)?
                 .ok()
         })?;
@@ -310,11 +356,14 @@ pub fn parse(kind: HookKind, input: &str) -> Option<Trigger> {
     let moment = if kind.is_start() {
         Moment::Start
     } else if kind.is_prompt() {
-        let prompt = s(&v, "prompt")?.trim();
+        // bough's `user-prompt-submit` names the prompt `input`.
+        let prompt = s(&v, "prompt").or_else(|| s(&v, "input"))?.trim();
         if prompt.is_empty() {
             return None;
         }
         Moment::Prompt(prompt.to_string())
+    } else if kind == HookKind::BoughSearch {
+        bough_search(&v)?
     } else {
         let tool = s(&v, "tool_name")?;
         let input = v.get("tool_input").unwrap_or(&Value::Null);
@@ -325,12 +374,19 @@ pub fn parse(kind: HookKind, input: &str) -> Option<Trigger> {
     let transcript = s(&v, "transcript_path")
         .filter(|t| !t.is_empty())
         .map(PathBuf::from);
+    let prompt = (kind == HookKind::BoughSearch)
+        .then(|| s(&v, "prompt"))
+        .flatten()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(|p| truncate(p, 500));
     Some(Trigger {
         session,
         cwd,
         event,
         moment,
         transcript,
+        prompt,
     })
 }
 
@@ -728,7 +784,7 @@ pub fn save_session(home: &Path, session: &str, state: &Session, now: u64) {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HookRun {
     pub ts: u64,
-    /// `claude`, `codex` or `cursor`.
+    /// `claude`, `codex`, `cursor` or `bough`.
     pub agent: String,
     /// `prompt` or `search`.
     pub moment: String,
@@ -945,6 +1001,8 @@ pub fn render(moment: &Moment, paths: &[String]) -> String {
 pub fn output(kind: HookKind, event: &str, text: &str) -> String {
     let v = match kind.agent() {
         "cursor" => serde_json::json!({ "additional_context": text }),
+        // The hook file appends it to the prompt or the search output (see `skill::bough_hook`).
+        "bough" => serde_json::json!({ "context": text }),
         _ => serde_json::json!({
             "hookSpecificOutput": { "hookEventName": event, "additionalContext": text }
         }),
@@ -1028,7 +1086,10 @@ pub fn run(kind: HookKind, input: &str, deps: &Deps) -> String {
             let Some(words) = intent(pattern).filter(|_| wanted) else {
                 return String::new();
             };
-            let prompt = trigger.transcript.as_deref().and_then(latest_prompt);
+            let prompt = trigger
+                .prompt
+                .clone()
+                .or_else(|| trigger.transcript.as_deref().and_then(latest_prompt));
             (words, prompt.unwrap_or_default())
         }
     };

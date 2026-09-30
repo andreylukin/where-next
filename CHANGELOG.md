@@ -20,6 +20,11 @@ explicitly.
   way (hooks through the daemon only, within the same time budget).
 - Repository cache directories record their root (`root.json`), so a parent directory finds the
   indexes below it; older caches fall back to the usage log's copy.
+- `wn setup` connects the bough coding agent when `~/.bough` exists: the where-next skill in
+  `~/.bough/skills` and one managed `where-next.js` hook file per event under `~/.bough/hooks/`
+  (`session-start`, `user-prompt-submit`, `post-result`), which run
+  `wn hook bough-start|bough-prompt|bough-search` and append wn's hints to the prompt or to a bash
+  search that found nothing or too much. `wn setup --uninstall` and `wn uninstall` remove them.
 
 ### Changed
 

@@ -73,8 +73,8 @@ bottleneck for a capable agent. The full numbers are in
 
 Still open: people navigating by hand, and more expensive agents. Until one of those shows a real
 benefit, treat where-next as fast local navigation. Agent integration is optional: `wn setup`
-connects Claude Code, Codex or Cursor with a skill and hooks; `wn ask --start` gives a manual
-task-start hint.
+connects Claude Code, Codex, Cursor or bough with a skill and hooks; `wn ask --start` gives a
+manual task-start hint.
 
 ## What does it do badly?
 

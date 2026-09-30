@@ -10,7 +10,7 @@ Options:
       --agent <AGENTS>
           Agents to connect (default: those detected in your home directory)
           
-          [possible values: claude, codex, cursor, all]
+          [possible values: claude, codex, cursor, bough, all]
 
       --path <PATH>
           Repository (or any directory inside it), or a directory of repositories
@@ -21,7 +21,7 @@ Options:
           Print JSON instead of text
 
       --project
-          Install into this repository (`.claude/`, `.agents/`, `.codex/`, `.cursor/`) instead of your home directory
+          Install into this repository (`.claude/`, `.agents/`, `.codex/`, `.cursor/`, `.bough/`) instead of your home directory
 
       --dry-run
           Show what would change without writing anything
@@ -57,7 +57,7 @@ Options:
           Print help
 
 Installs, per detected agent, the where-next skill and hooks that add wn's hints to the agent's
-context: on every prompt (Claude Code, Codex) and after a search that found nothing or too much
+context: on every prompt (Claude Code, Codex, bough) and after a search that found nothing or too much
 (rg/grep/find/fd, Grep/Glob tools). Shows every file it will write and asks first. Hooks never
 block: they answer within 1.5 s or print nothing, and stay silent when wn is unsure, the repository
 is not indexed, or WN_HOOKS=0. `wn stats` shows what they did.
@@ -67,5 +67,5 @@ Examples:
   wn setup                                 agents detected in your home directory
   wn setup --agent claude --yes
   wn setup --no-hooks                      only the skill
-  wn setup --project                       this repository's .claude/.agents/.codex/.cursor
+  wn setup --project                       this repository's .claude/.agents/.codex/.cursor/.bough
   wn setup --uninstall                     remove everything wn setup added
