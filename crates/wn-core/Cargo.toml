@@ -14,7 +14,7 @@ regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha1_smol = "1"
-wn-sources = { version = "0.1.1", path = "../wn-sources" }
+wn-sources = { version = "0.1.2", path = "../wn-sources" }
 
 [dev-dependencies]
 proptest.workspace = true

@@ -7,6 +7,8 @@ explicitly.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-30
+
 ### Added
 
 - Index Vue, Svelte and Astro components as source files, including compact content in their file
