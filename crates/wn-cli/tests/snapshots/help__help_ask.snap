@@ -45,6 +45,12 @@ Options:
       --strict
           Use the strict abstain thresholds (fewer, more precise answers)
 
+      --color <WHEN>
+          Color text output: auto (terminal only; honors NO_COLOR and CLICOLOR_FORCE), always or never
+          
+          [default: auto]
+          [possible values: auto, always, never]
+
       --no-abstain
           Never abstain
 

@@ -13,6 +13,10 @@ The first release. The launch changes (#32–#39) come first, then everything el
 
 ### Launch changes
 
+- **Readable `ask` text** (#43): no header line; one hint per line, path first with the score
+  aligned at the end; abstain and fail-open states are single lines. Colors on a terminal only
+  (`NO_COLOR` and `CLICOLOR_FORCE` honored); new global `--color auto|always|never`. `--json` is
+  unchanged.
 - **Abstention works again** (#34): with the repository adapter on, `wn ask` says "no confident hint"
   on vague or gibberish queries instead of always answering; rows that would print as `0.00` are
   never shown; an empty query is rejected (exit 2) unless `--context-file` supplies context.

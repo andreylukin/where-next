@@ -40,6 +40,12 @@ Options:
       --any-dir
           Allow a directory outside any git repository, or your home directory or / itself (refused by default: everything under it would be indexed)
 
+      --color <WHEN>
+          Color text output: auto (terminal only; honors NO_COLOR and CLICOLOR_FORCE), always or never
+          
+          [default: auto]
+          [possible values: auto, always, never]
+
   -h, --help
           Print help
 

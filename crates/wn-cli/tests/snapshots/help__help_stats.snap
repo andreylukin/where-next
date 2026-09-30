@@ -41,6 +41,12 @@ Options:
       --no-agents
           Do not read agent transcripts (also `WN_STATS_NO_AGENTS=1`)
 
+      --color <WHEN>
+          Color text output: auto (terminal only; honors NO_COLOR and CLICOLOR_FORCE), always or never
+          
+          [default: auto]
+          [possible values: auto, always, never]
+
   -h, --help
           Print help
 

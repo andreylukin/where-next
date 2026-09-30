@@ -195,10 +195,10 @@ fn init_status_ask_train_rollback() {
         &["ask", "the login session expires too early"],
     );
     assert_eq!(code, 0);
-    assert!(ask.contains("adapter on"), "{ask}");
-    let first = ask.lines().nth(1).unwrap();
+    insta::assert_snapshot!("ask", ask);
+    let first = ask.lines().next().unwrap();
     assert!(
-        first.ends_with("src/auth.py"),
+        first.starts_with("src/auth.py "),
         "top hint should be auth.py:\n{ask}"
     );
 
@@ -215,9 +215,10 @@ fn init_status_ask_train_rollback() {
     let (plain, _) = wn(
         r,
         home.path(),
-        &["ask", "storage upload timeout", "--no-adapter"],
+        &["ask", "storage upload timeout", "--no-adapter", "--json"],
     );
-    assert!(plain.contains("adapter off"));
+    let v: serde_json::Value = serde_json::from_str(&plain).unwrap();
+    assert_eq!(v["adapter"]["applied"], false);
 
     let (skip, _) = wn(
         r,
@@ -322,7 +323,7 @@ fn empty_and_unsupported_repositories_fail_open() {
     write(docs.path(), "notes.md", "# notes\n");
     let (out, code) = wn(docs.path(), home.path(), &["ask", "anything"]);
     assert_eq!(code, 0);
-    assert_eq!(out, "where-next: unsupported_scope; use normal search.");
+    assert_eq!(out, "no supported source files here; use normal search");
 
     let empty = git_dir();
     let (out, _) = wn(empty.path(), home.path(), &["ask", "anything", "--json"]);
@@ -432,11 +433,10 @@ fn nothing_to_rank_says_what_to_do_next() {
     let empty = git_dir();
     let (out, code) = wn(empty.path(), home.path(), &["ask", "anything"]);
     assert_eq!(code, 0);
-    assert!(
-        out.starts_with("where-next: empty_index; use normal search."),
-        "{out}"
+    assert_eq!(
+        out,
+        "nothing to rank: no source files found here; run wn inside a repository (see `wn status`)"
     );
-    assert!(out.contains("note: no source files found here"), "{out}");
 }
 
 #[test]
@@ -637,4 +637,40 @@ fn a_git_home_directory_never_stands_in_for_a_subdirectory() {
         Path::new(v["repo"].as_str().unwrap()),
         project.canonicalize().unwrap()
     );
+}
+
+/// Color only on a terminal (tests pipe stdout), with `--color always`, or with `CLICOLOR_FORCE`;
+/// `NO_COLOR` beats `CLICOLOR_FORCE`, and `--color never` beats both.
+#[test]
+fn ask_colors_only_when_asked_or_on_a_terminal() {
+    let repo = project();
+    let home = tempfile::tempdir().unwrap();
+    let ask = |args: &[&str], env: &[(&str, &str)]| {
+        let mut c = wn_command(repo.path(), home.path());
+        c.env_remove("NO_COLOR")
+            .env_remove("CLICOLOR_FORCE")
+            .env_remove("CLICOLOR");
+        for (k, v) in env {
+            c.env(k, v);
+        }
+        let out = c
+            .args(["ask", "the login session expires too early"])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let piped = ask(&[], &[]);
+    assert!(!piped.contains('\x1b'), "{piped:?}");
+    assert!(piped.starts_with("src/auth.py "), "{piped}");
+    let always = ask(&["--color", "always"], &[]);
+    assert!(always.contains("\x1b["), "{always:?}");
+    assert!(ask(&[], &[("CLICOLOR_FORCE", "1")]).contains("\x1b["));
+    let no_color = ask(&[], &[("CLICOLOR_FORCE", "1"), ("NO_COLOR", "1")]);
+    assert!(!no_color.contains('\x1b'), "{no_color:?}");
+    let never = ask(&["--color", "never"], &[("CLICOLOR_FORCE", "1")]);
+    assert!(!never.contains('\x1b'), "{never:?}");
+    let json = ask(&["--json", "--color", "always"], &[]);
+    assert!(!json.contains('\x1b'), "{json:?}");
 }

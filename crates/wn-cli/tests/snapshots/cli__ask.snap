@@ -1,0 +1,6 @@
+---
+source: crates/wn-cli/tests/cli.rs
+expression: ask
+---
+src/auth.py  0.48
+note: no model installed → run `wn model pull` (hints use the lexical fallback until then)
