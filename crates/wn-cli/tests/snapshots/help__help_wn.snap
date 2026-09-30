@@ -16,6 +16,7 @@ Commands:
   bench     Measure hit@k on this repository's own history (default) or on ContextBench
   update    Rebuild wn from the tip of main (or --ref) of its source repository
   report    Share an anonymous usage report as a GitHub issue (shown first; asks before sending)
+  stats     How wn is doing: whether agents acted on its hints, a replay against grep, speed
   daemon    Start, stop or inspect the background daemon that keeps models and indexes warm
   skill     Install or update the where-next skill for Claude Code, Codex and Cursor
   model     Install, list or remove models
@@ -48,6 +49,7 @@ Examples:
   wn status                                which model answers ("lexical fallback" = no model installed)
   wn ask "where is the retry logic for S3 upload timeouts"
   wn bench                                 replay this repository's history: hit@1/3/10
+  wn stats                                 did your agents use the hints? replay vs grep, speed
   wn skill sync                            let Claude Code / Codex / Cursor call wn
 
 Docs: https://github.com/andreylukin/where-next#quick-start

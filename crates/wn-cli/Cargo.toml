@@ -27,6 +27,8 @@ remote = ["onnx", "wn-embed/remote"]
 
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
+memchr = "2"
+regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 similar = "2"

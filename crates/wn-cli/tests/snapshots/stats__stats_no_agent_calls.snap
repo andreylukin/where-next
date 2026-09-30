@@ -1,0 +1,15 @@
+---
+source: crates/wn-cli/tests/stats.rs
+expression: "stats::render(&s, PLAIN)"
+---
+wn stats · harbor-demo · last 30 days
+
+Agents used the hint  no agent calls found yet
+                      `wn skill sync` lets Claude Code, Codex and Cursor call wn
+You edited a hint     no answers with hints yet
+Replay (top 3)        not run yet → `wn bench` (~20 s to a few min for 300 commits)
+Speed                 p50 14 ms · p95 41 ms · 294 files
+Queries               17  ····················▂····▅·▁·█  request 12 · error 5 · abstained 2
+Model                 gemma-xl1 + adapter (200 commits)
+
+2 wn calls in agent transcripts had no logged answer (logging off, or another wn home)

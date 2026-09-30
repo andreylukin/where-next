@@ -9,6 +9,14 @@ explicitly.
 
 ### Added
 
+- `wn stats`: whether agents acted on wn's hints, from Claude Code and Codex transcripts read
+  locally (each answer is exact / near / elsewhere / no files, with read / ran / edited on the hinted
+  file and whether the #1 hint came first), whether you edited a hinted file within a day (git),
+  the latest `wn bench` replay against grep-style search, latency and query volume. `--all` shows a
+  per-repository table, `--days N` changes the window, `--json` prints everything, and
+  `--share` / `--svg FILE` render a redacted card (text or a self-contained SVG) with no repository
+  names, paths or queries. `--no-agents` / `WN_STATS_NO_AGENTS=1` skip transcripts. `wn bench` now
+  records how many commits it scored.
 - Usability docs: the README quick start states the model situation up front (a lexical fallback
   unless a model is installed; `wn status` shows which), adds `wn bench` as the
   "try it on your repo" step with real sample output, query-writing tips, and a Troubleshooting table.

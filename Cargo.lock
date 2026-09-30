@@ -2432,8 +2432,10 @@ version = "0.0.1"
 dependencies = [
  "clap",
  "insta",
+ "memchr",
  "proptest",
  "proptest-state-machine",
+ "regex",
  "serde",
  "serde_json",
  "similar",

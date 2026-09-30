@@ -23,6 +23,7 @@ fn help_texts() {
         ("ask", &["ask"][..]),
         ("bench", &["bench"][..]),
         ("report", &["report"][..]),
+        ("stats", &["stats"][..]),
         ("skill_sync", &["skill", "sync"][..]),
     ] {
         insta::assert_snapshot!(format!("help_{name}"), help(path));
@@ -37,6 +38,7 @@ fn examples_mention_commands_that_exist() {
         "wn status",
         "wn ask",
         "wn bench",
+        "wn stats",
         "wn skill sync",
         "--context-file",
         "--start",
