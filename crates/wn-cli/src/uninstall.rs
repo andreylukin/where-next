@@ -484,6 +484,11 @@ pub fn apply(p: &Plan, loc: &Locations) -> (Vec<String>, Vec<String>) {
         if r.items != [r.path.clone()] && r.path.is_dir() {
             let _ = std::fs::remove_dir(&r.path);
         }
+        if r.what == "daemon socket" && ok {
+            if let Some(dir) = r.path.parent() {
+                let _ = std::fs::remove_dir(dir);
+            }
+        }
         if ok {
             done.push(format!("removed {}", r.path.display()));
         }

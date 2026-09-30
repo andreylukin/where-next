@@ -144,6 +144,31 @@ fn scan_skips_tracked_and_untracked_symlinks() {
     assert!(!files.contains_key("untracked.py"));
 }
 
+#[cfg(unix)]
+#[test]
+fn scan_skips_worktree_symlink_replacing_a_staged_file_and_parent() {
+    use std::os::unix::fs::symlink;
+
+    let t = repo();
+    let outside = tempfile::tempdir().unwrap();
+    write(outside.path(), "private.py", "def private_symbol(): pass\n");
+    write(t.path(), "linked.py", "def original(): pass\n");
+    write(t.path(), "parent/nested.py", "def original(): pass\n");
+    git(t.path(), &["add", "linked.py", "parent/nested.py"]);
+    fs::remove_file(t.path().join("linked.py")).unwrap();
+    symlink(
+        outside.path().join("private.py"),
+        t.path().join("linked.py"),
+    )
+    .unwrap();
+    fs::remove_dir_all(t.path().join("parent")).unwrap();
+    symlink(outside.path(), t.path().join("parent")).unwrap();
+
+    let (files, _) = scan(t.path());
+    assert!(!files.contains_key("linked.py"));
+    assert!(!files.contains_key("parent/nested.py"));
+}
+
 #[test]
 fn history_lists_non_merge_commits_newest_first_with_paths() {
     let t = repo();

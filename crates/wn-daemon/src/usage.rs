@@ -35,22 +35,26 @@ const DAY: u64 = 86_400;
 pub fn prepare_home(home: &Path, managed: bool) -> std::io::Result<()> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
         if !home.exists() {
             fs::DirBuilder::new()
                 .recursive(true)
                 .mode(0o700)
                 .create(home)?;
         }
-        let meta = fs::symlink_metadata(home)?;
-        if !meta.is_dir() || meta.file_type().is_symlink() {
+        let resolved = fs::canonicalize(home)?;
+        let meta = fs::metadata(&resolved)?;
+        let uid = rustix::fs::fstat(&std::os::unix::net::UnixStream::pair()?.0)
+            .map_err(std::io::Error::from)?
+            .st_uid;
+        if !meta.is_dir() || meta.uid() != uid {
             return Err(std::io::Error::other(format!(
-                "{} is not a directory",
+                "{} is not a directory owned by this user",
                 home.display()
             )));
         }
         if managed && meta.permissions().mode() & 0o077 != 0 {
-            fs::set_permissions(home, fs::Permissions::from_mode(0o700))?;
+            fs::set_permissions(resolved, fs::Permissions::from_mode(0o700))?;
         }
     }
     #[cfg(not(unix))]
@@ -332,6 +336,28 @@ mod tests {
         prepare_home(&home, true).unwrap();
         assert_eq!(
             fs::metadata(&home).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_managed_home_uses_and_tightens_its_target() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let parent = tempfile::tempdir().unwrap();
+        let target = parent.path().join("other-disk");
+        let home = parent.path().join("where-next");
+        fs::create_dir(&target).unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o755)).unwrap();
+        symlink(&target, &home).unwrap();
+        prepare_home(&home, true).unwrap();
+        assert!(fs::symlink_metadata(&home)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            fs::metadata(&target).unwrap().permissions().mode() & 0o777,
             0o700
         );
     }

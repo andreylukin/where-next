@@ -14,6 +14,9 @@ explicitly.
   cache homes are tightened on startup. Existing explicit cache homes are left untouched.
 - Repository scans skip symlinks, including tracked git symlinks, so indexing cannot follow them
   outside the repository.
+- Symlinked default cache homes work when their target belongs to the current user. Standalone
+  report validation and summaries no longer require a writable cache home, and uninstall removes
+  an empty fallback socket directory.
 
 ## [0.1.1] - 2026-09-30
 

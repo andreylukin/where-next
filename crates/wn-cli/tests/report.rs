@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use proptest::prelude::*;
 use proptest_state_machine::{prop_state_machine, ReferenceStateMachine, StateMachineTest};
@@ -12,6 +13,36 @@ use wn_cli::report::{
     MAX_URL, STATES,
 };
 use wn_daemon::usage::{BenchEvent, IndexEvent, QueryEvent, RepoUsage};
+
+#[test]
+fn standalone_report_file_commands_ignore_unusable_cache_home() {
+    let temp = tempfile::tempdir().unwrap();
+    let cache = temp.path().join("cache-is-a-file");
+    std::fs::write(&cache, "not a directory").unwrap();
+    let input = temp.path().join("reports.jsonl");
+    std::fs::write(&input, "").unwrap();
+    for mode in ["--validate", "--summarize"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_wn"))
+            .args(["report", mode])
+            .arg(&input)
+            .env("WHERE_NEXT_HOME", &cache)
+            .output()
+            .unwrap();
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !text.contains("cannot prepare cache home"),
+            "{mode}: {text}"
+        );
+        assert_eq!(output.status.success(), mode == "--summarize");
+        if mode == "--validate" {
+            assert!(text.contains("invalid report"), "{text}");
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------------------------
 // State machine

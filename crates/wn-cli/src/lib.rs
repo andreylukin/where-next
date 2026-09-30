@@ -968,7 +968,11 @@ fn run_command(cli: Cli) -> (String, i32) {
             | Command::Bench { .. }
             | Command::Daemon { .. }
             | Command::Stats { .. }
-            | Command::Report { .. }
+            | Command::Report {
+                validate: None,
+                summarize: None,
+                ..
+            }
             | Command::Hook { .. }
     ) {
         if let Err(e) =
