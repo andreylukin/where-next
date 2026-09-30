@@ -868,8 +868,9 @@ pub fn run(cli: Cli) -> (String, i32) {
             2,
         );
     }
-    // `wn stats` only reads logs; everything else would index the directory.
-    if uses_repo && !matches!(cli.command, Command::Stats { .. }) {
+    // `wn stats` only reads logs; everything else would index the directory. `wn mcp` checks
+    // too, but fails open per call instead of exiting (see `serve_mcp`).
+    if uses_repo && !matches!(cli.command, Command::Stats { .. } | Command::Mcp) {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         if let Err(msg) = check_repo(&cli.path, cli.any_dir, home.as_deref()) {
             return (msg, 2);
@@ -1459,14 +1460,33 @@ fn serve_mcp(_cli: &Cli) -> (String, i32) {
 /// Diagnostics go to stderr; stdout carries MCP. Returns an empty text so nothing else prints.
 #[cfg(feature = "onnx")]
 fn serve_mcp(cli: &Cli) -> (String, i32) {
-    let root = repo_root(&cli.path);
-    // `open_repo` falls back to the lexical encoder when this path has no verified model.
-    let model =
-        resolve_model(cli.model.as_deref()).unwrap_or_else(|| models_home().join("none-installed"));
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(r) => r,
         Err(e) => return (format!("wn mcp: cannot start runtime: {e}"), 1),
     };
+    // Clients often start MCP servers in `~` or another non-repository: serve anyway and fail
+    // open on every call with the reason, rather than exiting or indexing that directory.
+    let home_dir = std::env::var_os("HOME").map(PathBuf::from);
+    if let Err(reason) = check_repo(&cli.path, cli.any_dir, home_dir.as_deref()) {
+        let reason = format!(
+            "{} For MCP: start the server in the project directory, or register it as \
+             `wn --path <repo> mcp`.",
+            reason.trim_start_matches("wn: ").replace('\n', " ")
+        );
+        eprintln!("where-next: {reason}");
+        let service: Arc<std::sync::Mutex<dyn wn_daemon::daemon::Service>> =
+            Arc::new(std::sync::Mutex::new(wn_daemon::daemon::Unavailable {
+                reason,
+            }));
+        return match runtime.block_on(wn_mcp::serve_stdio(service)) {
+            Ok(()) => (String::new(), 0),
+            Err(e) => (format!("wn mcp: {e}"), 1),
+        };
+    }
+    let root = repo_root(&cli.path);
+    // `open_repo` falls back to the lexical encoder when this path has no verified model.
+    let model =
+        resolve_model(cli.model.as_deref()).unwrap_or_else(|| models_home().join("none-installed"));
     let (service, refresher, choice) =
         wn_mcp::open_repo(&root, &model, &home(), std::time::Duration::from_secs(10));
     if let wn_mcp::EncoderChoice::LexicalFallback(reason) = &choice {

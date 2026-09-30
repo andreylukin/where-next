@@ -467,3 +467,72 @@ fn an_unwritable_cache_directory_fails_init_with_a_plain_message() {
     assert!(out.contains("cache directory"), "{out}");
     assert_eq!(json_code, 1, "{json_out}");
 }
+
+/// `wn mcp` outside a git repository (clients often start it in `~`) still starts and fails open
+/// on every call, saying why and what to do, instead of exiting or indexing the directory.
+#[test]
+fn mcp_outside_a_git_repository_starts_and_fails_open_per_call() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+
+    let home = tempfile::tempdir().unwrap();
+    let plain = tempfile::tempdir().unwrap();
+    write(plain.path(), "a/f.rs", "fn f() {}\n");
+    let mut child = wn_command(plain.path(), home.path())
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut send = |v: serde_json::Value| writeln!(stdin, "{v}").unwrap();
+    let mut read_id = |id: i64| loop {
+        let line = lines.next().expect("server closed stdout").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        if v["id"] == id {
+            return v;
+        }
+    };
+    send(
+        serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+        "protocolVersion": "2025-06-18", "capabilities": {},
+        "clientInfo": {"name": "test", "version": "0"}}}),
+    );
+    assert!(read_id(1)["result"]["serverInfo"].is_object());
+    send(serde_json::json!({"jsonrpc": "2.0", "method": "notifications/initialized"}));
+    let body = |v: serde_json::Value| -> serde_json::Value {
+        serde_json::from_str(v["result"]["content"][0]["text"].as_str().unwrap()).unwrap()
+    };
+    send(
+        serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+        "name": "where_next", "arguments": {"query": "where is f"}}}),
+    );
+    let answer = body(read_id(2));
+    assert_eq!(answer["state"], "error", "{answer}");
+    let why = answer["error"].as_str().unwrap();
+    assert!(
+        why.contains("not inside a git repository") && why.contains("--any-dir"),
+        "{why}"
+    );
+    send(
+        serde_json::json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
+        "name": "status", "arguments": {}}}),
+    );
+    let status = body(read_id(3));
+    assert!(
+        status["last_error"]
+            .as_str()
+            .unwrap()
+            .contains("git repository"),
+        "{status}"
+    );
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+    // Nothing was indexed.
+    assert!(fs::read_dir(home.path())
+        .unwrap()
+        .flatten()
+        .all(|e| !e.path().join("index").exists()));
+}
