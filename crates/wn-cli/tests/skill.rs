@@ -422,6 +422,64 @@ fn codex_with_inline_hooks_in_config_toml_is_left_alone() {
 }
 
 #[test]
+fn codex_pasted_inline_hooks_are_reported_connected() {
+    let env = Env::new(&[".codex"]);
+    let config = env.home().join(".codex/config.toml");
+    fs::write(&config, "[[hooks.PreToolUse]]\nmatcher = \"Bash\"\n").unwrap();
+    let (out, code) = env.wn(&["setup", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    let entries = out.split("\n\n[[hooks.SessionStart]]").nth(1).unwrap();
+    fs::write(
+        &config,
+        format!("[[hooks.PreToolUse]]\nmatcher = \"Bash\"\n\n[[hooks.SessionStart]]{entries}\n"),
+    )
+    .unwrap();
+
+    let (out, code) = env.wn(&["setup", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("hooks connected manually"), "{out}");
+    assert!(!out.contains("hooks NOT connected"), "{out}");
+    assert!(!out.contains("Add these entries"), "{out}");
+
+    let (json, code) = env.wn(&["--json", "setup", "--yes"]);
+    assert_eq!(code, 0, "{json}");
+    let report: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(report["plan"]["hooks"][0]["action"], "connected_manually");
+    assert!(report.get("codex_inline_hook_notice").is_none());
+}
+
+#[test]
+fn partial_codex_inline_hooks_still_need_manual_setup() {
+    let env = Env::new(&[".codex"]);
+    fs::write(
+        env.home().join(".codex/config.toml"),
+        "[[hooks.SessionStart]]\n[[hooks.SessionStart.hooks]]\ntype = \"command\"\ncommand = \"wn hook codex-start\"\n",
+    )
+    .unwrap();
+    let (out, code) = env.wn(&["setup", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("hooks NOT connected"), "{out}");
+}
+
+#[test]
+fn codex_inline_hook_entries_appear_in_json_report() {
+    let env = Env::new(&[".codex"]);
+    fs::write(
+        env.home().join(".codex/config.toml"),
+        "[[hooks.PreToolUse]]\nmatcher = \"Bash\"\n",
+    )
+    .unwrap();
+    let (out, code) = env.wn(&["--json", "setup", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    let report: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let notice = report["codex_inline_hook_notice"].as_str().unwrap();
+    assert!(notice.contains("hooks NOT connected"), "{notice}");
+    for event in ["SessionStart", "UserPromptSubmit", "PostToolUse"] {
+        assert!(notice.contains(&format!("[[hooks.{event}]]")), "{notice}");
+    }
+}
+
+#[test]
 fn from_state_updates_recorded_hooks_including_the_old_claude_hook() {
     let env = Env::new(&[".claude"]);
     // An install from an older release: one first-prompt hook, recorded as `hook_settings`.
