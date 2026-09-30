@@ -5,8 +5,16 @@
 repository's git history which kinds of change touch which files, so its guesses get specific to
 *your* code. Your code never leaves your machine.
 
-<!-- DEMO SLOT: a ~15 s recording goes here as docs/demo.gif (cd ripgrep; wn ask "where are gitignore
-rules matched against paths"). Until it exists, the real output below does the job. -->
+![Terminal recording: in a kubernetes clone, wn ask is given the titles of three real bug reports and lists the file each fix changed first; then rg finds an exact symbol name.](docs/demo.gif)
+
+*Kubernetes (~20k indexed files), warm daemon. The queries are the titles (two lightly shortened) of real bug reports
+[#141298](https://github.com/kubernetes/kubernetes/issues/141298),
+[#142526](https://github.com/kubernetes/kubernetes/issues/142526) and
+[#141488](https://github.com/kubernetes/kubernetes/issues/141488); their fixes changed
+`replica_calculator.go`, `yaml/decoder.go` and `winkernel/hns.go`, each ranked #1. The last step
+shows `rg` is still the right tool for an exact name. Script: [docs/demo.tape](docs/demo.tape).*
+
+A smaller example, as text:
 
 ```text
 $ wn ask "where are gitignore rules matched against paths"
@@ -30,14 +38,15 @@ Prefer to read it first: `curl -fsSLO https://raw.githubusercontent.com/andreylu
 | Platform | Status |
 |---|---|
 | macOS, Apple silicon | Prebuilt binary |
-| Linux x86_64 / arm64 with glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+) | Prebuilt binary |
-| Older Linux (Ubuntu 22.04, Debian 12, RHEL 9, Amazon Linux 2023), musl | **Not supported yet.** The ONNX Runtime library `wn` links needs glibc 2.38+ and GCC 13, so building from source fails there too. |
-| Intel Mac | **Not supported yet** (no prebuilt ONNX Runtime for `x86_64-apple-darwin`). |
-| Windows | Untested. No installer and no background daemon; see [docs/install.md](docs/install.md). |
+| Linux x86_64 / arm64 with glibc 2.35+ (Ubuntu 22.04+, Debian 12+) | Prebuilt binary (ONNX Runtime bundled beside `wn`) |
+| Older Linux (Debian 11, RHEL 9, Amazon Linux 2023, …), musl | **Not supported yet.** The installer checks glibc and stops before downloading anything. |
+| Intel Mac | **Not supported yet.** The installer stops with a message (no ONNX Runtime build for `x86_64-apple-darwin`). |
+| Windows | Untested. The installer doesn't support it and there's no background daemon; see [docs/install.md](docs/install.md). |
 
-The installer downloads a checksum-verified binary when one exists for your platform, and otherwise
-builds from source (it asks before installing Rust; the first build takes a few minutes). Then it
-asks before downloading the model.
+The installer downloads the latest release (v0.1.0), verifies its SHA-256 checksum, and installs
+`wn` into `~/.local/bin`. Only if no binary is published for your platform does it build the latest
+release tag from source instead (it asks before installing Rust). Then it asks before downloading
+the model, and shows download progress.
 
 **What it needs:** the model is a separate **~1.2 GB download** ([gemma-xl1](https://huggingface.co/lukandrey/where-next-gemma-xl1),
 under the [Gemma Terms of Use](#licensing)). While running, `wn` keeps it in a background process
@@ -55,18 +64,18 @@ wn init        # one-time: index this repo and learn from its git history
 wn ask "where is the retry logic for upload timeouts"
 ```
 
-`wn` only works inside a git repository (it refuses other directories, and your home directory,
-rather than indexing everything under them). `wn init` takes seconds on a small repository and a few
-minutes on a big one (about 6.5 minutes for kubernetes' ~20k indexed files on a laptop CPU); it
+`wn` only works inside a git repository: it refuses other directories, and your home directory or
+`/`, rather than indexing everything under them (`--any-dir` overrides). `wn init` takes seconds on
+a small repository and a few minutes on a big one (about 6.5 minutes for kubernetes' ~20k indexed files on a laptop CPU); it
 prints progress while it works and is incremental after that. Once the background daemon is warm, a
 `wn ask` takes about 80–100 ms end to end (p50; 180–200 ms p95, measured on a 3,000-file repository
 under load; see [docs/skill.md](docs/skill.md#the-daemon)).
 
 ## Honest status
 
-- **Early.** Version 0.0.1; expect rough edges, and please [tell us how your first run went](https://github.com/andreylukin/where-next/issues/new?template=first_run.yml).
+- **Early.** v0.1.0; expect rough edges, and please [tell us how your first run went](https://github.com/andreylukin/where-next/issues/new?template=first_run.yml).
 - **Answers are hints.** At most 3 files; open them and check. When nothing scores above a
-  calibrated threshold, `wn` says it has no confident match, and you use your normal search.
+  calibrated threshold, `wn` says "no confident hint", and you use your normal search.
 - **We have not shown it saves coding agents money or time.** In three controlled trials,
   automatic start hints got a cheap agent to a right file sooner but didn't lower cost or raise
   success. It's a navigation tool you (or your agent) can call, not an agent cost-saver. Details in
@@ -118,18 +127,23 @@ Agents call `wn ask --json "<question>"` and get up to 3 files plus a `state` fi
   "now the other one" have nothing to match.
 - **Exact names and strings → `rg`.** `wn` ranks by meaning.
 - **Scores rank the files; they aren't probabilities.** Open the files and check.
-- **"No confident match"** means `wn` chose not to guess; use your usual search. `--strict` makes it
-  stay quiet more often (fewer, more precise answers); `--no-abstain` always shows its best 3.
-- **`--json`** for scripts and agents (`state`, `files`, `adapter`), including when `wn` has no
-  answer or no index.
+- **"No confident hint"** means `wn` chose not to guess; use your usual search. `--strict` makes it
+  stay quiet more often (fewer, more precise answers); `--no-abstain` always shows its best guesses.
+- **`(exact)`** after a file means a distinctive word from your query (an identifier or a file name)
+  literally appears in that file or is its name. Such files can outrank higher-similarity ones, and
+  when `wn` otherwise isn't confident they are the only hints it shows.
+- **`-k 1`–`-k 3`** sets how many hints you get (3 at most; higher values are rejected).
+- **`--functions`** also ranks functions and reserves one hint for a definition. The first call in a
+  repository indexes every definition, which can take minutes in a large one.
+- **`--json`** for scripts and agents (`state`, `files` with `similarity` and, for literal matches,
+  `"evidence": "exact"`), including when `wn` has no answer or no index.
 
 ## Troubleshooting
 
 | Symptom | What to do |
 |---|---|
-| `wn: command not found` right after installing | Open a new terminal. The binary is in `~/.local/bin` (prebuilt) or `~/.cargo/bin` (built from source); make sure that directory is on your `PATH` (`source ~/.cargo/env` after a fresh Rust install). |
-| Build fails with linker errors mentioning `GLIBC_2.38`, `__isoc23_strtol` or `__cxa_call_terminate` | Your Linux is older than `wn` supports (glibc 2.39+ / Ubuntu 24.04+ for binaries). See the platform table above. |
-| `wn` refuses to run: not a git repository, or your home directory | `cd` into a git repository, or pass `--path <repo>`. `wn` won't index arbitrary directories. |
+| `wn: command not found` right after installing | The installer says so when `~/.local/bin` isn't on your `PATH`: add it (or open a new terminal). Source builds go to `~/.cargo/bin` (`source ~/.cargo/env` after a fresh Rust install). |
+| Installer: "prebuilt binaries need glibc >= 2.35" or "Intel Macs aren't supported yet" | Your platform isn't supported yet; see the table above. `WN_FROM=source` lets you try a source build on old Linux anyway, but it needs a compatible ONNX Runtime shared library. |
 | Answers look like keyword matches | `wn status`: `lexical fallback` means no model is installed; run `wn model pull`, then `wn init` again in repositories you already indexed. |
 | `wn init` seems slow | The first index of a big repository takes minutes (it prints progress). Later runs only re-embed changed files. |
 | Files you just added or changed are missing | Normally picked up in the background; `wn status` shows the index state, and `wn init` re-indexes now. |

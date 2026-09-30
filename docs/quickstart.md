@@ -1,7 +1,7 @@
 # Quickstart
 
-> **Early.** Supported on macOS (Apple silicon) and Linux with glibc 2.39+ (Ubuntu 24.04+,
-> Debian 13+); see [install.md](install.md#platforms). The installer downloads the default model,
+> **Early (v0.1.0).** Supported on macOS (Apple silicon) and Linux with glibc 2.35+ (Ubuntu 22.04+,
+> Debian 12+); see [install.md](install.md#platforms). The installer downloads the default model,
 > [gemma-xl1](https://huggingface.co/lukandrey/where-next-gemma-xl1) (~1.2 GB, Gemma Terms of Use),
 > after asking; `wn model pull` installs it later. Without a model, `wn` falls back to keyword
 > matching, which is much weaker, and says so.
@@ -12,9 +12,9 @@
 curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh
 ```
 
-This installs a checksum-verified prebuilt binary where one exists for your platform, and
-otherwise builds from source (a few minutes the first time). Re-run it, or run `wn update`, to
-update. If your shell then says `wn: command not found`, open a new terminal. Details and options:
+This installs the latest release as a checksum-verified binary in `~/.local/bin` (falling back to
+a source build only if no binary is published for your platform). Re-run it, or run `wn update`, to
+update. If the installer says `~/.local/bin` isn't on your `PATH`, add it. Details and options:
 [install.md](install.md).
 
 ## First answer
@@ -38,7 +38,7 @@ than indexing everything under them. `wn init` does two things, once per reposit
    on CPU.
 
 `wn status` shows which model answers. `wn ask` returns at most 3 files with their similarity
-scores, or says it has no confident match when nothing scores above a calibrated threshold; then use
+scores, or says "no confident hint" when nothing scores above a calibrated threshold; then use
 your normal search. Scores rank the files; they are not probabilities. On a clone of ripgrep:
 
 ```text

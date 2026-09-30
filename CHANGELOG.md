@@ -7,6 +7,38 @@ explicitly.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-30
+
+The first release. The launch changes (#32–#39) come first, then everything else in this version.
+
+### Launch changes
+
+- **Abstention works again** (#34): with the repository adapter on, `wn ask` says "no confident hint"
+  on vague or gibberish queries instead of always answering; rows that would print as `0.00` are
+  never shown; an empty query is rejected (exit 2) unless `--context-file` supplies context.
+- **Truthful `ask` flags and exact-match evidence** (#33): `-k` accepts 1–3 and rejects larger
+  values; `--functions` reserves a hint slot for a definition (its first call indexes every
+  definition). A file that literally contains a distinctive name from the query is marked `(exact)`
+  in text output and `"evidence": "exact"` in JSON (similarity stays the raw cosine), and can be
+  ranked higher. Test and example files are down-weighted unless the query asks for them. CLI and
+  MCP share one answer path.
+- **Git guard, progress and a responsive daemon** (#36): `init`, `status`, `ask`, `train`,
+  `rollback`, `bench` and `mcp` refuse (exit 2) a path outside a git repository, or your home
+  directory or `/`; `--any-dir` overrides. `wn mcp` started outside a repository keeps running and
+  answers each call with that error. Model loading and indexing print progress on stderr. The
+  daemon locks per repository, so a big first index no longer blocks other repositories, and
+  `wn daemon status` reports "busy" instead of "not running". Index failures exit 1 with a message.
+- **Release binaries by default** (#35, #39): `install.sh` installs a checksum-verified release
+  binary into `~/.local/bin` and falls back to a source build only when no binary is published for
+  the platform. Linux binaries bundle ONNX Runtime and run on glibc 2.35+ (Ubuntu 22.04+,
+  Debian 12+). Older glibc and Intel Macs are refused before anything is downloaded. `wn update`
+  re-runs the installer for release installs. `wn model pull` shows progress and resumes
+  interrupted downloads.
+- **Launch docs** (#32): the README opens with a demo recorded on kubernetes (`docs/demo.tape`),
+  install, quick start and an honest status. Platforms, the ~1.2 GB model and daemon memory are
+  stated up front, and LAUNCH.md was removed. The skill and the MCP tool description treat
+  `--start` as opt-in and say when to use `rg`. There is a new "First run" issue template.
+
 ### Added
 
 - `wn stats`: whether agents acted on wn's hints, from Claude Code and Codex transcripts read
@@ -101,11 +133,6 @@ explicitly.
 
 ### Changed
 
-- Launch docs: the README now opens with the job, a real example, install, first run and an honest
-  status block; platforms (macOS arm64; Linux with glibc 2.39+), the ~1.2 GB model and ~1.2–1.6 GB
-  daemon memory are stated up front; stale model names and the broken `stats` link are gone;
-  LAUNCH.md was removed (its roadmap items moved to PLAN.md). The skill and the MCP tool description
-  treat `--start` as opt-in and say when to use `rg` instead. New "First run" issue template.
 - Docs: the confirmatory agent trial (pre-declared, 58 tasks in repositories with 3,000+ files) found no
   cost or success benefit from automatic start hints (cost per resolved task 1.05×, 0.82–1.37). README,
   LAUNCH, FAQ and the agent-trial write-up now say so; the start hint is described as opt-in, and the

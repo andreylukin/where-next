@@ -31,13 +31,16 @@ Good: `wn ask --json "where are S3 upload retries configured; error: ReadTimeout
 Bad: `wn ask --json "the other one"`.
 
 Useful flags: `--context-file -` (pipe recent tool output on stdin), `--functions` (also rank
-functions), `--start` (opt-in task-start mode; skipped in repositories under 3,000 source files; in
-trials it did not lower agent cost, so don't add it by default).
+functions; the first call indexes every definition, which can take minutes in a large repository),
+`--start` (opt-in task-start mode; skipped in repositories under 3,000 source files; in trials it did
+not lower agent cost, so don't add it by default).
 
 ## Reading the answer
 
-JSON fields: `state`, `files` (up to 3 `{path, similarity}`), `configs`, `functions` (with
-`--functions`), `adapter`, and `abstain` or `error` with a reason.
+JSON fields: `state`, `files` (up to 3 `{path, similarity}`; `"evidence": "exact"` when a name or
+identifier from the query literally occurs in that file), `configs`, `functions` (with
+`--functions`), `adapter`, and `abstain` or `error` with a reason. File order is the ranking, which
+can differ from similarity order.
 
 - `ok`: open the top files first. Similarities rank the files; they are not probabilities.
 - `abstain`: nothing scored above the calibrated threshold. Use ordinary search (`rg`, reading

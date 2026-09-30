@@ -122,7 +122,7 @@ Pure functions (ranking maths, tokenizing, normalization) get property tests ins
 - **Evidence still missing:** whether hints help people navigating by hand (time to the first right
   file), and whether they help more expensive agents.
 - **Install:** Homebrew, `cargo install where-next`, an `npx` launcher that runs a pinned, verified
-  binary; Intel Mac and older-glibc Linux builds (both need ONNX Runtime built from source); tested
+  binary; Intel Mac, musl and pre-2.35 glibc Linux builds (all need ONNX Runtime built from source); tested
   MCP configuration for Cursor and VS Code; an MCP registry listing; SBOM and provenance attestations
   on every release.
 - **Trust:** a threat model for the MCP server (filesystem scope, prompt-injection text in indexed

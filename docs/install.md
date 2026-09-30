@@ -5,21 +5,20 @@
 | Platform | Status |
 |---|---|
 | macOS, Apple silicon (`aarch64-apple-darwin`) | Prebuilt binary |
-| Linux x86_64 and arm64 with glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+) | Prebuilt binary |
-| Older Linux (Ubuntu 22.04, Debian 12, RHEL/Alma 9, Amazon Linux 2023) | **Not supported yet.** The prebuilt ONNX Runtime library `wn` links needs glibc 2.38+ and GCC 13's libstdc++, so a source build fails to link there too. |
-| musl Linux (Alpine) | Not supported yet (no prebuilt ONNX Runtime). |
-| Intel Mac (`x86_64-apple-darwin`) | Not supported yet (no prebuilt ONNX Runtime). |
-| Windows (`x86_64-pc-windows-msvc`) | Untested. `install.sh` doesn't handle Windows; a zip is built with each release. No background daemon, so every call loads the model (seconds). |
-
-The unsupported platforms need ONNX Runtime built from source; that is on the roadmap.
+| Linux x86_64 and arm64 with glibc 2.35+ (Ubuntu 22.04+, Debian 12+) | Prebuilt binary; ONNX Runtime (`libonnxruntime.so`) is bundled and installed beside `wn` |
+| Older Linux (Debian 11, RHEL/Alma 9, Amazon Linux 2023, …) | **Not supported yet.** The installer checks glibc and stops before downloading anything. |
+| musl Linux (Alpine) | Not supported yet. |
+| Intel Mac (`x86_64-apple-darwin`) | **Not supported yet.** The installer stops with a message: ONNX Runtime has no prebuilt build for it. Apple silicon Macs running a shell under Rosetta get the arm64 binary. |
+| Windows (`x86_64-pc-windows-msvc`) | Untested. `install.sh` doesn't support Windows. There's no background daemon, so every call loads the model (seconds). |
 
 **Resources:** the default model is a ~1.2 GB download, stored once under
-`~/.cache/where-next-models`. Indexes live under `~/.cache/where-next` and grow with
-the repository: a few MB for a small one, tens of MB for a large one (the vectors alone for
-kubernetes' ~20k indexed files are about 62 MB). The background daemon that keeps the model warm uses about 1.2–1.6 GB of RAM
-and exits after 15 idle minutes. The first `wn init` on a large repository takes minutes (about
-6.5 minutes and 1.6 GB peak memory for kubernetes on an Apple M-series laptop; see
-[building.md](building.md#measured-apple-m-series-laptop-cpu-fp32)).
+`~/.cache/where-next-models`. Indexes live under `~/.cache/where-next` and grow with the
+repository: a few MB for a small one, tens of MB for a large one (the vectors alone for
+kubernetes' ~20k indexed files are about 62 MB). The background daemon that keeps the model warm
+uses about 1.2–1.6 GB of RAM and exits after 15 idle minutes. The first `wn init` on a large
+repository takes minutes (about 6.5 minutes and 1.6 GB peak memory for kubernetes on an Apple
+M-series laptop; see [building.md](building.md#measured-apple-m-series-laptop-cpu-fp32)) and prints
+progress on stderr while it runs.
 
 ## One-line install
 
@@ -37,33 +36,35 @@ sh install.sh
 
 What it does:
 
-1. Detects your platform. Where a prebuilt binary exists (see above), it downloads the latest
-   release, verifies its SHA-256 checksum, and installs `wn` into `~/.local/bin`.
-2. Otherwise, or if no release is available, it builds from source: it checks for `git` and a Rust
-   toolchain (and asks before installing Rust with rustup), clones this repository into a private
-   directory (`~/.local/share/where-next/src`; your other checkouts are never touched), and runs
-   `cargo install --path crates/wn-cli --locked`, installing `wn` into `~/.cargo/bin`. The first
-   build takes a few minutes. On Linux it refuses early, with a message, when glibc is too old.
-3. Offers the default model (~1.2 GB) and verifies it against its SHA-256 manifest.
-4. Prints the next steps.
-
-If your shell then says `wn: command not found`, open a new terminal (after a fresh Rust install,
-`source ~/.cargo/env`), and check that `~/.local/bin` or `~/.cargo/bin` is on your `PATH`.
+1. Checks your platform. On Linux it checks the glibc version, and on an Intel Mac it stops, both
+   before downloading anything.
+2. Downloads the latest release (v0.1.0) for your platform, verifies its SHA-256 checksum (a
+   mismatch or missing checksum stops the install), and installs `wn` into `~/.local/bin`, plus
+   `libonnxruntime.so` beside it on Linux. If `wn` is already running as a daemon, it's stopped
+   first. The installer tells you if `~/.local/bin` isn't on your `PATH`.
+3. Only if no release binary is published for your platform (HTTP 404), it builds the latest
+   release tag from source instead. It checks for `git` and a Rust toolchain and asks before
+   installing Rust with rustup. Then it clones this repository into a private directory
+   (`~/.local/share/where-next/src`; your other checkouts are never touched) and runs
+   `cargo install --path crates/wn-cli --locked`, installing `wn` into `~/.cargo/bin`.
+4. Offers the default model (~1.2 GB), shows download progress, and verifies the model against
+   its SHA-256 manifest. An interrupted download resumes on the next try.
+5. Prints the next steps.
 
 | option / variable | meaning |
 |---|---|
-| `--ref <branch\|tag\|sha>` | build this ref from source (default `main`) |
-| `--yes`, `WN_YES=1` | no prompts; installs Rust with rustup if a source build needs it, and downloads the model |
+| `--yes`, `WN_YES=1` | no prompts: downloads the model, and installs Rust with rustup if a source build needs it |
 | `--no-model`, `WN_NO_MODEL=1` | skip the model download |
-| `--force` | rebuild even if already up to date |
 | `--dry-run` | print what would happen; no download, clone or build |
-| `--uninstall` | remove the `wn` binary and the private clone (caches and models are kept) |
+| `--uninstall` | remove `wn` (and the bundled ONNX Runtime) and the private clone; caches and models are kept |
+| `WN_VERSION` | release to install (default: latest) |
+| `WN_INSTALL_DIR` | where the release binary goes (default `~/.local/bin`) |
 | `WN_MODEL_SOURCE` | pull the model from a local dir, an `https://` URL or `hf:owner/repo[@rev]` |
-| `WN_VERSION` | release mode (prebuilt binary): release tag to install (default: latest) |
-| `WN_INSTALL_DIR` | release mode (prebuilt binary): where the binary goes (default `~/.local/bin`) |
-| `WN_HOME` | private clone location for source builds (default `~/.local/share/where-next`) |
-| `WN_BIN_ROOT` | `cargo install --root` for source builds (default: cargo's own, usually `~/.cargo`) |
-| `WN_REPO_URL` | source repository (default this repo; a local path works too) |
+| `--ref <branch\|tag\|sha>`, `WN_FROM=source` | build from source instead (`--ref main` for the development branch) |
+| `--force` | source builds: rebuild even if already up to date |
+| `WN_HOME` | source builds: private clone location (default `~/.local/share/where-next`) |
+| `WN_BIN_ROOT` | source builds: `cargo install --root` (default: cargo's own, usually `~/.cargo`) |
+| `WN_REPO_URL` | source builds: source repository (default this repo; a local path works too) |
 
 Uninstall: `curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh -s -- --uninstall`.
 Caches (`~/.cache/where-next`) and models (`~/.cache/where-next-models`) are left in place; delete
@@ -72,13 +73,13 @@ those directories to remove everything.
 ## Updating
 
 ```sh
-wn update                 # source installs: fetch main and rebuild if it moved (asks first; --yes to skip)
+wn update                 # release installs: re-run the installer for the latest release
+                          # source installs: fetch main (or --ref) and rebuild if it moved
 wn update --check         # exit 0: up to date, 10: update available, 1: error
-wn update --ref <tag-or-sha>
-wn --version              # wn 0.0.1 (abc1234 2026-09-29): the commit this binary was built from
+wn --version              # wn 0.1.0 (abc1234 2026-09-30): the commit this binary was built from
 ```
 
-Re-running the installer always updates, for prebuilt and source installs alike.
+Re-running the installer also updates.
 
 ## Build it yourself
 
@@ -89,8 +90,9 @@ cargo install --path crates/wn-cli --locked
 ```
 
 You need Rust, `git` and a C/C++ toolchain (`xcode-select --install` on macOS, `build-essential` on
-Debian/Ubuntu). The build downloads a prebuilt ONNX Runtime, which is why the platform limits above
-apply to source builds too. See [building.md](building.md).
+Debian/Ubuntu). On macOS the build links a prebuilt ONNX Runtime. On Linux, `wn` loads ONNX
+Runtime as a shared library at run time: put a compatible `libonnxruntime.so` (1.28) beside the
+binary or point `ORT_DYLIB_PATH` at it; release archives include one. See [building.md](building.md).
 
 ## Verify a release
 

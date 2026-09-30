@@ -4,9 +4,9 @@ Thanks for helping. Two rules shape the codebase.
 
 ## 1. Tests first
 
-Write the failing test, then make it pass. Run `cargo build` once first: it downloads a prebuilt ONNX
-Runtime, so it needs macOS on Apple silicon or Linux with glibc 2.39+ (see
-[docs/install.md](docs/install.md#platforms)). Every pull request runs:
+Write the failing test, then make it pass. Run `cargo build` once first. On macOS (Apple silicon) it
+downloads and links a prebuilt ONNX Runtime; on Linux, `wn` loads `libonnxruntime.so` at run time
+(beside the binary, or via `ORT_DYLIB_PATH`), which it needs whenever it runs a real model. See [docs/install.md](docs/install.md#build-it-yourself). Every pull request runs:
 
 ```sh
 cargo fmt --all --check

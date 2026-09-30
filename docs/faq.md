@@ -24,7 +24,7 @@ Editor indexes are search over your code. where-next differs in three ways:
 
 No. It gives the agent a good first pointer, or says nothing. The agent still reads, searches and
 decides. A wrong hint costs a detour, which is why `wn` returns at most 3 results and says it has
-no confident match when nothing scores above a calibrated threshold.
+no confident hint when nothing scores above a calibrated threshold.
 
 ## Does it help agents in practice?
 
@@ -53,9 +53,9 @@ No. See [privacy-and-licensing.md](privacy-and-licensing.md).
 
 ## Which platforms does it run on?
 
-macOS on Apple silicon, and Linux (x86_64, arm64) with glibc 2.39+ (Ubuntu 24.04+, Debian 13+). Older
-Linux, Intel Macs and musl aren't supported yet because of the ONNX Runtime build `wn` links;
-Windows is untested. See [install.md](install.md#platforms).
+macOS on Apple silicon, and Linux (x86_64, arm64) with glibc 2.35+ (Ubuntu 22.04+, Debian 12+). Older
+Linux, Intel Macs and musl aren't supported yet because of the ONNX Runtime builds `wn` uses (the
+installer says so before downloading anything); Windows is untested. See [install.md](install.md#platforms).
 
 ## Why Rust?
 
