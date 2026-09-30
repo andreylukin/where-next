@@ -7,15 +7,17 @@ explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- Index Vue, Svelte and Astro components as source files, with compact component content in their
+  file embeddings.
+
 ### Fixed
 
 - Text output escapes terminal controls in repository paths and symbol names, including with
   `--color always`.
 - `wn ask --json` reports `fallback` on answers so agents can see lexical fallback use.
 - `wn update --help` describes release and source update behavior accurately.
-### Added
-
-- Index Vue, Svelte and Astro components as source files, including their content in file hints.
 
 ## [0.1.1] - 2026-09-30
 
