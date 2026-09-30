@@ -107,6 +107,9 @@ const LANGS: &[(&str, &str)] = &[
     (".js", "javascript"),
     (".jsx", "javascript"),
     (".mjs", "javascript"),
+    (".vue", "vue"),
+    (".svelte", "svelte"),
+    (".astro", "astro"),
     (".java", "java"),
     (".kt", "kotlin"),
     (".kts", "kotlin"),
@@ -528,6 +531,27 @@ pub fn skeleton(path: &str, text: &str, limit: usize) -> String {
 
 /// Embedding text for a source file.
 pub fn file_doc(path: &str, text: &str) -> String {
+    let lang = lang_of(path);
+    if matches!(lang, Some("vue" | "svelte" | "astro")) {
+        let body = if lang == Some("vue") {
+            let template = text
+                .split_once("<template")
+                .and_then(|(_, tail)| tail.split_once('>'))
+                .and_then(|(_, tail)| tail.split_once("</template>"))
+                .map(|(body, _)| body);
+            match template {
+                Some(template) => {
+                    let markup = template.split_whitespace().collect::<Vec<_>>().join(" ");
+                    let script = text.split_whitespace().collect::<Vec<_>>().join(" ");
+                    format!("{} {}", take_chars(&markup, 750), take_chars(&script, 750))
+                }
+                None => text.split_whitespace().collect::<Vec<_>>().join(" "),
+            }
+        } else {
+            text.split_whitespace().collect::<Vec<_>>().join(" ")
+        };
+        return take_chars(&format!("file: {path}\n{body}"), SKELETON_LIMIT).to_string();
+    }
     format!("file: {}", skeleton(path, text, SKELETON_LIMIT))
 }
 

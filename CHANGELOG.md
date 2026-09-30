@@ -7,6 +7,10 @@ explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- Index Vue, Svelte and Astro components as source files, including their content in file hints.
+
 ## [0.1.1] - 2026-09-30
 
 ### Added
