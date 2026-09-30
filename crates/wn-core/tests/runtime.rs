@@ -190,6 +190,64 @@ fn ranking_and_answers() {
     assert!(out.abstain.unwrap().starts_with("request: top similarity"));
 }
 
+/// An uncalibrated encoder (the lexical fallback) abstains when nothing matches at all, and
+/// never shows rows that would print as 0.00.
+#[test]
+fn nothing_matching_abstains_and_zero_rows_are_never_shown() {
+    let dir = tempfile::tempdir().unwrap();
+    let r = repo();
+    let enc = Probe::new();
+    let mut index = Index::open(dir.path(), "probe-a");
+    index
+        .refresh(&files_of(&r, "v1"), &reader(&r), &enc, true)
+        .unwrap();
+
+    let out = suggest(
+        &index,
+        None,
+        &enc,
+        "zzzz qqqq",
+        "",
+        SuggestOptions::default(),
+    );
+    assert_eq!(out.state, AnswerState::Abstain);
+    assert!(out.hints.files.is_empty());
+    assert_eq!(out.abstain.as_deref(), Some("no file matches the query"));
+
+    let out = suggest(
+        &index,
+        None,
+        &enc,
+        "retry uploads",
+        "",
+        SuggestOptions {
+            k: 5,
+            ..Default::default()
+        },
+    );
+    assert_eq!(out.state, AnswerState::Ok);
+    assert_eq!(out.hints.files[0].path, "src/upload.go");
+    let rows = [&out.hints.files, &out.hints.functions, &out.hints.configs];
+    for h in rows.into_iter().flatten() {
+        assert!(h.similarity >= 0.005, "{h:?}");
+    }
+
+    // --no-abstain still answers, without zero rows.
+    let out = suggest(
+        &index,
+        None,
+        &enc,
+        "zzzz qqqq",
+        "",
+        SuggestOptions {
+            no_abstain: true,
+            ..Default::default()
+        },
+    );
+    assert_eq!(out.state, AnswerState::Ok);
+    assert!(out.hints.files.is_empty());
+}
+
 #[test]
 fn failures_fail_open() {
     let dir = tempfile::tempdir().unwrap();

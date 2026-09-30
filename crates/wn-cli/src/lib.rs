@@ -1131,6 +1131,21 @@ pub fn ask_command_with(
     json: bool,
     rescan: bool,
 ) -> (String, i32) {
+    use wn_core::rank::AnswerState;
+    if args.query.trim().is_empty() && context.trim().is_empty() {
+        let error = "empty query: say what you are looking for, e.g. wn ask \"where is the request logger\"";
+        let outcome = Outcome {
+            state: AnswerState::Error,
+            error: Some(error.into()),
+            ..Outcome::default()
+        };
+        let text = if json {
+            erased::Json::to_json(&outcome)
+        } else {
+            format!("where-next: {error}")
+        };
+        return (text, 2);
+    }
     let started = std::time::Instant::now();
     let refresh = if rescan {
         ws.refresh(args.functions).map(|_| ())
@@ -1176,7 +1191,6 @@ pub fn ask_command_with(
             started.elapsed().as_millis(),
         );
     }
-    use wn_core::rank::AnswerState;
     if json {
         return (erased::Json::to_json(&outcome), 0);
     }

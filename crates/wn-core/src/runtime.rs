@@ -15,7 +15,8 @@ use crate::encoder::{EncodeError, Encoder, QueryInput};
 use crate::index::{EntryKind, Index};
 use crate::query_lifecycle::{QueryEvent, QueryLifecycle, QueryState};
 use crate::rank::{
-    abstain_with, budget, AdapterUse, AnswerState, Hints, Outcome, QueryKind, MAX_HINTS,
+    abstain_with, budget, AdapterUse, AnswerState, Hint, Hints, Outcome, QueryKind, MAX_HINTS,
+    MIN_SHOWN_SIMILARITY,
 };
 use crate::text::{history_body, Granularity};
 
@@ -341,6 +342,12 @@ pub fn suggest(
             .and_then(|c| c.thresholds(kind, adapter_use.applied, opts.strict_abstain))
             .and_then(|th| abstain_with(&files, th))
             .map(|why| format!("{}: {why}", kind.as_str()))
+            .or_else(|| {
+                files
+                    .first()
+                    .is_some_and(|h| h.similarity < MIN_SHOWN_SIMILARITY)
+                    .then(|| "no file matches the query".to_string())
+            })
     };
     if let Some(reason) = reason {
         step(&mut life, QueryEvent::NotConfident);
@@ -355,6 +362,11 @@ pub fn suggest(
     debug_assert_eq!(life.state(), QueryState::Answer);
     let mut files = files;
     files.truncate(opts.k);
+    let shown = |h: &Hint| h.similarity >= MIN_SHOWN_SIMILARITY;
+    files.retain(shown);
+    let (mut functions, mut configs) = (functions, configs);
+    functions.retain(shown);
+    configs.retain(shown);
     Outcome {
         state: AnswerState::Ok,
         hints: budget(Hints {

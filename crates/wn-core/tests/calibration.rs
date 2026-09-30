@@ -209,3 +209,36 @@ fn single_line_error_queries_are_errors() {
         assert_eq!(QueryKind::classify(q, ""), QueryKind::Request, "{q}");
     }
 }
+
+/// Shipped gemma calibrations leave adapter-mode thresholds at 0.0/0.0 ("never abstain" on the
+/// fitting repository). That let gibberish through with 3 hints, so an unset (all-zero) adapter
+/// entry means the built-in adapter floor; an explicit negative threshold still never abstains.
+#[test]
+fn unset_adapter_thresholds_fall_back_to_the_builtin_floor() {
+    use wn_core::rank::ADAPTER_FLOOR;
+    let json = r#"{"model": "m", "kinds": {"default": {
+        "adapter": {"min_top": 0.0, "min_margin": 0.0},
+        "plain": {"min_top": 0.3667, "min_margin": 0.0},
+        "strict_adapter": {"min_top": 0.5361, "min_margin": 0.0288},
+        "strict_plain": {"min_top": 0.6857, "min_margin": 0.0779}},
+        "issue": {
+        "adapter": {"min_top": -1.0, "min_margin": 0.0},
+        "plain": {"min_top": -1.0, "min_margin": 0.0},
+        "strict_adapter": {"min_top": 0.5, "min_margin": 0.0},
+        "strict_plain": {"min_top": 0.5, "min_margin": 0.0}}}}"#;
+    let c: Calibration = serde_json::from_str(json).unwrap();
+    let th = c.thresholds(QueryKind::Request, true, false).unwrap();
+    assert_eq!(th, ADAPTER_FLOOR);
+    // Gibberish-level similarity abstains; a real question just above the floor answers.
+    assert!(abstain_with(&hints(0.12, 0.11), th).is_some());
+    assert!(abstain_with(&hints(ADAPTER_FLOOR.min_top + 0.01, 0.0), th).is_none());
+    // Fitted thresholds are untouched.
+    let plain = c.thresholds(QueryKind::Request, false, false).unwrap();
+    assert_eq!((plain.min_top, plain.min_margin), (0.3667, 0.0));
+    let strict = c.thresholds(QueryKind::Request, true, true).unwrap();
+    assert_eq!((strict.min_top, strict.min_margin), (0.5361, 0.0288));
+    // An explicit "never abstain" (negative) stays that way.
+    let issue = c.thresholds(QueryKind::Issue, true, false).unwrap();
+    assert_eq!(issue.min_top, -1.0);
+    assert!(abstain_with(&hints(0.01, 0.0), issue).is_none());
+}
