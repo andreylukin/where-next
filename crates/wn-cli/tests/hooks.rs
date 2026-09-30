@@ -1,5 +1,5 @@
 //! `wn hook …`: payload fixtures for every agent and event (shapes from the Claude Code, Codex and
-//! Cursor hook docs), search detection, per-session dedupe, silence rules, the time budget with a
+//! Cursor hook docs, and what bough's hook files send), search detection, per-session dedupe, silence rules, the time budget with a
 //! slow daemon, and the output JSON each agent reads.
 
 use std::fs;
@@ -120,6 +120,33 @@ fn cursor_shell(cwd: &str, command: &str, output: Value) -> String {
     .to_string()
 }
 
+/// What bough's hook file sends: the event (`{input}`, or `{code, tool, call, result, error}`) plus
+/// the session's id and directory, and for a search the latest prompt.
+fn bough_prompt(cwd: &str, input: &str) -> String {
+    json!({
+        "input": input,
+        "hook_event_name": "user-prompt-submit",
+        "session_id": "01a0f31c-9b80-7436-a965-fb70c3e1540e",
+        "cwd": cwd
+    })
+    .to_string()
+}
+
+fn bough_bash(cwd: &str, command: &str, result: &str, error: &str) -> String {
+    json!({
+        "code": command,
+        "tool": "bash",
+        "call": "toolu_1",
+        "result": result,
+        "error": error,
+        "hook_event_name": "post-result",
+        "session_id": "01a0f31c-9b80-7436-a965-fb70c3e1540e",
+        "cwd": cwd,
+        "prompt": "fix upload retries"
+    })
+    .to_string()
+}
+
 fn search(pattern: &str, results: Option<usize>) -> Moment {
     Moment::Search {
         pattern: pattern.into(),
@@ -221,6 +248,71 @@ fn parses_every_agent_payload() {
         (t.session.as_str(), t.event.as_str()),
         ("conv-1", "postToolUse")
     );
+}
+
+#[test]
+fn parses_bough_payloads() {
+    let t = hooks::parse(HookKind::BoughPrompt, &bough_prompt("/r", " fix login ")).unwrap();
+    assert_eq!(t.moment, Moment::Prompt("fix login".into()));
+    assert_eq!(
+        (t.session.as_str(), t.event.as_str(), t.cwd.as_path()),
+        (
+            "01a0f31c-9b80-7436-a965-fb70c3e1540e",
+            "user-prompt-submit",
+            Path::new("/r")
+        )
+    );
+    assert_eq!(t.prompt, None);
+
+    // `rg` found nothing: exit 1, no output.
+    let t = hooks::parse(
+        HookKind::BoughSearch,
+        &bough_bash("/r", "rg -n 'UploadRetry' src", "", "exit status 1"),
+    )
+    .unwrap();
+    assert_eq!(t.moment, search("UploadRetry", Some(0)));
+    assert_eq!(t.event, "post-result");
+    assert_eq!(t.prompt.as_deref(), Some("fix upload retries"));
+    let many = (0..40)
+        .map(|i| format!("src/a{i}.rs:1:retry"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let t = hooks::parse(
+        HookKind::BoughSearch,
+        &bough_bash("/r", "rg -n retry src", &many, ""),
+    )
+    .unwrap();
+    assert_eq!(t.moment, search("retry", Some(40)));
+    // A real failure (bad regex, a timeout) is not "found nothing".
+    for error in ["exit status 2", "bash: killed after 1m0s"] {
+        let t = hooks::parse(
+            HookKind::BoughSearch,
+            &bough_bash("/r", "rg '('", "regex parse error", error),
+        )
+        .unwrap();
+        assert_eq!(t.moment, search("(", None), "{error}");
+    }
+
+    // Other tools, commands that are not searches, and the code-mode loop (no `tool`).
+    let view =
+        json!({ "code": "src/a.rs", "tool": "view", "result": "", "error": "", "cwd": "/r" });
+    let loop_block = json!({ "code": "tools.bash(\"rg retry\")", "result": "", "cwd": "/r" });
+    for input in [
+        view.to_string(),
+        loop_block.to_string(),
+        bough_bash("/r", "cargo test", "ok", ""),
+    ] {
+        assert_eq!(hooks::parse(HookKind::BoughSearch, &input), None, "{input}");
+    }
+
+    // Without `bough.session()` the hook sends no directory: bough runs `wn` in the session's.
+    let t = hooks::parse(
+        HookKind::BoughStart,
+        r#"{"hook_event_name":"session-start"}"#,
+    )
+    .unwrap();
+    assert_eq!(t.cwd, std::env::current_dir().unwrap());
+    assert_eq!(t.moment, Moment::Start);
 }
 
 #[test]
@@ -552,6 +644,42 @@ fn cursor_gets_its_own_output_shape() {
 }
 
 #[test]
+fn bough_gets_its_own_output_shape_and_the_prompt_it_passes_as_context() {
+    let w = World::new(true);
+    let stub = Stub::new(&["src/upload.rs"]);
+    let deps = w.deps(stub.clone());
+    let out = hooks::run(
+        HookKind::BoughPrompt,
+        &bough_prompt(&w.cwd(), "fix upload retries"),
+        &deps,
+    );
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let text = v["context"].as_str().unwrap();
+    assert!(text.starts_with(wn_cli::agents::HOOK_MARKER), "{text}");
+    assert!(text.ends_with("- src/upload.rs"), "{text}");
+
+    *stub.answer.lock().unwrap() = vec!["src/backoff.rs"];
+    let input = bough_bash(&w.cwd(), "rg -n RetryPolicy src", "", "exit status 1");
+    let out = hooks::run(HookKind::BoughSearch, &input, &deps);
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v.as_object().unwrap().len(), 1, "{v}");
+    assert!(
+        v["context"]
+            .as_str()
+            .unwrap()
+            .contains("the search `RetryPolicy`; verify before relying on them:\n- src/backoff.rs"),
+        "{v}"
+    );
+    assert_eq!(
+        stub.asked.lock().unwrap().last().unwrap(),
+        &("RetryPolicy".to_string(), "fix upload retries".to_string())
+    );
+    let runs = hooks::load_runs(w.home.path(), 0);
+    assert_eq!(runs.len(), 2);
+    assert!(runs.iter().all(|r| r.agent == "bough"));
+}
+
+#[test]
 fn silent_when_abstaining_without_model_or_index_outside_git_or_below_the_minimum() {
     // Abstain.
     let w = World::new(true);
@@ -787,6 +915,8 @@ fn the_kill_switch_and_garbage_input_are_silent() {
         "codex-prompt",
         "codex-search",
         "cursor-search",
+        "bough-prompt",
+        "bough-search",
     ] {
         let (out, code, _) = hook_bin(kind, "not json", &env, &[]);
         assert_eq!((out.as_str(), code), ("", Some(0)), "{kind}");
@@ -814,16 +944,18 @@ fn session_start_warms_the_daemon_up_and_prints_nothing() {
         "session_id": "c1", "conversation_id": "c1", "hook_event_name": "sessionStart",
         "workspace_roots": [w.cwd()], "is_background_agent": false, "composer_mode": "agent"
     });
+    let bough = json!({ "hook_event_name": "session-start", "session_id": "01a0", "cwd": w.cwd() });
     for (kind, input) in [
         (HookKind::ClaudeStart, claude),
         (HookKind::CodexStart, codex),
         (HookKind::CursorStart, cursor),
+        (HookKind::BoughStart, bough),
     ] {
         assert_eq!(hooks::run(kind, &input.to_string(), &deps), "", "{kind:?}");
     }
     assert_eq!(
         *stub.warmed.lock().unwrap(),
-        vec![root.clone(), root.clone(), root]
+        vec![root.clone(), root.clone(), root.clone(), root]
     );
     assert!(
         stub.asked.lock().unwrap().is_empty(),
