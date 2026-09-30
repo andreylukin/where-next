@@ -37,6 +37,9 @@ Options:
           
           [default: 200]
 
+      --any-dir
+          Allow a directory outside any git repository, or your home directory or / itself (refused by default: everything under it would be indexed)
+
       --step <STEP>
           Commits scored per adapter fit
           

@@ -39,6 +39,9 @@ Options:
       --no-daemon
           Answer in this process instead of the background daemon (also `WN_NO_DAEMON=1`)
 
+      --any-dir
+          Allow a directory outside any git repository, or your home directory or / itself (refused by default: everything under it would be indexed)
+
       --strict
           Use the strict abstain thresholds (fewer, more precise answers)
 

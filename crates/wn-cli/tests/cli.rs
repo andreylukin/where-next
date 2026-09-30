@@ -27,6 +27,13 @@ fn write(dir: &Path, path: &str, text: &str) {
     fs::write(p, text).unwrap();
 }
 
+/// An empty git repository (wn refuses directories outside one).
+fn git_dir() -> tempfile::TempDir {
+    let t = tempfile::tempdir().unwrap();
+    git(t.path(), &["init", "-q", "-b", "main"]);
+    t
+}
+
 /// A small project with enough history for the adapter to fit.
 fn project() -> tempfile::TempDir {
     let t = tempfile::tempdir().unwrap();
@@ -250,13 +257,13 @@ fn mcp_serves_tools_over_stdio() {
 #[test]
 fn empty_and_unsupported_repositories_fail_open() {
     let home = tempfile::tempdir().unwrap();
-    let docs = tempfile::tempdir().unwrap();
+    let docs = git_dir();
     write(docs.path(), "notes.md", "# notes\n");
     let (out, code) = wn(docs.path(), home.path(), &["ask", "anything"]);
     assert_eq!(code, 0);
     assert_eq!(out, "where-next: unsupported_scope; use normal search.");
 
-    let empty = tempfile::tempdir().unwrap();
+    let empty = git_dir();
     let (out, _) = wn(empty.path(), home.path(), &["ask", "anything", "--json"]);
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["state"], "empty_index");
@@ -361,7 +368,7 @@ fn an_unusable_model_directory_is_reported_not_silent() {
 #[test]
 fn nothing_to_rank_says_what_to_do_next() {
     let home = tempfile::tempdir().unwrap();
-    let empty = tempfile::tempdir().unwrap();
+    let empty = git_dir();
     let (out, code) = wn(empty.path(), home.path(), &["ask", "anything"]);
     assert_eq!(code, 0);
     assert!(
@@ -374,7 +381,7 @@ fn nothing_to_rank_says_what_to_do_next() {
 #[test]
 fn status_reads_naturally_for_single_files() {
     let home = tempfile::tempdir().unwrap();
-    let t = tempfile::tempdir().unwrap();
+    let t = git_dir();
     write(t.path(), "main.rs", "fn main() {}\n");
     write(t.path(), "Cargo.toml", "[package]\nname = \"x\"\n");
     let (out, _) = wn(t.path(), home.path(), &["status"]);
@@ -386,4 +393,77 @@ fn status_reads_naturally_for_single_files() {
         out.contains("model: lexical fallback (no model installed; run `wn model pull`)"),
         "{out}"
     );
+}
+
+#[test]
+fn a_directory_outside_git_is_refused_quickly_unless_any_dir() {
+    let home = tempfile::tempdir().unwrap();
+    let plain = tempfile::tempdir().unwrap();
+    for i in 0..50 {
+        write(plain.path(), &format!("a/b/f{i}.rs"), "fn f() {}\n");
+    }
+    for args in [
+        &["status"][..],
+        &["init"],
+        &["ask", "where is f"],
+        &["train"],
+    ] {
+        let start = std::time::Instant::now();
+        let (out, code) = wn(plain.path(), home.path(), args);
+        assert_eq!(code, 2, "{args:?}: {out}");
+        assert!(
+            out.contains("not inside a git repository"),
+            "{args:?}: {out}"
+        );
+        assert!(out.contains("--any-dir"), "{out}");
+        assert!(
+            start.elapsed().as_secs() < 5,
+            "{args:?} took {:?}",
+            start.elapsed()
+        );
+    }
+    let (out, code) = wn(plain.path(), home.path(), &["--any-dir", "status"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("50 source files"), "{out}");
+}
+
+#[test]
+fn the_home_directory_is_refused_even_when_it_is_a_git_repository() {
+    let cache = tempfile::tempdir().unwrap();
+    let home = git_dir();
+    write(home.path(), "dotfiles/x.sh", "echo hi\n");
+    let run = |args: &[&str]| {
+        let out = wn_command(home.path(), cache.path())
+            .env("HOME", home.path())
+            .args(args)
+            .output()
+            .unwrap();
+        (
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+            out.status.code().unwrap_or(-1),
+        )
+    };
+    let (err, code) = run(&["ask", "where is the config"]);
+    assert_eq!(code, 2, "{err}");
+    assert!(err.contains("home directory"), "{err}");
+    let (err, code) = run(&["--any-dir", "status"]);
+    assert_eq!(code, 0, "{err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unwritable_cache_directory_fails_init_with_a_plain_message() {
+    use std::os::unix::fs::PermissionsExt;
+    let repo = project();
+    let parent = tempfile::tempdir().unwrap();
+    let cache = parent.path().join("cache");
+    fs::create_dir(&cache).unwrap();
+    fs::set_permissions(&cache, fs::Permissions::from_mode(0o555)).unwrap();
+    let (out, code) = wn(repo.path(), &cache, &["init"]);
+    let (json_out, json_code) = wn(repo.path(), &cache, &["init", "--json"]);
+    fs::set_permissions(&cache, fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(code, 1, "{out}");
+    assert!(out.starts_with("wn: could not index"), "{out}");
+    assert!(out.contains("cache directory"), "{out}");
+    assert_eq!(json_code, 1, "{json_out}");
 }

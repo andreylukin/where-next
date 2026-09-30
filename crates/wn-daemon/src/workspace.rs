@@ -119,6 +119,8 @@ pub struct Workspace {
     index: Index,
     adapter: Option<StoredAdapter>,
     last_scan: Option<Scan>,
+    /// One indexer per repository across processes (shared with the `wn` CLI and daemon).
+    indexer: crate::indexer::Indexer,
     pub options: SuggestOptions,
     /// Minimum source files for task-start hints (see [`Workspace::ask_as`]).
     pub start_min_files: usize,
@@ -134,11 +136,12 @@ impl Workspace {
             load_adapter(&dir.join("adapter")).filter(|a| a.meta.base == encoder.fingerprint());
         Self {
             root: root.to_path_buf(),
-            dir,
+            dir: dir.clone(),
             encoder,
             index,
             adapter,
             last_scan: None,
+            indexer: crate::indexer::Indexer::new(&dir),
             options: SuggestOptions::default(),
             start_min_files: wn_core::rank::START_HINT_MIN_FILES,
         }
@@ -175,8 +178,23 @@ impl Workspace {
             .unwrap_or_default()
     }
 
-    /// Embeds new or changed file versions from `scan` and drops the rest.
+    /// Embeds new or changed file versions from `scan` and drops the rest, as the repository's
+    /// only indexer: if another one (a `wn init`, the daemon) is busy, this waits for it and
+    /// reloads what it stored, so nothing is embedded twice.
     pub fn apply(&mut self, scan: Scan) -> Result<RefreshStats, String> {
+        let waited = self
+            .indexer
+            .begin(|| {})
+            .map_err(|e| format!("cannot write to {}: {e}", self.dir.display()))?;
+        if waited {
+            self.index = Index::open(&self.dir.join("index"), &self.encoder.fingerprint());
+        }
+        let result = self.apply_locked(scan);
+        self.indexer.finish(result.is_ok());
+        result
+    }
+
+    fn apply_locked(&mut self, scan: Scan) -> Result<RefreshStats, String> {
         let root = self.root.clone();
         let read = move |path: &str, _kind: wn_sources::Kind| {
             wn_sources::read_text(&root.join(path), MAX_FILE_BYTES).ok()

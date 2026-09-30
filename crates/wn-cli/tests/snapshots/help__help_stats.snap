@@ -35,6 +35,9 @@ Options:
       --svg <FILE>
           Also write the redacted card as an SVG image (implies --share)
 
+      --any-dir
+          Allow a directory outside any git repository, or your home directory or / itself (refused by default: everything under it would be indexed)
+
       --no-agents
           Do not read agent transcripts (also `WN_STATS_NO_AGENTS=1`)
 

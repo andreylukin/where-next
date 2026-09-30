@@ -21,12 +21,17 @@ Options:
       --no-daemon
           Answer in this process instead of the background daemon (also `WN_NO_DAEMON=1`)
 
+      --any-dir
+          Allow a directory outside any git repository, or your home directory or / itself (refused by default: everything under it would be indexed)
+
   -h, --help
           Print help
 
 Indexes source and config files (untracked included, git-ignored excluded) with the best installed
 model, or the lexical fallback when none is installed, then fits the per-repository adapter from
-recent commits. Safe to re-run; only changed files are re-embedded.
+recent commits. Safe to re-run; only changed files are re-embedded. Large repositories take minutes
+the first time; progress goes to stderr. Directories outside a git repository, your home directory
+and / are refused unless you pass --any-dir.
 
 Examples:
   wn init
