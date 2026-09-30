@@ -845,6 +845,7 @@ pub fn load_state(home: &Path) -> State {
 /// permissions (`mode` for a new file), via a unique temporary file in the same directory.
 fn write_file(path: &Path, text: &str, mode: u32) -> std::io::Result<()> {
     use std::io::Write as _;
+    #[cfg(unix)]
     use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
     let target = match std::fs::symlink_metadata(path) {
         Ok(m) if m.file_type().is_symlink() => std::fs::canonicalize(path)?,
@@ -862,15 +863,23 @@ fn write_file(path: &Path, text: &str, mode: u32) -> std::io::Result<()> {
         .map_or(0, |d| d.as_nanos());
     let tmp = dir.join(format!(".{name}.wn-{}-{nanos}", std::process::id()));
     let result = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(mode)
-            .open(&tmp)?;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        opts.mode(mode);
+        let mut f = opts.open(&tmp)?;
         f.write_all(text.as_bytes())?;
         f.sync_all()?;
-        let perms = keep.unwrap_or_else(|| std::fs::Permissions::from_mode(mode));
-        std::fs::set_permissions(&tmp, perms)?;
+        #[cfg(unix)]
+        let perms = Some(keep.unwrap_or_else(|| std::fs::Permissions::from_mode(mode)));
+        #[cfg(not(unix))]
+        let perms = {
+            let _ = mode;
+            keep
+        };
+        if let Some(perms) = perms {
+            std::fs::set_permissions(&tmp, perms)?;
+        }
         std::fs::rename(&tmp, &target)
     })();
     if result.is_err() {

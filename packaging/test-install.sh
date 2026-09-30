@@ -358,7 +358,7 @@ printf 'keep\n' > "$shared/other-app.db"
 HOME="$guard_home" WHERE_NEXT_HOME="$shared" WN_INSTALL_DIR="$guard_home/bin" sh "$root/install.sh" --uninstall 2>/dev/null \
   || fail "uninstall with a shared cache directory failed"
 [ -f "$shared/other-app.db" ] || fail "uninstall removed a file that is not wn's"
-[ ! -e "$shared/daemon.log" ] && [ ! -e "$shared/where-next-0123456789abcdef" ] || fail "uninstall left wn's files"
+if [ -e "$shared/daemon.log" ] || [ -e "$shared/where-next-0123456789abcdef" ]; then fail "uninstall left wn's files"; fi
 [ -d "$guard_home/src/.git" ] || fail "uninstall removed a non-wn ~/src"
 echo "install.sh: uninstall guard tests passed"
 
