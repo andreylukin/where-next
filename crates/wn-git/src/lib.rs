@@ -157,7 +157,7 @@ pub fn scan(root: &Path) -> (BTreeMap<String, FileEntry>, Coverage) {
         Some(listing) => {
             cov.git = true;
             let dirty: std::collections::HashSet<String> =
-                run_git(root, &["diff", "--name-only", "-z"])
+                run_git(root, &["diff", "--name-only", "--relative", "-z"])
                     .unwrap_or_default()
                     .split('\0')
                     .filter(|s| !s.is_empty())

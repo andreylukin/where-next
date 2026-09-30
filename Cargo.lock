@@ -2701,6 +2701,7 @@ dependencies = [
  "criterion",
  "proptest",
  "proptest-state-machine",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",

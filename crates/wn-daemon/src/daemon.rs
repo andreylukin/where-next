@@ -227,6 +227,51 @@ impl Service for Daemon {
     }
 }
 
+/// A session that can never serve (for example `wn mcp` started outside a git repository): every
+/// call fails open with the reason and how to fix it, and nothing is scanned or indexed.
+pub struct Unavailable {
+    pub reason: String,
+}
+
+impl Unavailable {
+    fn provenance() -> Provenance {
+        Provenance {
+            model: String::new(),
+            index_state: "Uninitialized".into(),
+            files_indexed: 0,
+            configs_indexed: 0,
+            coverage: wn_git::Coverage::default(),
+        }
+    }
+}
+
+impl Service for Unavailable {
+    fn ask(&self, _query: &str, _context: &str) -> Reply {
+        Reply {
+            outcome: Outcome {
+                state: AnswerState::Error,
+                error: Some(self.reason.clone()),
+                ..Outcome::default()
+            },
+            session: format!("{:?}", SessionState::Degraded),
+            provenance: Unavailable::provenance(),
+            ms: 0,
+        }
+    }
+
+    fn refresh(&mut self) -> Result<Refreshed, String> {
+        Err(self.reason.clone())
+    }
+
+    fn status(&self) -> Status {
+        Status {
+            session: format!("{:?}", SessionState::Degraded),
+            last_error: Some(self.reason.clone()),
+            provenance: Unavailable::provenance(),
+        }
+    }
+}
+
 /// Background warm-up and periodic refresh for a shared daemon. Scans run without the lock;
 /// only a changed scan is applied under it.
 pub mod background {

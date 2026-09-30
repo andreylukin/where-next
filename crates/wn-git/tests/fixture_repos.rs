@@ -88,6 +88,23 @@ fn scan_classifies_tracked_modified_untracked_and_deleted_files() {
 }
 
 #[test]
+fn scanning_a_subdirectory_still_sees_modified_files() {
+    let t = repo();
+    let d = t.path();
+    write(d, "project/src/edit.rs", "fn a() {}\n");
+    write(d, "other/x.rs", "fn x() {}\n");
+    commit(d, "initial");
+    write(d, "project/src/edit.rs", "fn a() {}\nfn b() {}\n");
+    let (files, cov) = scan(&d.join("project"));
+    assert_eq!(files.keys().collect::<Vec<_>>(), vec!["src/edit.rs"]);
+    assert!(
+        matches!(files["src/edit.rs"].id, ContentId::Mtime(_)),
+        "modified files use mtime below the repository root too"
+    );
+    assert_eq!(cov.modified, 1);
+}
+
+#[test]
 fn scan_walks_plain_directories() {
     let t = tempfile::tempdir().unwrap();
     write(t.path(), "a/b.py", "x = 1\n");

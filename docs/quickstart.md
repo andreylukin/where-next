@@ -103,6 +103,10 @@ In `--json` answers, each file keeps its raw cosine `similarity`. A file promote
 - **Answers look like keyword matches**: `wn status` probably says `lexical fallback: no model
   installed`; see the note at the top.
 - **Model checksum mismatch**: `wn model remove <name>`, then `wn model pull` it again.
+- **"not inside a git repository" / "refusing to index"**: `wn` indexes git repositories only, and
+  never your home directory or `/` by default (everything under them would be indexed). Run it in
+  the project or pass `--path <repo>`; `--any-dir` overrides. `wn mcp` started outside a repository
+  still runs and answers every call with this error; register it as `wn --path <repo> mcp`.
 - **Daemon trouble**: `wn daemon status`, `wn daemon stop` (it restarts on the next call), or answer
   in-process with `--no-daemon` / `WN_NO_DAEMON=1`. Log: `~/.cache/where-next/daemon.log`.
 - **Don't log queries**: `wn ask --no-log` or `WN_NO_LOG=1` (query text is never stored either way).

@@ -35,6 +35,9 @@ Options:
       --uninstall
           Remove the skill (and hook) instead
 
+      --any-dir
+          Allow a directory outside any git repository, or your home directory or / itself (refused by default: everything under it would be indexed)
+
   -y, --yes
           Apply without asking
 

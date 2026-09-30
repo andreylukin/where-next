@@ -6,6 +6,8 @@
 //!   `wn-git` scanner; scans run without holding locks.
 //! - [`daemon`]: the session machine around a workspace, the object-safe [`daemon::Service`]
 //!   for transports, and the background warm-up / refresh thread.
+//! - [`indexer`]: one indexer per repository (Idle → Waiting → Indexing → Idle / Failed),
+//!   enforced across processes by a lock file in the repository's cache directory.
 //! - [`usage`]: the local usage log that `wn report` summarises (never sent anywhere by itself).
 
 //! - [`resident`]: the per-user background process behind `wn ask` (Starting → Listening →
@@ -15,6 +17,7 @@
 
 pub mod connect;
 pub mod daemon;
+pub mod indexer;
 pub mod resident;
 pub mod session;
 pub mod usage;

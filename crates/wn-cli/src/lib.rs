@@ -6,6 +6,7 @@
 pub mod agents;
 pub mod bench;
 pub mod daemon;
+pub mod progress;
 pub mod report;
 pub mod update;
 
@@ -25,7 +26,8 @@ use wn_core::runtime::{
     fit_from_history, load_adapter, save_adapter, suggest_with_exact, HistoryExample,
     StoredAdapter, SuggestOptions,
 };
-use wn_git::{commits_since, history, repo_root, scan, Coverage};
+use wn_daemon::indexer::Indexer;
+use wn_git::{commits_since, history, scan, Coverage};
 use wn_sources::{read_text, Kind, MAX_CONFIG_BYTES, MAX_SOURCE_BYTES};
 
 #[cfg(feature = "onnx")]
@@ -57,6 +59,10 @@ pub struct Cli {
     /// Answer in this process instead of the background daemon (also `WN_NO_DAEMON=1`).
     #[arg(long, global = true)]
     pub no_daemon: bool,
+    /// Allow a directory outside any git repository, or your home directory or / itself
+    /// (refused by default: everything under it would be indexed).
+    #[arg(long, global = true)]
+    pub any_dir: bool,
     /// What to do.
     #[command(subcommand)]
     pub command: Command,
@@ -77,7 +83,9 @@ Docs: https://github.com/andreylukin/where-next#quick-start";
 const INIT_EXAMPLES: &str = "\
 Indexes source and config files (untracked included, git-ignored excluded) with the best installed
 model, or the lexical fallback when none is installed, then fits the per-repository adapter from
-recent commits. Safe to re-run; only changed files are re-embedded.
+recent commits. Safe to re-run; only changed files are re-embedded. Large repositories take minutes
+the first time; progress goes to stderr. Directories outside a git repository, your home directory
+and / are refused unless you pass --any-dir.
 
 Examples:
   wn init
@@ -414,6 +422,94 @@ fn open_model(_dir: &Path) -> Result<(SharedEncoder, EncoderInfo), String> {
     Err("built without the onnx feature".into())
 }
 
+/// Where `path` sits, for deciding what `wn` may index.
+enum Place {
+    /// Inside an ordinary git repository (its work tree root).
+    Repo(PathBuf),
+    /// Not inside any git repository.
+    NotGit(PathBuf),
+    /// Exactly a git repository at `$HOME` or `/` (named by the `&str`).
+    Broad(PathBuf, &'static str),
+    /// Below a git repository at `$HOME` or `/`: the path itself, and the broad repository.
+    BelowBroad(PathBuf, PathBuf, &'static str),
+}
+
+fn place(path: &Path, home: Option<&Path>) -> Place {
+    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let toplevel = std::process::Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["rev-parse", "--show-toplevel"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty());
+    let here = canon(path);
+    let Some(top) = toplevel.map(|t| canon(Path::new(&t))) else {
+        return Place::NotGit(here);
+    };
+    let broad = if top.parent().is_none() {
+        Some("the filesystem root")
+    } else if home.is_some_and(|h| canon(h) == top) {
+        Some("your home directory")
+    } else {
+        None
+    };
+    match broad {
+        None => Place::Repo(top),
+        Some(what) if here == top => Place::Broad(top, what),
+        Some(what) => Place::BelowBroad(here, top, what),
+    }
+}
+
+/// The directory `wn` indexes for `path`: its git work tree root, except that a git repository at
+/// `$HOME` or `/` (dotfiles) never stands in for a directory below it (that directory is used).
+pub fn project_root(path: &Path) -> PathBuf {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    match place(path, home.as_deref()) {
+        Place::Repo(root) | Place::NotGit(root) | Place::Broad(root, _) => root,
+        Place::BelowBroad(here, _, _) => here,
+    }
+}
+
+/// The repository `wn` would index for `path` (see [`project_root`]). Refuses (with a message
+/// naming git) a directory outside any git repository, and `home` or `/` itself or a directory
+/// whose only repository is one of them, unless `any_dir` (`--any-dir`) is set.
+pub fn check_repo(path: &Path, any_dir: bool, home: Option<&Path>) -> Result<PathBuf, String> {
+    let place = place(path, home);
+    if any_dir {
+        return Ok(match place {
+            Place::Repo(root) | Place::NotGit(root) | Place::Broad(root, _) => root,
+            Place::BelowBroad(here, _, _) => here,
+        });
+    }
+    match place {
+        Place::Repo(root) => Ok(root),
+        Place::NotGit(here) => Err(format!(
+            "wn: {} is not inside a git repository, so there is nothing to index.\n\
+             Run wn inside a git repository (or pass --path <repo>); \
+             --any-dir indexes this directory anyway.",
+            here.display()
+        )),
+        Place::Broad(root, what) => Err(format!(
+            "wn: refusing to index {} ({what}): it is a git repository, but indexing everything \
+             under it would take a long time.\nRun wn inside a project repository; --any-dir \
+             indexes it anyway.",
+            root.display()
+        )),
+        Place::BelowBroad(here, root, what) => Err(format!(
+            "wn: {} is not inside a project repository: the nearest one is {} ({what}), and \
+             indexing all of it would take a long time.\nRun wn inside a project repository; \
+             --any-dir indexes just this directory.",
+            here.display(),
+            root.display()
+        )),
+    }
+}
+
 /// Lists the repository's indexable files with their version ids (git listing and stat calls
 /// only; safe to run without holding any lock).
 pub fn scan_repo(root: &Path) -> (Vec<IndexedFile>, Coverage) {
@@ -447,6 +543,13 @@ pub struct Workspace {
     pub adapter: Option<StoredAdapter>,
     /// Last scan's coverage.
     pub coverage: Coverage,
+    /// This repository's indexer: one per repository across processes (see
+    /// [`wn_daemon::indexer`]).
+    pub indexer: Indexer,
+    /// Where progress of long index builds goes (`None`: nowhere).
+    pub progress: Option<Arc<dyn progress::Sink>>,
+    /// The stored revision (see [`wn_daemon::indexer`]) this copy of the index reflects.
+    revision: String,
 }
 
 impl Workspace {
@@ -458,43 +561,128 @@ impl Workspace {
 
     /// Opens the repository containing `path` with an already loaded encoder.
     pub fn open_with(path: &Path, encoder: SharedEncoder, info: EncoderInfo) -> Workspace {
-        let root = repo_root(path);
-        let dir = repo_dir(&root, &info.fingerprint);
-        let index = Index::open(&dir.join("index"), &info.fingerprint);
-        let adapter = load_adapter(&dir.join("adapter"));
-        let adapter_life = AdapterLifecycle::starting_in(match &adapter {
-            Some(a) if a.meta.base == info.fingerprint => AdapterState::Active,
-            Some(_) => AdapterState::Invalidated,
-            None => AdapterState::None,
-        });
-        Workspace {
+        Workspace::open_in(path, &home(), encoder, info)
+    }
+
+    /// [`Workspace::open_with`] with an explicit cache home.
+    pub fn open_in(
+        path: &Path,
+        cache_home: &Path,
+        encoder: SharedEncoder,
+        info: EncoderInfo,
+    ) -> Workspace {
+        let root = project_root(path);
+        let dir = wn_daemon::workspace::model_cache_dir(cache_home, &root, &info.fingerprint);
+        let mut ws = Workspace {
+            indexer: Indexer::new(&dir),
+            index: Index::open(&dir.join("index"), &info.fingerprint),
             root,
             dir,
             encoder,
             info,
-            index,
-            adapter_life,
-            adapter,
+            adapter_life: AdapterLifecycle::default(),
+            adapter: None,
             coverage: Coverage::default(),
+            progress: None,
+            revision: String::new(),
+        };
+        ws.load_adapter();
+        ws
+    }
+
+    fn load_adapter(&mut self) {
+        self.adapter = load_adapter(&self.dir.join("adapter"));
+        self.adapter_life = AdapterLifecycle::starting_in(match &self.adapter {
+            Some(a) if a.meta.base == self.info.fingerprint => AdapterState::Active,
+            Some(_) => AdapterState::Invalidated,
+            None => AdapterState::None,
+        });
+    }
+
+    /// Runs `work` as this repository's only indexer. `wait: false` returns `Ok(None)` at once
+    /// when another indexer (another process, or another thread's workspace) is busy; otherwise
+    /// this waits for it, then reloads whatever it stored so nothing is embedded twice.
+    fn exclusive<T>(
+        &mut self,
+        wait: bool,
+        work: impl FnOnce(&mut Self, &progress::Tracker) -> Result<(T, bool), String>,
+    ) -> Result<Option<T>, String> {
+        let name = self
+            .root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| self.root.display().to_string());
+        let tracker = progress::Tracker::new(&name);
+        let _ticker = self
+            .progress
+            .clone()
+            .map(|sink| progress::Ticker::start(tracker.clone(), sink));
+        let dir = self.dir.display().to_string();
+        let unusable =
+            |e: std::io::Error| format!("cannot write to the cache directory {dir}: {e}");
+        let waited = if wait {
+            self.indexer
+                .begin(|| tracker.phase(progress::Phase::Waiting))
+                .map_err(unusable)?
+        } else if self.indexer.try_begin().map_err(unusable)? {
+            false
+        } else {
+            self.indexer.give_up();
+            return Ok(None);
+        };
+        if waited || self.indexer.revision() != self.revision {
+            // Another indexer stored a newer index (and maybe an adapter) meanwhile.
+            self.revision = self.indexer.revision();
+            self.index = Index::open(&self.dir.join("index"), &self.info.fingerprint);
+            self.load_adapter();
         }
+        tracker.phase(progress::Phase::Scanning);
+        let result = work(self, &tracker);
+        // A failed build may still have stored a checkpoint.
+        let changed = result.as_ref().map_or(true, |(_, changed)| *changed);
+        if changed && self.indexer.mark_changed().is_ok() {
+            self.revision = self.indexer.revision();
+        }
+        self.indexer.finish(result.is_ok());
+        result.map(|(value, _)| Some(value))
     }
 
-    /// Scans the repository and brings the index up to date.
+    /// Scans the repository and brings the index up to date (waiting for another indexer of
+    /// this repository if one is busy).
     pub fn refresh(&mut self, with_functions: bool) -> Result<RefreshStats, String> {
-        let (list, coverage) = scan_repo(&self.root);
-        self.apply_scan(list, coverage, with_functions)
+        self.exclusive(true, |ws, tracker| {
+            let (list, coverage) = scan_repo(&ws.root);
+            ws.apply_locked(list, coverage, with_functions, tracker)
+                .map(|s| (s, s.encoded > 0 || s.removed > 0))
+        })
+        .map(Option::unwrap_or_default)
     }
 
-    /// Brings the index up to date with a scan taken earlier (possibly without any lock held).
-    pub fn apply_scan(
+    /// Brings the index up to date with a scan taken earlier without any lock. `Ok(None)`: another
+    /// indexer of this repository is busy, so nothing was done (try again later).
+    pub fn try_apply_scan(
         &mut self,
         list: Vec<IndexedFile>,
         coverage: Coverage,
         with_functions: bool,
+    ) -> Result<Option<RefreshStats>, String> {
+        self.exclusive(false, |ws, tracker| {
+            ws.apply_locked(list, coverage, with_functions, tracker)
+                .map(|s| (s, s.encoded > 0 || s.removed > 0))
+        })
+    }
+
+    fn apply_locked(
+        &mut self,
+        list: Vec<IndexedFile>,
+        coverage: Coverage,
+        with_functions: bool,
+        tracker: &progress::Tracker,
     ) -> Result<RefreshStats, String> {
         self.coverage = coverage;
         let root = self.root.clone();
         let read = move |p: &str, kind: Kind| {
+            tracker.read_one();
             let max = if kind == Kind::Source {
                 MAX_SOURCE_BYTES
             } else {
@@ -502,8 +690,12 @@ impl Workspace {
             };
             read_text(&root.join(p), max).ok()
         };
+        let encoder = progress::Counting {
+            inner: self.encoder.as_ref(),
+            tracker,
+        };
         self.index
-            .refresh(&list, &read, self.encoder.as_ref(), with_functions)
+            .refresh(&list, &read, &encoder, with_functions)
             .map_err(|e| e.to_string())
     }
 
@@ -524,8 +716,42 @@ impl Workspace {
         }
     }
 
-    /// Fits the adapter from history, keeping the previous one for `rollback`.
+    /// Fits the adapter from history, keeping the previous one for `rollback` (as this
+    /// repository's only indexer).
     pub fn fit(&mut self) -> Result<String, String> {
+        self.exclusive(true, |ws, tracker| {
+            tracker.phase(progress::Phase::Fitting);
+            ws.fit_locked().map(|msg| (msg, true))
+        })
+        .map(Option::unwrap_or_default)
+    }
+
+    /// `wn rollback`: restores the previous adapter, or removes the only one (as this
+    /// repository's only indexer, so it never races a fit).
+    pub fn rollback(&mut self) -> Result<String, String> {
+        self.exclusive(true, |ws, _| {
+            let dir = ws.dir.join("adapter");
+            let prev = ws.dir.join("adapter.prev");
+            let msg = if prev.exists() {
+                let _ = std::fs::remove_dir_all(&dir);
+                match std::fs::rename(&prev, &dir) {
+                    Ok(()) => "adapter: restored the previous adapter".to_string(),
+                    Err(e) => format!("adapter: rollback failed: {e}"),
+                }
+            } else if dir.exists() {
+                let _ = std::fs::remove_dir_all(&dir);
+                let _ = ws.adapter_life.handle(AdapterEvent::Discard);
+                "adapter: removed (queries use the base model until the next fit)".to_string()
+            } else {
+                return Ok(("adapter: nothing to roll back".to_string(), false));
+            };
+            ws.load_adapter();
+            Ok((msg, true))
+        })
+        .map(Option::unwrap_or_default)
+    }
+
+    fn fit_locked(&mut self) -> Result<String, String> {
         let _ = self.adapter_life.handle(AdapterEvent::Fit);
         let commits: Vec<HistoryExample> = history(&self.root, ADAPTER_COMMITS)
             .into_iter()
@@ -717,6 +943,14 @@ pub fn run(cli: Cli) -> (String, i32) {
             2,
         );
     }
+    // `wn stats` only reads logs; everything else would index the directory. `wn mcp` checks
+    // too, but fails open per call instead of exiting (see `serve_mcp`).
+    if uses_repo && !matches!(cli.command, Command::Stats { .. } | Command::Mcp) {
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        if let Err(msg) = check_repo(&cli.path, cli.any_dir, home.as_deref()) {
+            return (msg, 2);
+        }
+    }
     if let Command::Mcp = cli.command {
         return serve_mcp(&cli);
     }
@@ -835,7 +1069,11 @@ pub fn run(cli: Cli) -> (String, i32) {
             return out;
         }
     }
+    let render: Arc<dyn progress::Sink> = Arc::new(progress::Render::stderr());
+    let loading = progress::Ticker::step("loading the model", render.clone());
     let mut ws = Workspace::open(&cli.path, cli.model.as_deref());
+    drop(loading);
+    ws.progress = Some(render);
     let out = |value: &dyn erased::Json, text: String| if json { value.to_json() } else { text };
     match cli.command {
         Command::Init => status_command(&mut ws, StatusKind::Init, json),
@@ -867,20 +1105,9 @@ pub fn run(cli: Cli) -> (String, i32) {
             ask_command(&mut ws, &args, &context, json)
         }
         Command::Rollback => {
-            let dir = ws.dir.join("adapter");
-            let prev = ws.dir.join("adapter.prev");
-            let msg = if prev.exists() {
-                let _ = std::fs::remove_dir_all(&dir);
-                match std::fs::rename(&prev, &dir) {
-                    Ok(()) => "adapter: restored the previous adapter".to_string(),
-                    Err(e) => format!("adapter: rollback failed: {e}"),
-                }
-            } else if dir.exists() {
-                let _ = std::fs::remove_dir_all(&dir);
-                let _ = ws.adapter_life.handle(AdapterEvent::Discard);
-                "adapter: removed (queries use the base model until the next fit)".to_string()
-            } else {
-                "adapter: nothing to roll back".to_string()
+            let msg = match ws.rollback() {
+                Ok(msg) => msg,
+                Err(e) => return (format!("wn rollback: {e}"), 1),
             };
             let value = serde_json::json!({ "message": msg });
             (out(&value, msg.clone()), 0)
@@ -1090,7 +1317,7 @@ pub fn status_command(ws: &mut Workspace, kind: StatusKind, json: bool) -> (Stri
     let mut note = None;
     let started = std::time::Instant::now();
     if let Err(e) = ws.refresh(false) {
-        note = Some(format!("index failed: {e}"));
+        return (format!("wn: could not index {}: {e}", ws.root.display()), 1);
     }
     let index_ms = started.elapsed().as_millis();
     let should_fit = match kind {
@@ -1298,14 +1525,33 @@ fn serve_mcp(_cli: &Cli) -> (String, i32) {
 /// Diagnostics go to stderr; stdout carries MCP. Returns an empty text so nothing else prints.
 #[cfg(feature = "onnx")]
 fn serve_mcp(cli: &Cli) -> (String, i32) {
-    let root = repo_root(&cli.path);
-    // `open_repo` falls back to the lexical encoder when this path has no verified model.
-    let model =
-        resolve_model(cli.model.as_deref()).unwrap_or_else(|| models_home().join("none-installed"));
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(r) => r,
         Err(e) => return (format!("wn mcp: cannot start runtime: {e}"), 1),
     };
+    // Clients often start MCP servers in `~` or another non-repository: serve anyway and fail
+    // open on every call with the reason, rather than exiting or indexing that directory.
+    let home_dir = std::env::var_os("HOME").map(PathBuf::from);
+    if let Err(reason) = check_repo(&cli.path, cli.any_dir, home_dir.as_deref()) {
+        let reason = format!(
+            "{} For MCP: start the server in the project directory, or register it as \
+             `wn --path <repo> mcp`.",
+            reason.trim_start_matches("wn: ").replace('\n', " ")
+        );
+        eprintln!("where-next: {reason}");
+        let service: Arc<std::sync::Mutex<dyn wn_daemon::daemon::Service>> =
+            Arc::new(std::sync::Mutex::new(wn_daemon::daemon::Unavailable {
+                reason,
+            }));
+        return match runtime.block_on(wn_mcp::serve_stdio(service)) {
+            Ok(()) => (String::new(), 0),
+            Err(e) => (format!("wn mcp: {e}"), 1),
+        };
+    }
+    let root = project_root(&cli.path);
+    // `open_repo` falls back to the lexical encoder when this path has no verified model.
+    let model =
+        resolve_model(cli.model.as_deref()).unwrap_or_else(|| models_home().join("none-installed"));
     let (service, refresher, choice) =
         wn_mcp::open_repo(&root, &model, &home(), std::time::Duration::from_secs(10));
     if let wn_mcp::EncoderChoice::LexicalFallback(reason) = &choice {

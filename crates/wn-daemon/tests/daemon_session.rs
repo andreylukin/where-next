@@ -161,3 +161,30 @@ fn an_empty_query_is_an_error_like_the_cli() {
     );
     assert!(reply.outcome.hints.files.is_empty());
 }
+
+/// An MCP workspace opened before another indexer stored a newer index must not keep (and later
+/// overwrite with) its stale copy, even when it did not have to wait for the lock.
+#[test]
+fn a_workspace_reloads_an_index_another_indexer_stored_meanwhile() {
+    use wn_daemon::workspace::scan;
+
+    let repo = tempfile::tempdir().unwrap();
+    for i in 0..12 {
+        std::fs::write(
+            repo.path().join(format!("f{i}.rs")),
+            format!("fn f{i}() {{}}\n"),
+        )
+        .unwrap();
+    }
+    let cache = tempfile::tempdir().unwrap();
+    let enc = || Arc::new(HashEncoder::default()) as SharedEncoder;
+    let mut stale = Workspace::open(repo.path(), cache.path(), enc());
+    let mut other = Workspace::open(repo.path(), cache.path(), enc());
+    assert_eq!(other.apply(scan(repo.path())).unwrap().encoded, 12);
+    let stats = stale.apply(scan(repo.path())).unwrap();
+    assert_eq!(
+        stats.encoded, 0,
+        "re-embedded what the other indexer stored"
+    );
+    assert_eq!(stale.provenance().files_indexed, 12);
+}

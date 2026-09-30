@@ -90,6 +90,9 @@ pub struct Stats {
     pub requests: u64,
     pub models: Vec<String>,
     pub repos: usize,
+    /// Repositories a request is working on right now (for example a first index build).
+    #[serde(default)]
+    pub busy: Vec<String>,
 }
 
 /// One response line.
@@ -111,6 +114,9 @@ pub struct Response {
     pub proto: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stats: Option<Stats>,
+    /// An interim progress line (stderr) sent before the final response of a long request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<String>,
 }
 
 /// Identifies this build: version plus the executable's size and modification time, so a
@@ -185,7 +191,7 @@ pub enum OpKind {
 
 /// Builds the request for a command (context already read by the caller).
 pub fn request(cli: &Cli, kind: OpKind, context: &str) -> Option<Request> {
-    let root = wn_git::repo_root(&cli.path);
+    let root = crate::project_root(&cli.path);
     let root = root.canonicalize().unwrap_or(root);
     let model = crate::resolve_model(cli.model.as_deref())
         .map(|m| m.canonicalize().unwrap_or(m).to_string_lossy().into_owned());
@@ -246,7 +252,7 @@ pub struct DaemonReport {
 fn render_report(r: &DaemonReport) -> String {
     match (&r.stats, &r.message) {
         (Some(s), _) => format!(
-            "daemon: running (pid {}, up {}s, idle {}s of {}s, {} requests, {} repos, models: {})\nsocket: {}",
+            "daemon: running (pid {}, up {}s, idle {}s of {}s, {} requests, {} repos, models: {}){}\nsocket: {}",
             s.pid,
             s.uptime_secs,
             s.idle_secs,
@@ -257,6 +263,11 @@ fn render_report(r: &DaemonReport) -> String {
                 "none loaded".to_string()
             } else {
                 s.models.join(", ")
+            },
+            if s.busy.is_empty() {
+                String::new()
+            } else {
+                format!("\nbusy with: {}", s.busy.join(", "))
             },
             r.socket
         ),
@@ -288,14 +299,19 @@ pub fn run_action(action: &DaemonAction, cli: &Cli) -> (String, i32) {
             }
         }
         DaemonAction::Status => {
-            let stats = client::stats(&home);
-            let running = stats.is_some();
+            let (running, stats) = match client::probe(&home) {
+                client::Probe::Stats(s) => (true, Some(*s)),
+                client::Probe::Silent => (true, None),
+                client::Probe::Absent => (false, None),
+            };
+            let message = (running && stats.is_none())
+                .then(|| "running, but busy (it did not answer in time)".to_string());
             report(
                 DaemonReport {
                     running,
                     socket: socket.display().to_string(),
                     stats,
-                    message: None,
+                    message,
                 },
                 0,
             )
@@ -340,26 +356,56 @@ pub fn run_action(action: &DaemonAction, cli: &Cli) -> (String, i32) {
 }
 
 /// Serves one request against the daemon's warm state. Shared with tests.
+///
+/// Locking: the map of workspaces is locked only to look a repository up; each repository has
+/// its own lock, held while a request for it runs (including a first index build). A request for
+/// one repository therefore never waits for another repository's indexing, and statistics never
+/// wait for any repository.
 pub mod handler {
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex, TryLockError};
     use std::time::{Duration, Instant, SystemTime};
 
     use wn_core::index::IndexedFile;
     use wn_git::Coverage;
 
     use super::{Op, Request, Response, PROTOCOL};
+    use crate::progress::Sink;
     use crate::{
         ask_command_with, encoder_for, status_command, EncoderInfo, SharedEncoder, StatusKind,
         Workspace,
     };
 
+    /// Loads the encoder for a resolved model directory (replaceable in tests).
+    pub type Loader = dyn Fn(Option<&Path>) -> (SharedEncoder, EncoderInfo) + Send + Sync;
+
+    type Key = (PathBuf, String);
+
+    /// A model directory and its manifest's modification time.
+    type ModelKey = (Option<PathBuf>, Option<SystemTime>);
+
+    /// One repository (for one model): its workspace, opened on first use under its own lock.
+    struct Slot {
+        root: PathBuf,
+        encoder: SharedEncoder,
+        info: EncoderInfo,
+        ws: Mutex<Option<Workspace>>,
+        /// When the background rescanner may start refreshing it (after the first request).
+        scanned: Mutex<Option<Instant>>,
+    }
+
     /// Loaded encoders and open workspaces.
-    #[derive(Default)]
     pub struct Warm {
-        encoders: HashMap<(Option<PathBuf>, Option<SystemTime>), (SharedEncoder, EncoderInfo)>,
-        workspaces: HashMap<(PathBuf, String), Workspace>,
-        scanned: HashMap<(PathBuf, String), Instant>,
+        load: Box<Loader>,
+        encoders: Mutex<HashMap<ModelKey, (SharedEncoder, EncoderInfo)>>,
+        slots: Mutex<HashMap<Key, Arc<Slot>>>,
+    }
+
+    impl Default for Warm {
+        fn default() -> Self {
+            Warm::with_loader(Box::new(encoder_for))
+        }
     }
 
     /// Minimum pause between background rescans of warm workspaces (`WN_DAEMON_RESCAN_MS`,
@@ -379,10 +425,20 @@ pub mod handler {
     }
 
     impl Warm {
+        pub fn with_loader(load: Box<Loader>) -> Self {
+            Warm {
+                load,
+                encoders: Mutex::default(),
+                slots: Mutex::default(),
+            }
+        }
+
         /// Model names loaded (or `lexical` for the fallback).
         pub fn models(&self) -> Vec<String> {
-            let mut names: Vec<String> = self
-                .encoders
+            let Ok(encoders) = self.encoders.lock() else {
+                return Vec::new();
+            };
+            let mut names: Vec<String> = encoders
                 .values()
                 .map(|(_, info)| info.model.clone().unwrap_or_else(|| "lexical".into()))
                 .collect();
@@ -392,68 +448,147 @@ pub mod handler {
         }
 
         pub fn repos(&self) -> usize {
-            self.workspaces.len()
+            self.slots.lock().map(|s| s.len()).unwrap_or(0)
         }
 
-        fn encoder(&mut self, model: Option<&Path>) -> (SharedEncoder, EncoderInfo) {
+        /// Names of repositories a request is working on right now (indexing or answering).
+        pub fn busy(&self) -> Vec<String> {
+            let slots: Vec<Arc<Slot>> = match self.slots.lock() {
+                Ok(s) => s.values().cloned().collect(),
+                Err(_) => return Vec::new(),
+            };
+            let mut names: Vec<String> = slots
+                .iter()
+                .filter(|slot| matches!(slot.ws.try_lock(), Err(TryLockError::WouldBlock)))
+                .map(|slot| {
+                    slot.root
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| slot.root.display().to_string())
+                })
+                .collect();
+            names.sort();
+            names
+        }
+
+        fn encoder(&self, model: Option<&Path>) -> (SharedEncoder, EncoderInfo) {
             // Key on the manifest's modification time too, so a replaced model reloads.
             let stamp = model
                 .and_then(|m| std::fs::metadata(m.join("wn-model.json")).ok())
                 .and_then(|m| m.modified().ok());
             let key = (model.map(Path::to_path_buf), stamp);
-            self.encoders
+            // Held while a model loads (once per model, a few seconds at most).
+            let mut encoders = self.encoders.lock().unwrap_or_else(|e| e.into_inner());
+            encoders
                 .entry(key)
-                .or_insert_with(|| encoder_for(model))
+                .or_insert_with(|| (self.load)(model))
                 .clone()
         }
 
-        fn workspace(&mut self, repo: &Path, model: Option<&Path>) -> &mut Workspace {
+        fn slot(&self, repo: &Path, model: Option<&Path>) -> Arc<Slot> {
             let (encoder, info) = self.encoder(model);
             let key = (repo.to_path_buf(), info.fingerprint.clone());
-            self.workspaces
+            let mut slots = self.slots.lock().unwrap_or_else(|e| e.into_inner());
+            slots
                 .entry(key)
-                .or_insert_with(|| Workspace::open_with(repo, encoder, info))
+                .or_insert_with(|| {
+                    Arc::new(Slot {
+                        root: repo.to_path_buf(),
+                        encoder,
+                        info,
+                        ws: Mutex::new(None),
+                        scanned: Mutex::new(None),
+                    })
+                })
+                .clone()
         }
 
         /// Workspaces the background rescanner should refresh: key and repository root.
-        pub fn targets(&self) -> Vec<((PathBuf, String), PathBuf)> {
-            self.workspaces
+        pub fn targets(&self) -> Vec<(Key, PathBuf)> {
+            let Ok(slots) = self.slots.lock() else {
+                return Vec::new();
+            };
+            slots
                 .iter()
-                .filter(|(k, _)| self.scanned.contains_key(*k))
-                .map(|(k, ws)| (k.clone(), ws.root.clone()))
+                .filter(|(_, slot)| slot.scanned.lock().is_ok_and(|s| s.is_some()))
+                .map(|(k, slot)| (k.clone(), slot.root.clone()))
                 .collect()
         }
 
-        /// Applies a scan taken without the lock (only changed files are embedded).
-        pub fn apply(&mut self, key: &(PathBuf, String), scan: (Vec<IndexedFile>, Coverage)) {
-            if let Some(ws) = self.workspaces.get_mut(key) {
-                let _ = ws.apply_scan(scan.0, scan.1, false);
-                self.scanned.insert(key.clone(), Instant::now());
+        /// Applies a scan taken without any lock (only changed files are embedded). Skipped when
+        /// a request is using the repository or another process is indexing it.
+        pub fn apply(&self, key: &Key, scan: (Vec<IndexedFile>, Coverage)) {
+            let slot = match self.slots.lock() {
+                Ok(s) => s.get(key).cloned(),
+                Err(_) => return,
+            };
+            let Some(slot) = slot else { return };
+            let Ok(mut guard) = slot.ws.try_lock() else {
+                return;
+            };
+            if let Some(ws) = guard.as_mut() {
+                if let Ok(Some(_)) = ws.try_apply_scan(scan.0, scan.1, false) {
+                    if let Ok(mut s) = slot.scanned.lock() {
+                        *s = Some(Instant::now());
+                    }
+                }
             }
         }
 
-        /// Answers `ask` and `status`; other ops are handled by the server loop.
-        pub fn serve(&mut self, req: &Request) -> Response {
+        /// Answers `ask` and `status`; other ops are handled by the server loop. Progress of a
+        /// long index build (or of waiting for one) goes to `progress`.
+        pub fn serve(&self, req: &Request, progress: Option<Arc<dyn Sink>>) -> Response {
             let Some(repo) = req.repo.as_deref() else {
                 return failure("bad_request: no repository");
             };
             let model = req.model.as_deref().map(Path::new);
-            let fingerprint = self.encoder(model).1.fingerprint;
-            let key = (PathBuf::from(repo), fingerprint);
+            let loading = progress
+                .clone()
+                .map(|sink| crate::progress::Ticker::step("loading the model", sink));
+            let slot = self.slot(Path::new(repo), model);
+            drop(loading);
+            let mut guard = match slot.ws.try_lock() {
+                Ok(g) => g,
+                Err(TryLockError::WouldBlock) => {
+                    if let Some(p) = &progress {
+                        let name = slot
+                            .root
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        p.update(&format!(
+                            "wn: {name}: waiting for the daemon to finish indexing it"
+                        ));
+                    }
+                    slot.ws.lock().unwrap_or_else(|e| e.into_inner())
+                }
+                Err(TryLockError::Poisoned(e)) => e.into_inner(),
+            };
+            let ws = guard.get_or_insert_with(|| {
+                Workspace::open_with(&slot.root, slot.encoder.clone(), slot.info.clone())
+            });
             // The first request for a repository scans synchronously; after that the background
             // rescanner keeps the index current and requests answer from it directly.
-            let first = !self.scanned.contains_key(&key);
-            if first {
-                self.scanned.insert(key, Instant::now());
-            }
-            let ws = self.workspace(Path::new(repo), model);
+            let first = {
+                let mut scanned = slot.scanned.lock().unwrap_or_else(|e| e.into_inner());
+                let first = scanned.is_none();
+                if first {
+                    *scanned = Some(Instant::now());
+                }
+                first
+            };
+            ws.progress = progress;
             let (text, code) = match &req.op {
                 Op::Ask { args, context } => {
                     ask_command_with(ws, args, context, req.json, first || args.functions)
                 }
                 Op::Status => status_command(ws, StatusKind::Status, req.json),
-                _ => return failure("bad_request: not a repository operation"),
+                _ => {
+                    ws.progress = None;
+                    return failure("bad_request: not a repository operation");
+                }
             };
+            ws.progress = None;
             Response {
                 ok: true,
                 text,
@@ -487,13 +622,20 @@ pub mod server {
 
     use super::handler::{failure, Warm};
     use super::{binary_id, socket_path, Op, Request, Response, Stats, PROTOCOL};
+    use crate::progress::Sink;
 
+    /// Process-wide bookkeeping. Locked only briefly, never while a request is served.
     struct Shared {
         life: ResidentLifecycle,
-        warm: Warm,
         requests: u64,
         in_flight: usize,
         last: Instant,
+    }
+
+    /// Everything the connection threads share.
+    struct Daemon {
+        shared: Mutex<Shared>,
+        warm: Warm,
     }
 
     /// Runs the daemon until idle timeout or a stop request.
@@ -524,21 +666,25 @@ pub mod server {
             std::process::id(),
             idle.as_secs()
         );
-        let shared = Arc::new(Mutex::new(Shared {
-            life,
+        let daemon = Arc::new(Daemon {
+            shared: Mutex::new(Shared {
+                life,
+                requests: 0,
+                in_flight: 0,
+                last: Instant::now(),
+            }),
             warm: Warm::default(),
-            requests: 0,
-            in_flight: 0,
-            last: Instant::now(),
-        }));
+        });
 
         // Idle watchdog: drains and exits once nothing arrived for `idle`.
         {
-            let shared = shared.clone();
+            let daemon = daemon.clone();
             let socket = socket.clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_millis(250));
-                let Ok(mut s) = shared.lock() else { return };
+                let Ok(mut s) = daemon.shared.lock() else {
+                    return;
+                };
                 if s.life.state().accepts() && s.in_flight == 0 && s.last.elapsed() >= idle {
                     let _ = s.life.handle(ResidentEvent::IdleTimeout);
                     finish(&mut s, &socket, "idle timeout");
@@ -547,22 +693,18 @@ pub mod server {
         }
 
         // Background rescanner: keeps warm indexes current without scanning on the request path.
-        // The scan (git listing, stat calls) runs without the lock; only changes are applied.
+        // The scan (git listing, stat calls) runs without any lock; only changes are applied, and
+        // a repository busy with a request or another indexer is skipped this round.
         {
-            let shared = shared.clone();
+            let daemon = daemon.clone();
             std::thread::spawn(move || {
                 let mut pause = super::handler::rescan_every();
                 loop {
                     std::thread::sleep(pause);
-                    let targets = match shared.lock() {
-                        Ok(s) => s.warm.targets(),
-                        Err(_) => return,
-                    };
                     let started = Instant::now();
-                    for (key, root) in targets {
+                    for (key, root) in daemon.warm.targets() {
                         let scan = crate::scan_repo(&root);
-                        let Ok(mut s) = shared.lock() else { return };
-                        s.warm.apply(&key, scan);
+                        daemon.warm.apply(&key, scan);
                     }
                     pause = super::handler::next_pause(started.elapsed());
                 }
@@ -571,10 +713,10 @@ pub mod server {
 
         for stream in listener.incoming() {
             let Ok(stream) = stream else { continue };
-            let shared = shared.clone();
+            let daemon = daemon.clone();
             let socket = socket.clone();
             let binary = binary.clone();
-            std::thread::spawn(move || handle(stream, &shared, &socket, &binary, idle, started));
+            std::thread::spawn(move || handle(stream, &daemon, &socket, &binary, idle, started));
         }
         Ok(())
     }
@@ -586,9 +728,34 @@ pub mod server {
         std::process::exit(0);
     }
 
+    fn write_line(stream: &mut UnixStream, reply: &Response) -> bool {
+        let mut text = serde_json::to_string(reply).unwrap_or_default();
+        text.push('\n');
+        stream.write_all(text.as_bytes()).is_ok() && stream.flush().is_ok()
+    }
+
+    /// Forwards progress lines to the client as interim responses.
+    struct ToClient(Mutex<UnixStream>);
+
+    impl Sink for ToClient {
+        fn update(&self, line: &str) {
+            if let Ok(mut s) = self.0.lock() {
+                let _ = write_line(
+                    &mut s,
+                    &Response {
+                        ok: true,
+                        progress: Some(line.to_string()),
+                        proto: PROTOCOL,
+                        ..Response::default()
+                    },
+                );
+            }
+        }
+    }
+
     fn handle(
         stream: UnixStream,
-        shared: &Arc<Mutex<Shared>>,
+        daemon: &Arc<Daemon>,
         socket: &Path,
         binary: &str,
         idle: Duration,
@@ -601,18 +768,19 @@ pub mod server {
             if line.trim().is_empty() {
                 continue;
             }
+            let progress = writer
+                .try_clone()
+                .ok()
+                .map(|s| Arc::new(ToClient(Mutex::new(s))) as Arc<dyn Sink>);
             let reply = match serde_json::from_str::<Request>(&line) {
                 Err(e) => failure(&format!("bad_request: {e}")),
-                Ok(req) => respond(req, shared, binary, idle, started),
+                Ok(req) => respond(req, daemon, binary, idle, started, progress),
             };
-            let mut text = serde_json::to_string(&reply).unwrap_or_default();
-            text.push('\n');
-            if writer.write_all(text.as_bytes()).is_err() {
+            if !write_line(&mut writer, &reply) {
                 return;
             }
-            let _ = writer.flush();
             if reply.error.as_deref() == Some("stopping") {
-                if let Ok(mut s) = shared.lock() {
+                if let Ok(mut s) = daemon.shared.lock() {
                     finish(&mut s, socket, "stop requested");
                 }
             }
@@ -621,10 +789,11 @@ pub mod server {
 
     fn respond(
         req: Request,
-        shared: &Arc<Mutex<Shared>>,
+        daemon: &Daemon,
         binary: &str,
         idle: Duration,
         started: Instant,
+        progress: Option<Arc<dyn Sink>>,
     ) -> Response {
         let base = Response {
             binary: binary.to_string(),
@@ -638,7 +807,7 @@ pub mod server {
                 ..base
             },
             Op::Stop => {
-                let Ok(mut s) = shared.lock() else {
+                let Ok(mut s) = daemon.shared.lock() else {
                     return failure("poisoned");
                 };
                 let _ = s.life.handle(ResidentEvent::Shutdown);
@@ -649,8 +818,9 @@ pub mod server {
                 }
             }
             Op::Stats => {
-                let Ok(s) = shared.lock() else {
-                    return failure("poisoned");
+                let (requests, idle_secs) = match daemon.shared.lock() {
+                    Ok(s) => (s.requests, s.last.elapsed().as_secs()),
+                    Err(_) => return failure("poisoned"),
                 };
                 Response {
                     ok: true,
@@ -658,11 +828,12 @@ pub mod server {
                         pid: std::process::id(),
                         binary: binary.to_string(),
                         uptime_secs: started.elapsed().as_secs(),
-                        idle_secs: s.last.elapsed().as_secs(),
+                        idle_secs,
                         idle_timeout_secs: idle.as_secs(),
-                        requests: s.requests,
-                        models: s.warm.models(),
-                        repos: s.warm.repos(),
+                        requests,
+                        models: daemon.warm.models(),
+                        repos: daemon.warm.repos(),
+                        busy: daemon.warm.busy(),
                     }),
                     ..base
                 }
@@ -674,20 +845,25 @@ pub mod server {
                         ..base
                     };
                 }
-                let Ok(mut s) = shared.lock() else {
-                    return failure("poisoned");
-                };
-                if s.life.handle(ResidentEvent::Request).is_err() {
-                    return Response {
-                        error: Some("draining".into()),
-                        ..base
+                {
+                    let Ok(mut s) = daemon.shared.lock() else {
+                        return failure("poisoned");
                     };
+                    if s.life.handle(ResidentEvent::Request).is_err() {
+                        return Response {
+                            error: Some("draining".into()),
+                            ..base
+                        };
+                    }
+                    s.in_flight += 1;
+                    s.requests += 1;
                 }
-                s.in_flight += 1;
-                s.requests += 1;
-                let mut reply = s.warm.serve(&req);
-                s.in_flight -= 1;
-                s.last = Instant::now();
+                // Served without the process-wide lock: only this repository's lock is held.
+                let mut reply = daemon.warm.serve(&req, progress);
+                if let Ok(mut s) = daemon.shared.lock() {
+                    s.in_flight -= 1;
+                    s.last = Instant::now();
+                }
                 reply.binary = binary.to_string();
                 reply
             }
@@ -718,6 +894,7 @@ pub mod client {
     use super::{
         binary_id, disabled, request, socket_path, Op, OpKind, Request, Response, Stats, PROTOCOL,
     };
+    use crate::progress::Sink as _;
     use crate::Cli;
 
     const CONNECT_WAIT: Duration = Duration::from_secs(5);
@@ -732,15 +909,33 @@ pub mod client {
         req: &Request,
         timeout: Option<Duration>,
     ) -> Option<Response> {
+        exchange_with(stream, req, timeout, &mut |_| {})
+    }
+
+    /// Sends one request and reads its response, passing interim progress lines to `progress`.
+    fn exchange_with(
+        stream: &mut UnixStream,
+        req: &Request,
+        timeout: Option<Duration>,
+        progress: &mut dyn FnMut(&str),
+    ) -> Option<Response> {
         stream.set_read_timeout(timeout).ok()?;
         let mut line = serde_json::to_string(req).ok()?;
         line.push('\n');
         stream.write_all(line.as_bytes()).ok()?;
         stream.flush().ok()?;
         let mut reader = BufReader::new(stream.try_clone().ok()?);
-        let mut reply = String::new();
-        reader.read_line(&mut reply).ok()?;
-        serde_json::from_str(&reply).ok()
+        loop {
+            let mut reply = String::new();
+            if reader.read_line(&mut reply).ok()? == 0 {
+                return None;
+            }
+            let reply: Response = serde_json::from_str(&reply).ok()?;
+            match &reply.progress {
+                Some(p) => progress(p),
+                None => return Some(reply),
+            }
+        }
     }
 
     fn control(op: Op) -> Request {
@@ -870,17 +1065,43 @@ pub mod client {
         let home = crate::home();
         let req = request(cli, kind, context)?;
         let mut stream = establish(&home)?;
-        // No read timeout: a first query may build a large index.
-        match exchange(&mut stream, &req, None) {
+        // No read timeout: a first query may build a large index (its progress goes to stderr).
+        let render = crate::progress::Render::stderr();
+        let reply = exchange_with(&mut stream, &req, None, &mut |line| render.update(line));
+        render.done();
+        match reply {
             Some(r) if r.ok => Some((r.text, r.code)),
             _ => None,
         }
     }
 
-    /// Daemon statistics, if one is running (never starts one).
+    /// What `wn daemon status` finds.
+    pub enum Probe {
+        /// A daemon answered with its statistics.
+        Stats(Box<Stats>),
+        /// A daemon accepted the connection but did not answer in time.
+        Silent,
+        /// Nothing listens.
+        Absent,
+    }
+
+    /// Asks a running daemon for statistics (never starts one).
+    pub fn probe(home: &Path) -> Probe {
+        let Ok(mut s) = connect(&socket_path(home)) else {
+            return Probe::Absent;
+        };
+        match exchange(&mut s, &control(Op::Stats), Some(HANDSHAKE_WAIT)).and_then(|r| r.stats) {
+            Some(stats) => Probe::Stats(Box::new(stats)),
+            None => Probe::Silent,
+        }
+    }
+
+    /// Daemon statistics, if one is running and answers (never starts one).
     pub fn stats(home: &Path) -> Option<Stats> {
-        let mut s = connect(&socket_path(home)).ok()?;
-        exchange(&mut s, &control(Op::Stats), Some(HANDSHAKE_WAIT))?.stats
+        match probe(home) {
+            Probe::Stats(s) => Some(*s),
+            _ => None,
+        }
     }
 
     /// Stops a running daemon. Returns whether one was running.
@@ -913,6 +1134,17 @@ pub mod client {
 
     pub fn stats(_home: &Path) -> Option<Stats> {
         None
+    }
+
+    /// What `wn daemon status` finds.
+    pub enum Probe {
+        Stats(Box<Stats>),
+        Silent,
+        Absent,
+    }
+
+    pub fn probe(_home: &Path) -> Probe {
+        Probe::Absent
     }
 
     pub fn stop(_home: &Path) -> bool {

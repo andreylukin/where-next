@@ -134,6 +134,7 @@ binaries, Homebrew and crates.io are set up but not published yet. Details:
 | You don't want queries logged locally | `wn ask --no-log`, or set `WN_NO_LOG=1` (the log feeds `wn stats` and `wn report`; query text is never stored). |
 | Update, reinstall or remove | `wn update` (or re-run the installer); uninstall with `curl -fsSL …/install.sh \| sh -s -- --uninstall`. |
 | Model checksum mismatch | `wn model remove <name>`, then `wn model pull` it again. |
+| "not inside a git repository" or "refusing to index" your home directory | `wn` only indexes git repositories, and never `~` or `/` by default: run it in the project (or `--path <repo>`); `--any-dir` indexes the directory anyway. |
 
 More in [docs/quickstart.md](docs/quickstart.md#if-something-is-wrong) and the [FAQ](docs/faq.md).
 
