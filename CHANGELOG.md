@@ -13,7 +13,7 @@ The first release. The launch changes (#32–#39) come first, then everything el
 
 ### Launch changes
 
-- **Readable `ask` text** (#PR): no header line; one hint per line, path first with the score
+- **Readable `ask` text** (#43): no header line; one hint per line, path first with the score
   aligned at the end; abstain and fail-open states are single lines. Colors on a terminal only
   (`NO_COLOR` and `CLICOLOR_FORCE` honored); new global `--color auto|always|never`. `--json` is
   unchanged.
