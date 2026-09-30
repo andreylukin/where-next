@@ -568,7 +568,9 @@ fn requested_release_tag() -> Result<String, String> {
 }
 
 fn reinstall_release(dir: &Path, tag: &str) -> Result<(), String> {
-    let downloaded = std::env::temp_dir().join(format!("wn-install-{}.sh", std::process::id()));
+    let temp =
+        tempfile::tempdir().map_err(|e| format!("could not create installer directory: {e}"))?;
+    let downloaded = temp.path().join("install.sh");
     let script = if let Some(path) = std::env::var_os("WN_INSTALL_SCRIPT") {
         PathBuf::from(path)
     } else {
@@ -582,7 +584,7 @@ fn reinstall_release(dir: &Path, tag: &str) -> Result<(), String> {
         if !status.success() {
             return Err(format!("could not download release installer: {status}"));
         }
-        downloaded.clone()
+        downloaded
     };
     let status = Command::new("sh")
         .arg(&script)
@@ -592,7 +594,6 @@ fn reinstall_release(dir: &Path, tag: &str) -> Result<(), String> {
         .env("WN_INSTALL_DIR", dir)
         .status()
         .map_err(|e| format!("could not run release installer: {e}"));
-    let _ = std::fs::remove_file(&downloaded);
     let status = status?;
     if status.success() {
         Ok(())

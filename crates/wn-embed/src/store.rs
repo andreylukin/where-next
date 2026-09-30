@@ -159,7 +159,7 @@ impl ModelStore {
     /// directory. Checksums are verified afterwards by the lifecycle (`Verifying`).
     #[cfg(feature = "remote")]
     fn fetch_remote(&self, source: &ModelSource) -> Result<(), StoreError> {
-        let staging = staging_dir(&self.dir);
+        let staging = staging_dir(&self.dir, source);
         fs::create_dir_all(&staging).map_err(|e| StoreError::Fetch(e.to_string()))?;
         let result = (|| {
             crate::remote::download(source, MANIFEST_FILE, &staging.join(MANIFEST_FILE))?;
@@ -179,6 +179,9 @@ impl ModelStore {
             }
             fs::rename(&staging, &self.dir).map_err(|e| StoreError::Fetch(e.to_string()))
         })();
+        if result.is_err() {
+            let _ = fs::remove_dir_all(&staging);
+        }
         result
     }
 
@@ -202,15 +205,27 @@ fn check_names(manifest: &Manifest) -> Result<(), StoreError> {
 }
 
 #[cfg(feature = "remote")]
-fn staging_dir(dir: &Path) -> PathBuf {
+fn staging_dir(dir: &Path, source: &ModelSource) -> PathBuf {
+    use sha2::{Digest, Sha256};
     let mut name = dir.file_name().unwrap_or_default().to_os_string();
-    name.push(".download");
+    let revision = Sha256::digest(source.describe().as_bytes());
+    name.push(format!(".download.{revision:x}"));
     dir.with_file_name(name)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "remote")]
+    #[test]
+    fn staging_is_keyed_by_revision() {
+        let dir = Path::new("/tmp/model");
+        let first = ModelSource::parse("hf:owner/model@revision-one").unwrap();
+        let second = ModelSource::parse("hf:owner/model@revision-two").unwrap();
+        assert_eq!(staging_dir(dir, &first), staging_dir(dir, &first));
+        assert_ne!(staging_dir(dir, &first), staging_dir(dir, &second));
+    }
 
     fn model_dir(files: &[(&str, &str)]) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();

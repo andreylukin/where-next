@@ -22,6 +22,20 @@ fetch() { # url dest
   fi
 }
 
+fetch_archive() { # url dest; 2 means archive absent
+  case "$1" in file://*) [ -f "${1#file://}" ] || return 2 ;; esac
+  if command -v curl >/dev/null 2>&1; then
+    status="$(curl --proto '=https,file' --tlsv1.2 -sSL -w '%{http_code}' "$1" -o "$2")" || die "release download failed for $1 (HTTP ${status:-unknown})"
+    case "$status" in 200 | 000) return 0 ;; 404) return 2 ;; *) die "release download failed for $1 (HTTP $status)" ;; esac
+  elif command -v wget >/dev/null 2>&1; then
+    if wget -q --server-response "$1" -O "$2" 2>"$tmp/wget.err"; then return 0; fi
+    if awk '/^[[:space:]]*HTTP\// { code=$2 } END { exit code == 404 ? 0 : 1 }' "$tmp/wget.err"; then return 2; fi
+    die "release download failed for $1 ($(cat "$tmp/wget.err"))"
+  else
+    die "need curl or wget"
+  fi
+}
+
 # ---------------------------------------------------------------- release mode (WN_FROM=release)
 
 detect_target() {
@@ -34,6 +48,7 @@ detect_target() {
   esac
   case "$os" in
     Darwin)
+      if [ "$arch" = x86_64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || true)" = 1 ]; then arch=aarch64; fi
       [ "$arch" = "aarch64" ] || return 1
       echo "$arch-apple-darwin"
       ;;
@@ -88,34 +103,41 @@ install_release() {
     base="https://github.com/$repo/releases/download/$version"
   fi
 
-  tmp="$(mktemp -d)"
+  tmp="$(mktemp -d)" || die "could not create temporary directory"
   trap 'rm -rf "$tmp"' EXIT
+  trap 'exit 1' INT TERM
 
   say "downloading $archive"
-  if ! fetch "$base/$archive" "$tmp/$archive"; then
-    rm -rf "$tmp"; trap - EXIT
+  archive_status=0
+  fetch_archive "$base/$archive" "$tmp/$archive" || archive_status=$?
+  if [ "$archive_status" -eq 2 ]; then
+    rm -rf "$tmp" || die "could not clean temporary directory"
+    trap - EXIT INT TERM
     return 2
   fi
+  [ "$archive_status" -eq 0 ] || die "release download failed for $archive"
   fetch "$base/$archive.sha256" "$tmp/$archive.sha256" || die "checksum file missing; refusing to install"
 
-  expected="$(cut -d' ' -f1 < "$tmp/$archive.sha256")"
-  actual="$(sha256_of "$tmp/$archive")"
+  expected="$(cut -d' ' -f1 < "$tmp/$archive.sha256")" || die "could not read checksum file"
+  actual="$(sha256_of "$tmp/$archive")" || die "could not calculate checksum"
   [ -n "$expected" ] || die "empty checksum file; refusing to install"
   [ "$expected" = "$actual" ] || die "checksum mismatch for $archive (expected $expected, got $actual)"
   say "checksum ok ($actual)"
 
-  tar -xzf "$tmp/$archive" -C "$tmp"
+  tar -xzf "$tmp/$archive" -C "$tmp" || die "could not extract $archive"
   [ -f "$tmp/wn-$target/wn" ] || die "archive does not contain wn"
-  mkdir -p "$install_dir"
-  install -m 0755 "$tmp/wn-$target/wn" "$install_dir/wn"
-  printf 'release\n' > "$install_dir/wn.install-method"
+  mkdir -p "$install_dir" || die "could not create $install_dir"
+  if [ -x "$install_dir/wn" ]; then "$install_dir/wn" daemon stop >/dev/null 2>&1 || true; fi
+  install -m 0755 "$tmp/wn-$target/wn" "$install_dir/wn" || die "could not install $install_dir/wn"
+  printf 'release\n' > "$install_dir/wn.install-method" || die "could not write install marker"
   bin_dir="$install_dir"
   say "installed $install_dir/wn"
   case ":$PATH:" in
     *":$install_dir:"*) ;;
     *) say "add $install_dir to your PATH" ;;
   esac
-  rm -rf "$tmp"; trap - EXIT
+  rm -rf "$tmp" || die "could not clean temporary directory"
+  trap - EXIT INT TERM
   return 0
 }
 
@@ -224,6 +246,9 @@ installed_commit() { # short sha from `wn --version`, if an installed wn reports
 if [ -z "$uninstall" ] && [ "$from" != source ]; then
   if [ "$from" != auto ] && [ "$from" != release ]; then die "WN_FROM must be auto, release, or source"; fi
   require_compatible_glibc
+  if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = x86_64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || true)" != 1 ]; then
+    die "Intel Macs aren't supported yet (ONNX Runtime has no macOS x86_64 prebuilt)"
+  fi
   if target="${WN_TARGET:-$(detect_target)}"; then
     if [ -n "$dry_run" ]; then
       say "would install checksum-verified release binary for $target"
@@ -235,9 +260,9 @@ if [ -z "$uninstall" ] && [ "$from" != source ]; then
       next_steps
       return 0
     fi
-    say "release archive unavailable for $target; falling back to source build"
+    say "release archive absent for $target; falling back to source build"
   else
-    say "no release binary for this target; falling back to source build"
+    die "no release binary for this target"
   fi
 fi
 
@@ -264,9 +289,13 @@ if [ -n "$uninstall" ]; then
   exit 0
 fi
 
+if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = x86_64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || true)" != 1 ]; then
+  die "Intel Macs aren't supported yet (ONNX Runtime has no macOS x86_64 prebuilt)"
+fi
+
 command -v git >/dev/null 2>&1 || die "git is required (install it and re-run)"
 if [ -z "$git_ref" ]; then
-  git_ref="$(git ls-remote --tags --refs "$repo_url" 'refs/tags/v*' | sed 's@.*refs/tags/@@' | sort -V | tail -n 1)"
+  git_ref="$(git ls-remote --tags --refs "$repo_url" 'refs/tags/v*' | sed 's@.*refs/tags/@@' | awk '/^v[0-9]+(\.[0-9]+)*$/ { split(substr($0,2), n, "."); printf "%010d.%010d.%010d.%010d %s\n", n[1], n[2], n[3], n[4], $0 }' | sort | tail -n 1 | cut -d' ' -f2)"
   [ -n "$git_ref" ] || die "could not find a release tag in $repo_url (use --ref main for the development branch)"
 fi
 

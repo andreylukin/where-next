@@ -34,29 +34,46 @@ pub fn download(source: &ModelSource, file: &str, dest: &Path) -> Result<(), Sto
         "{}.part",
         dest.file_name().unwrap().to_string_lossy()
     ));
-    let existing = fs::metadata(&part).map_or(0, |m| m.len());
+    let mut existing = fs::metadata(&part).map_or(0, |m| m.len());
     if existing > MAX_FILE_BYTES {
-        return Err(StoreError::Fetch(format!(
-            "{file}: partial file is too large"
-        )));
+        fs::remove_file(&part).map_err(|e| StoreError::Fetch(format!("{file}: {e}")))?;
+        existing = 0;
     }
-    let mut request = agent().get(&url);
-    if existing > 0 {
-        request = request.set("Range", &format!("bytes={existing}-"));
-    }
-    if let ModelSource::HuggingFace { .. } = source {
-        if let Ok(token) = std::env::var("HF_TOKEN") {
-            if !token.is_empty() {
-                request = request.set("Authorization", &format!("Bearer {token}"));
+    let response = loop {
+        let mut request = agent().get(&url);
+        if existing > 0 {
+            request = request.set("Range", &format!("bytes={existing}-"));
+        }
+        if let ModelSource::HuggingFace { .. } = source {
+            if let Ok(token) = std::env::var("HF_TOKEN") {
+                if !token.is_empty() {
+                    request = request.set("Authorization", &format!("Bearer {token}"));
+                }
             }
         }
-    }
-    let response = request.call().map_err(|e| match e {
-        ureq::Error::Status(code, _) => {
-            StoreError::Fetch(format!("{file}: HTTP {code} from {url}"))
+        match request.call() {
+            Err(ureq::Error::Status(416, _)) if existing > 0 => {
+                fs::remove_file(&part).map_err(|e| StoreError::Fetch(format!("{file}: {e}")))?;
+                existing = 0;
+            }
+            Err(ureq::Error::Status(code, _)) => {
+                return Err(StoreError::Fetch(format!("{file}: HTTP {code} from {url}")));
+            }
+            Err(other) => return Err(StoreError::Fetch(format!("{file}: {other}"))),
+            Ok(response) => break response,
         }
-        other => StoreError::Fetch(format!("{file}: {other}")),
-    })?;
+    };
+    if existing > 0
+        && response.status() == 206
+        && !response
+            .header("Content-Range")
+            .is_some_and(|range| range.starts_with(&format!("bytes {existing}-")))
+    {
+        fs::remove_file(&part).map_err(|e| StoreError::Fetch(format!("{file}: {e}")))?;
+        return Err(StoreError::Fetch(format!(
+            "{file}: mismatched Content-Range"
+        )));
+    }
     let resumed = existing > 0
         && response.status() == 206
         && response

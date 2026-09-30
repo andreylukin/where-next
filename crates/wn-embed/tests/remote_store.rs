@@ -96,6 +96,7 @@ fn remote_model_downloads_and_verifies() {
         100_000
     );
     assert!(!cache.path().join("m.download").exists());
+    assert_eq!(std::fs::read_dir(cache.path()).unwrap().count(), 1);
     // The manifest is fetched first.
     assert_eq!(log.lock().unwrap()[0], format!("/model/{MANIFEST_FILE}"));
 }
@@ -113,7 +114,7 @@ fn tampered_remote_file_is_corrupt_and_never_loaded() {
 }
 
 #[test]
-fn missing_remote_file_keeps_staging_but_not_the_model() {
+fn missing_remote_file_cleans_staging_and_model() {
     let mut files = with_manifest(model_files());
     files.remove("model.onnx");
     let (base, _) = serve(files);
@@ -123,7 +124,7 @@ fn missing_remote_file_keeps_staging_but_not_the_model() {
     assert!(err.to_string().contains("HTTP 404"), "{err}");
     assert_eq!(s.state(), ModelState::Missing);
     assert!(!cache.path().join("m").exists());
-    assert!(cache.path().join("m.download").exists());
+    assert_eq!(std::fs::read_dir(cache.path()).unwrap().count(), 0);
 }
 
 #[test]
@@ -184,5 +185,107 @@ fn remote_download_resumes_part_with_range() {
         .unwrap();
     assert_eq!(actual, vec![42u8; 100_000]);
     assert!(!temp.path().join("model.onnx.part").exists());
+    server.join().unwrap();
+}
+
+#[test]
+fn range_ignored_replaces_partial_file() {
+    let (base, _) = serve(BTreeMap::from([(
+        "model.onnx".into(),
+        b"complete".to_vec(),
+    )]));
+    let temp = tempfile::tempdir().unwrap();
+    let dest = temp.path().join("model.onnx");
+    std::fs::write(temp.path().join("model.onnx.part"), b"partial").unwrap();
+    wn_embed::remote::download(&ModelSource::parse(&base).unwrap(), "model.onnx", &dest).unwrap();
+    assert_eq!(std::fs::read(dest).unwrap(), b"complete");
+}
+
+#[test]
+fn oversized_partial_file_is_removed_before_download() {
+    let (base, _) = serve(BTreeMap::from([(
+        "model.onnx".into(),
+        b"complete".to_vec(),
+    )]));
+    let temp = tempfile::tempdir().unwrap();
+    let dest = temp.path().join("model.onnx");
+    let part = temp.path().join("model.onnx.part");
+    std::fs::File::create(&part)
+        .unwrap()
+        .set_len(wn_embed::remote::MAX_FILE_BYTES + 1)
+        .unwrap();
+    wn_embed::remote::download(&ModelSource::parse(&base).unwrap(), "model.onnx", &dest).unwrap();
+    assert_eq!(std::fs::read(dest).unwrap(), b"complete");
+    assert!(!part.exists());
+}
+
+#[test]
+fn range_416_retries_without_partial_file() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}/model", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        for attempt in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let mut headers = String::new();
+            loop {
+                line.clear();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+                headers.push_str(&line);
+            }
+            if attempt == 0 {
+                assert!(headers.contains("Range: bytes=3-"));
+                write!(stream, "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+            } else {
+                assert!(!headers.contains("Range:"));
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nfull"
+                )
+                .unwrap();
+            }
+        }
+    });
+    let temp = tempfile::tempdir().unwrap();
+    let dest = temp.path().join("model.onnx");
+    std::fs::write(temp.path().join("model.onnx.part"), b"old").unwrap();
+    wn_embed::remote::download(&ModelSource::parse(&base).unwrap(), "model.onnx", &dest).unwrap();
+    assert_eq!(std::fs::read(dest).unwrap(), b"full");
+    server.join().unwrap();
+}
+
+#[test]
+fn mismatched_content_range_discards_partial_file() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}/model", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut line = String::new();
+        loop {
+            reader.read_line(&mut line).unwrap();
+            if line == "\r\n" {
+                break;
+            }
+            line.clear();
+        }
+        write!(stream, "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-3/4\r\nContent-Length: 4\r\nConnection: close\r\n\r\nfull").unwrap();
+    });
+    let temp = tempfile::tempdir().unwrap();
+    let dest = temp.path().join("model.onnx");
+    let part = temp.path().join("model.onnx.part");
+    std::fs::write(&part, b"old").unwrap();
+    let err = wn_embed::remote::download(&ModelSource::parse(&base).unwrap(), "model.onnx", &dest)
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("mismatched Content-Range"),
+        "{err}"
+    );
+    assert!(!part.exists());
     server.join().unwrap();
 }

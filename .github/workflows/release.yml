@@ -123,6 +123,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/* \
-            --repo "${GITHUB_REPOSITORY}" --verify-tag \
-            --title "${GITHUB_REF_NAME}" --notes "See CHANGELOG.md."
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --clobber
+          else
+            flags=()
+            if [[ "${GITHUB_REF_NAME}" == *-* ]]; then flags+=(--prerelease); fi
+            gh release create "${GITHUB_REF_NAME}" dist/* \
+              --repo "${GITHUB_REPOSITORY}" --verify-tag \
+              --title "${GITHUB_REF_NAME}" --notes "See CHANGELOG.md." "${flags[@]}"
+          fi

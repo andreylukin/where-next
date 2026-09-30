@@ -39,12 +39,12 @@ wn-daemon = { version = "0.0.1", path = "../wn-daemon" }
 wn-embed = { version = "0.0.1", path = "../wn-embed", optional = true }
 wn-mcp = { version = "0.0.1", path = "../wn-mcp", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread"] }
+tempfile = "3"
 
 [dev-dependencies]
 proptest.workspace = true
 proptest-state-machine.workspace = true
 insta = { version = "1.48", features = ["filters"] }
-tempfile = "3"
 
 [lints]
 workspace = true

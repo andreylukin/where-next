@@ -36,6 +36,13 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 make_release "$work/good"
 run_install "file://$work/good" "$work/bin1" 2>/dev/null
 [ "$("$work/bin1/wn")" = "wn-fixture" ] || fail "installed binary does not run"
+cat > "$work/bin1/wn" <<'OLD_WN'
+#!/bin/sh
+[ "$1 $2" = 'daemon stop' ] && printf 'stopped\n' > "$WN_DAEMON_LOG"
+OLD_WN
+chmod +x "$work/bin1/wn"
+WN_DAEMON_LOG="$work/daemon.log" run_install "file://$work/good" "$work/bin1" 2>/dev/null
+[ "$(cat "$work/daemon.log")" = stopped ] || fail "release reinstall did not stop daemon"
 
 # 2. Tampered archive is refused.
 make_release "$work/bad"
@@ -49,7 +56,51 @@ rm "$work/nosum/wn-$target.tar.gz.sha256"
 if run_install "file://$work/nosum" "$work/bin3" 2>/dev/null; then fail "installed without checksum"; fi
 [ ! -e "$work/bin3/wn" ] || fail "missing checksum left a binary"
 
-echo "install.sh: 3 release-mode tests passed"
+# A destination that cannot contain files must never report success.
+mkdir "$work/blocked-bin"
+chmod 0500 "$work/blocked-bin"
+if [ -w "$work/blocked-bin" ]; then
+  # root bypasses directory permissions; a regular file is still unusable as a directory.
+  blocked_dir="$work/blocked-file"
+  printf 'occupied\n' > "$blocked_dir"
+else
+  blocked_dir="$work/blocked-bin"
+fi
+if run_install "file://$work/good" "$blocked_dir" 2>"$work/blocked.err"; then
+  fail "unwritable install destination succeeded"
+fi
+! grep -q 'installed ' "$work/blocked.err" || fail "failed install reported success"
+mkdir -p "$work/marker-bin/wn.install-method"
+if run_install "file://$work/good" "$work/marker-bin" 2>"$work/marker.err"; then
+  fail "unwritable install marker succeeded"
+fi
+! grep -q 'installed ' "$work/marker.err" || fail "failed marker write reported success"
+
+echo "install.sh: 6 release-mode tests passed"
+
+# A server error must fail rather than entering source mode.
+mkdir -p "$work/http-fake"
+cat > "$work/http-fake/curl" <<'CURL'
+#!/bin/sh
+printf '503'
+CURL
+chmod +x "$work/http-fake/curl"
+if PATH="$work/http-fake:$PATH" WN_FROM=auto WN_GLIBC=2.39 WN_NO_MODEL=1 \
+  WN_RELEASE_BASE=https://example.invalid WN_TARGET="$target" \
+  sh "$root/install.sh" 2>"$work/http.err"; then fail "HTTP 503 succeeded"; fi
+grep -q 'HTTP 503' "$work/http.err" || fail "HTTP 503 was not reported"
+! grep -q 'falling back\|cloning\|cargo' "$work/http.err" || fail "HTTP 503 tried source mode"
+cat > "$work/http-fake/curl" <<'CURL'
+#!/bin/sh
+printf '000'
+exit 6
+CURL
+if PATH="$work/http-fake:$PATH" WN_FROM=auto WN_GLIBC=2.39 WN_NO_MODEL=1 \
+  WN_RELEASE_BASE=https://example.invalid WN_TARGET="$target" \
+  sh "$root/install.sh" 2>"$work/dns.err"; then fail "network failure succeeded"; fi
+grep -q 'release download failed' "$work/dns.err" || fail "network failure was not reported"
+! grep -q 'falling back' "$work/dns.err" || fail "network failure tried source mode"
+echo "install.sh: 2 release transport tests passed"
 
 # ---- source mode ----
 g() { git -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
@@ -208,6 +259,27 @@ grep -A5 'next steps:' "$work/non-tty.err" | grep -q 'wn model pull' || fail "no
 echo "install.sh: non-TTY model next step passed"
 
 # Explicit source mode without --ref uses the latest release tag, not the moving main branch.
+g -C "$up" tag v99.0.0-rc1 "$second"
+g -C "$up" tag v0.0.2 "$first"
+g -C "$up" tag v0.0.10 "$first"
 HOME="$work/tag-home" PATH="$fake:$PATH" WN_FROM=source WN_HOME="$work/tag-wnhome" WN_BIN_ROOT="$work/tag-root" WN_REPO_URL="$up" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/tag.err"
 "$work/tag-root/bin/wn" | grep -q "$(short "$first")" || fail "source default was not pinned to release tag"
+grep -q 'v0.0.10' "$work/tag.err" || fail "source did not select the highest stable tag"
 echo "install.sh: source tag pin passed"
+
+# Rosetta selects the Apple Silicon archive; native Intel Macs fail before source setup.
+mkdir -p "$work/mac-fake"
+cat > "$work/mac-fake/uname" <<'UNAME'
+#!/bin/sh
+case "$1" in -s) echo Darwin ;; -m) echo x86_64 ;; esac
+UNAME
+cat > "$work/mac-fake/sysctl" <<'SYSCTL'
+#!/bin/sh
+echo "${FAKE_TRANSLATED:-0}"
+SYSCTL
+chmod +x "$work/mac-fake/uname" "$work/mac-fake/sysctl"
+FAKE_TRANSLATED=1 PATH="$work/mac-fake:$PATH" WN_FROM=release sh "$root/install.sh" --dry-run 2>"$work/rosetta.err"
+grep -q 'aarch64-apple-darwin' "$work/rosetta.err" || fail "Rosetta target was not aarch64"
+if FAKE_TRANSLATED=0 PATH="$work/mac-fake:$PATH" WN_FROM=source sh "$root/install.sh" --dry-run 2>"$work/intel.err"; then fail "Intel Mac source build offered"; fi
+grep -q "Intel Macs aren't supported yet" "$work/intel.err" || fail "Intel Mac error missing"
+! grep -q 'rustup\|cloning' "$work/intel.err" || fail "Intel Mac attempted source setup"
