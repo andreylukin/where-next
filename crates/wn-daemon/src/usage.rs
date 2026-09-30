@@ -97,6 +97,9 @@ pub struct BenchEvent {
     pub model: String,
     /// Median candidate files per scored commit.
     pub files_median: usize,
+    /// Commits scored (0 in logs written before this field existed).
+    #[serde(default)]
+    pub tasks: usize,
     /// hit@1, hit@3, hit@10 for the lexical baseline.
     pub lexical: [f64; 3],
     /// hit@1, hit@3, hit@10 for the model.

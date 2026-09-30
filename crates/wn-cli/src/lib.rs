@@ -3,6 +3,7 @@
 //! Commands are thin wrappers over reports defined here so they can be tested without spawning
 //! a process. Every report has a JSON form (`--json`) for agents and a short text form for people.
 
+pub mod agents;
 pub mod bench;
 pub mod daemon;
 pub mod report;
@@ -30,6 +31,7 @@ use wn_sources::{read_text, Kind, MAX_CONFIG_BYTES, MAX_SOURCE_BYTES};
 #[cfg(feature = "onnx")]
 pub mod models;
 pub mod skill;
+pub mod stats;
 
 /// `wn --version`: the crate version plus the commit it was built from, e.g. `0.0.1 (abc1234 2026-09-29)`.
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("WN_VERSION_SUFFIX"));
@@ -67,6 +69,7 @@ Examples:
   wn status                                which model answers (\"lexical fallback\" = no model installed)
   wn ask \"where is the retry logic for S3 upload timeouts\"
   wn bench                                 replay this repository's history: hit@1/3/10
+  wn stats                                 did your agents use the hints? replay vs grep, speed
   wn skill sync                            let Claude Code / Codex / Cursor call wn
 
 Docs: https://github.com/andreylukin/where-next#quick-start";
@@ -112,6 +115,20 @@ Examples:
   wn report --dry-run                      show the report and the issue link, post nothing
   wn report                                show it, then post it as a GitHub issue if you answer y
   wn --json report --dry-run               the report as JSON";
+
+const STATS_EXAMPLES: &str = "\
+Everything is computed locally from wn's usage log, git, and your agents' transcripts (Claude Code
+and Codex, read-only; they never leave this machine). \"Agents used the hint\" follows each
+`wn ask` to the agent's next tool calls: exact = it read, ran or edited a hinted file; near = a
+file in the same directory or the hint's test/source pair; elsewhere = other files; no files =
+it moved on.
+
+Examples:
+  wn stats                                 this repository, last 30 days
+  wn stats --all                           every repository, one row each
+  wn stats --share                         a redacted card: no repository names, paths or queries
+  wn stats --share --svg wn-stats.svg      the same card as an image to post
+  wn stats --no-agents                     skip reading agent transcripts";
 
 const MCP_EXAMPLES: &str = "\
 Most agents only need the skill (`wn skill sync`), which calls `wn ask` directly. Use the MCP
@@ -221,6 +238,25 @@ pub enum Command {
         /// Maintainers: summarise a JSONL file of validated reports as Markdown.
         #[arg(long, value_name = "FILE", hide = true)]
         summarize: Option<PathBuf>,
+    },
+    /// How wn is doing: whether agents acted on its hints, a replay against grep, speed.
+    #[command(after_help = STATS_EXAMPLES)]
+    Stats {
+        /// Every repository with logged usage, one row each.
+        #[arg(long)]
+        all: bool,
+        /// Days to cover (usage is kept for 30).
+        #[arg(long, default_value_t = 30)]
+        days: u64,
+        /// A redacted card to post: no repository names, paths or queries.
+        #[arg(long)]
+        share: bool,
+        /// Also write the redacted card as an SVG image (implies --share).
+        #[arg(long, value_name = "FILE")]
+        svg: Option<PathBuf>,
+        /// Do not read agent transcripts (also `WN_STATS_NO_AGENTS=1`).
+        #[arg(long)]
+        no_agents: bool,
     },
     /// Start, stop or inspect the background daemon that keeps models and indexes warm.
     Daemon {
@@ -663,6 +699,7 @@ pub fn run(cli: Cli) -> (String, i32) {
             | Command::Ask { .. }
             | Command::Mcp
             | Command::Bench { .. }
+            | Command::Stats { all: false, .. }
     );
     if uses_repo && !cli.path.exists() {
         return (
@@ -675,6 +712,23 @@ pub fn run(cli: Cli) -> (String, i32) {
     }
     if let Command::Bench { .. } = cli.command {
         return run_bench(cli);
+    }
+    if let Command::Stats {
+        all,
+        days,
+        share,
+        svg,
+        no_agents,
+    } = &cli.command
+    {
+        let opts = StatsArgs {
+            all: *all,
+            days: *days,
+            share: *share || svg.is_some(),
+            svg: svg.clone(),
+            no_agents: *no_agents,
+        };
+        return run_stats(&cli, &opts);
     }
     if let Command::Update {
         check,
@@ -825,6 +879,7 @@ pub fn run(cli: Cli) -> (String, i32) {
         | Command::Bench { .. }
         | Command::Update { .. }
         | Command::Report { .. }
+        | Command::Stats { .. }
         | Command::Daemon { .. }
         | Command::Skill { .. }
         | Command::Hook { .. } => {
@@ -833,6 +888,79 @@ pub fn run(cli: Cli) -> (String, i32) {
         #[cfg(feature = "onnx")]
         Command::Model { .. } => unreachable!("handled above"),
     }
+}
+
+/// `wn stats` options.
+#[derive(Debug, Clone)]
+pub struct StatsArgs {
+    pub all: bool,
+    pub days: u64,
+    pub share: bool,
+    pub svg: Option<PathBuf>,
+    pub no_agents: bool,
+}
+
+/// `wn stats`: text or JSON, and the exit code.
+pub fn run_stats(cli: &Cli, opts: &StatsArgs) -> (String, i32) {
+    let now = wn_daemon::usage::now();
+    let usage = wn_daemon::usage::load_all(&home(), now);
+    let root = (!opts.all).then(|| stats::repo_root_of(&cli.path));
+    let read_agents = !opts.no_agents && std::env::var_os(agents::OPT_OUT_ENV).is_none();
+    let days = opts.days.clamp(1, wn_daemon::usage::RETENTION_DAYS);
+    let since = now.saturating_sub(days * 86_400);
+    // Match calls against every repository's answers, so a call is never pinned on the wrong one.
+    let score = read_agents.then(|| agents::collect(&agents::Roots::detect(), &usage, since));
+    let Some(stats) = stats::build(
+        &usage,
+        root.as_deref(),
+        score.as_ref(),
+        now,
+        opts.days,
+        &report::git_edited,
+    ) else {
+        let msg = if !wn_daemon::usage::enabled() {
+            "wn stats: usage logging is off (WN_NO_LOG), so there is nothing to show".to_string()
+        } else if let Some(root) = &root {
+            let name = root
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            format!(
+                "wn stats: nothing logged for {name} yet: run `wn init`, then `wn ask \"where is …\"`\n\
+                 (`wn stats --all` shows every repository)"
+            )
+        } else {
+            "wn stats: nothing logged yet: run `wn init` in a repository, then `wn ask \"where is …\"`"
+                .to_string()
+        };
+        return (msg, 0);
+    };
+    let card = opts.share.then(|| stats::ShareCard::from_stats(&stats));
+    let mut text = match (&card, cli.json) {
+        (Some(c), true) => erased::Json::to_json(c),
+        (Some(c), false) => stats::render_share(c),
+        (None, true) => erased::Json::to_json(&stats),
+        (None, false) => {
+            use std::io::IsTerminal as _;
+            let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+            stats::render(&stats, stats::Style { color })
+        }
+    };
+    if let (Some(path), Some(c)) = (&opts.svg, &card) {
+        if let Err(e) = std::fs::write(path, stats::render_svg(c)) {
+            return (
+                format!("wn stats: could not write {}: {e}", path.display()),
+                1,
+            );
+        }
+        if !cli.json {
+            text.push_str(&format!(
+                "\n\nwrote {} (redacted: no repository names, paths or queries)",
+                path.display()
+            ));
+        }
+    }
+    (text, 0)
 }
 
 /// The repository's cache directory (holds the usage log shared by all models).
@@ -899,6 +1027,11 @@ fn record_bench(ws: &Workspace, report: &bench::Report) {
         ts: wn_daemon::usage::now(),
         model: ws.info.fingerprint.clone(),
         files_median: report.files_median,
+        tasks: if report.matched.is_empty() {
+            report.evaluated
+        } else {
+            report.adapted
+        },
         lexical,
         model_hits,
         adapter_hits: find(&report.matched, "model + adapter"),

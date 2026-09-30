@@ -4,7 +4,8 @@
 
 Everything. The model runs locally. The index, adapter and usage log are stored under
 `~/.cache/where-next/`. There is no account, no login, and no telemetry. The only network access is
-the one-time model download, which is checksum-verified.
+the one-time model download, which is checksum-verified. `wn stats` also reads your coding agents'
+transcripts on this machine (see below); it stores nothing from them and sends nothing.
 
 ## The usage log
 
@@ -18,7 +19,24 @@ the one-time model download, which is checksum-verified.
 - `--no-log` skips logging for a single `wn ask`; setting `WN_NO_LOG` (to anything) turns logging
   off everywhere, including `wn mcp`.
 - Query events expire after 30 days.
-- Nothing in the log is sent anywhere by wn. It only feeds `wn report`, below.
+- Nothing in the log is sent anywhere by wn. It only feeds `wn stats` and `wn report`, below.
+
+## `wn stats` and agent transcripts
+
+To show whether agents acted on its hints, `wn stats` reads Claude Code transcripts
+(`$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`) and Codex sessions
+(`$CODEX_HOME/sessions`, else `~/.codex/sessions`) **read-only**, and only files modified in the
+window you ask for. It looks for `wn ask` calls (and where-next MCP calls and start hints), matches
+each to an answer in the usage log by time, and checks which files the agent's next 10 tool calls
+read, ran or edited. It keeps only counts: nothing from a transcript is written to disk, cached or
+sent, and `wn report` does not read transcripts at all.
+
+- `wn stats --no-agents`, or `WN_STATS_NO_AGENTS=1`, skips transcripts entirely.
+- `wn stats` (without `--share`) prints repository names because it is for you.
+- `wn stats --share` (and `--svg`) builds a separate card type that holds only numbers and fixed
+  labels: counts and shares, the most common language, the file count rounded to one significant
+  figure, the model name from the published list, and latency. It cannot contain repository names,
+  paths, remotes, file names or queries, and a canary test checks that none leak.
 
 ## Sharing a usage report (`wn report`)
 

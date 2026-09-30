@@ -1,0 +1,11 @@
+---
+source: crates/wn-cli/tests/stats.rs
+expression: "stats::render_share(&card)"
+---
+where-next · a ~300-file Python repo · last 30 days
+
+Agents used the hint  ████████████░░░░░░░░  60% exact · 20% near  (10 answers)
+                      on the hinted file: read 3 · ran 1 · edited 2 · took #1 first 4 of 6
+Right file in top 3   wn + adapter 87% · wn 74% · grep-style 51%  (300 past commits)
+You edited a hint     7 of 15 answers
+Speed                 14 ms median · 17 queries · gemma-xl1 + adapter

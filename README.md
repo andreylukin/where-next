@@ -131,7 +131,7 @@ binaries, Homebrew and crates.io are set up but not published yet. Details:
 | Answers look like keyword matches | `wn status`: `no model installed` means no model is in use; run `wn model pull` (see "About models" above). |
 | Files you just added or changed are missing | Normally picked up in the background; `wn status` shows the index state, and `wn init` re-indexes now. |
 | Something about the daemon seems off | `wn daemon status`; `wn daemon stop` (it restarts on the next call); `--no-daemon` or `WN_NO_DAEMON=1` answers in-process. Log: `~/.cache/where-next/daemon.log`. |
-| You don't want queries logged locally | `wn ask --no-log`, or set `WN_NO_LOG=1` (the log feeds `wn report`; query text is never stored). |
+| You don't want queries logged locally | `wn ask --no-log`, or set `WN_NO_LOG=1` (the log feeds `wn stats` and `wn report`; query text is never stored). |
 | Update, reinstall or remove | `wn update` (or re-run the installer); uninstall with `curl -fsSL …/install.sh \| sh -s -- --uninstall`. |
 | Model checksum mismatch | `wn model remove <name>`, then `wn model pull` it again. |
 
@@ -199,6 +199,37 @@ history replay, much of its gain can also be had from simple history and file-fr
   [Gemma Terms of Use](https://ai.google.dev/gemma/terms). A fully Apache-licensed alternative model is
   planned. See [NOTICE](NOTICE).
 - **Datasets:** published separately, each source under its original license.
+
+## See how it's doing: `wn stats`
+
+`wn stats` answers "is this helping?" from data already on your machine:
+
+- **Agents used the hint.** For each `wn ask` an agent made (Claude Code and Codex transcripts, read
+  locally and never sent), it follows the agent's next 10 tool calls. *Exact* = the agent read, ran
+  or edited a hinted file; *near* = a file in the same directory, or the hint's test ↔ source pair;
+  *elsewhere* = other files; *no files* = it moved on.
+- **You edited a hint:** hinted files that changed in git within a day of the answer.
+- **Replay:** the latest `wn bench`, wn against grep-style search on your own past commits.
+- Speed, query volume and the model in use.
+
+```text
+wn stats · my-service · last 30 days
+
+Agents used the hint  ████████████░░░░░░░░  60% exact · 20% near  (10 answers)
+                      on the hinted file: read 3 · ran 1 · edited 2 · took #1 first 4 of 6
+                      elsewhere 1 · no files 1 · from 3 Claude Code / 1 Codex sessions
+You edited a hint     7 of 15 answers within 24 h (git)
+Replay (top 3)        wn + adapter 87% · wn 74% · grep-style 51%  (300 commits, 2 days ago)
+Speed                 p50 14 ms · p95 41 ms · 294 files
+Queries               17  ····················▂····▅·▁·█  request 12 · error 5 · abstained 2
+Model                 gemma-xl1 + adapter (200 commits)
+```
+
+(Example output. Shares only become percentages at 5 or more answers; below that you see counts.)
+`wn stats --all` shows every repository as a table. `wn stats --share` prints a redacted card with
+no repository names, paths or queries (it describes the repository as, say, "a ~300-file Python
+repo"), and `wn stats --share --svg card.svg` writes the same card as an image to post.
+`--no-agents` (or `WN_STATS_NO_AGENTS=1`) skips reading transcripts.
 
 ## Share stats to help improve wn
 

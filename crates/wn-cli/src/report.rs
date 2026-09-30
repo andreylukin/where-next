@@ -607,7 +607,8 @@ pub fn round_ms(ms: u64) -> u32 {
     u32::try_from((ms + step / 2) / step * step).unwrap_or(u32::MAX)
 }
 
-fn percentile(sorted: &[u64], p: f64) -> Option<u64> {
+/// The `p` quantile (nearest rank) of sorted values.
+pub fn percentile(sorted: &[u64], p: f64) -> Option<u64> {
     if sorted.is_empty() {
         return None;
     }
@@ -679,6 +680,26 @@ fn build() -> WnBuild {
             .and_then(|c| c.get(..7))
             .and_then(|c| BuildCommit::try_from(c.to_lowercase()).ok()),
     }
+}
+
+/// Hint usefulness for one repository: of the latest [`MAX_CHECKED`] answers with hints, how
+/// many had a hinted file change within [`USEFUL_WINDOW_S`]. Returns `(checked, useful)`.
+pub fn hint_edits(repo: &RepoUsage, now: u64, edited: &EditedFn) -> (usize, usize) {
+    let Some(root) = &repo.root else {
+        return (0, 0);
+    };
+    let answered: Vec<_> = repo
+        .queries
+        .iter()
+        .filter(|q| q.state == "ok" && !q.hinted.is_empty())
+        .collect();
+    let (mut checked, mut useful) = (0usize, 0usize);
+    for q in answered.iter().rev().take(MAX_CHECKED) {
+        let changed = edited(root, q.ts, now);
+        checked += 1;
+        useful += usize::from(q.hinted.iter().any(|h| changed.contains(h)));
+    }
+    (checked, useful)
 }
 
 /// Builds the report from logged usage. `edited` answers "which paths changed after this
@@ -768,20 +789,11 @@ pub fn collect(usage: &[RepoUsage], system: &System, now: u64, edited: &EditedFn
     }
     let abstained = states.get(&StateCode::Abstain).copied().unwrap_or(0);
 
-    // Hint usefulness: did any hinted file change within a day of the answer?
     let (mut checked, mut useful) = (0usize, 0usize);
     for repo in usage {
-        let Some(root) = &repo.root else { continue };
-        let answered: Vec<_> = repo
-            .queries
-            .iter()
-            .filter(|q| q.state == "ok" && !q.hinted.is_empty())
-            .collect();
-        for q in answered.iter().rev().take(MAX_CHECKED) {
-            let changed = edited(root, q.ts, now);
-            checked += 1;
-            useful += usize::from(q.hinted.iter().any(|h| changed.contains(h)));
-        }
+        let (c, u) = hint_edits(repo, now, edited);
+        checked += c;
+        useful += u;
     }
 
     let oldest = queries.iter().map(|q| q.ts).min().unwrap_or(now);

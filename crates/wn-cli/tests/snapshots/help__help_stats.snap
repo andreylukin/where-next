@@ -1,0 +1,55 @@
+---
+source: crates/wn-cli/tests/help.rs
+expression: help(path)
+---
+How wn is doing: whether agents acted on its hints, a replay against grep, speed
+
+Usage: wn stats [OPTIONS]
+
+Options:
+      --all
+          Every repository with logged usage, one row each
+
+      --path <PATH>
+          Repository (or any directory inside it)
+          
+          [default: .]
+
+      --days <DAYS>
+          Days to cover (usage is kept for 30)
+          
+          [default: 30]
+
+      --json
+          Print JSON instead of text
+
+      --model <MODEL>
+          Model directory (default: `$WN_MODEL_DIR`, else the best installed model)
+
+      --share
+          A redacted card to post: no repository names, paths or queries
+
+      --no-daemon
+          Answer in this process instead of the background daemon (also `WN_NO_DAEMON=1`)
+
+      --svg <FILE>
+          Also write the redacted card as an SVG image (implies --share)
+
+      --no-agents
+          Do not read agent transcripts (also `WN_STATS_NO_AGENTS=1`)
+
+  -h, --help
+          Print help
+
+Everything is computed locally from wn's usage log, git, and your agents' transcripts (Claude Code
+and Codex, read-only; they never leave this machine). "Agents used the hint" follows each
+`wn ask` to the agent's next tool calls: exact = it read, ran or edited a hinted file; near = a
+file in the same directory or the hint's test/source pair; elsewhere = other files; no files =
+it moved on.
+
+Examples:
+  wn stats                                 this repository, last 30 days
+  wn stats --all                           every repository, one row each
+  wn stats --share                         a redacted card: no repository names, paths or queries
+  wn stats --share --svg wn-stats.svg      the same card as an image to post
+  wn stats --no-agents                     skip reading agent transcripts
