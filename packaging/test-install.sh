@@ -347,8 +347,9 @@ for var in WHERE_NEXT_HOME WN_MODELS_HOME WN_HOME; do
       fail "uninstall accepted $var=$value"
     fi
     grep -q 'refusing' "$work/guard.err" || fail "uninstall with $var=$value did not say it refused"
-    [ -f "$guard_home/notes.txt" ] && [ -f "$guard_home/projects/thesis.tex" ] && [ -d "$guard_home/src/.git" ] \
-      || fail "uninstall with $var=$value removed files"
+    if [ ! -f "$guard_home/notes.txt" ] || [ ! -f "$guard_home/projects/thesis.tex" ] || [ ! -d "$guard_home/src/.git" ]; then
+      fail "uninstall with $var=$value removed files"
+    fi
   done
 done
 shared="$guard_home/shared"
