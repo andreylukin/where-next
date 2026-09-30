@@ -5,17 +5,20 @@ description: Find which files to open or edit next in a repository with the loca
 
 # where-next (`wn`)
 
-`wn` ranks the files most likely relevant to a task, in milliseconds, from a local model and this
-repository's own git history. Treat its answers as hints: open the files and verify.
+`wn` ranks the files most likely relevant to a description, from a local model and this
+repository's own git history (tens of milliseconds once its background process is warm). Treat its
+answers as hints: open the files and verify.
 
 ## When to call it
 
-- Starting a task in a large repository (3,000+ files): `wn ask --start --json "<task>"`.
-- You need where something lives: "where is X implemented / configured / tested".
+- You need where something lives but don't know what it's called: "where is X implemented /
+  configured / tested".
+- Orienting in a large or unfamiliar repository: `wn ask --json "<what you need to find>"`.
 - After an error: include the error text or stack trace in the query.
 
-Don't call it for exact names or strings you already know (`rg "fn parse_config"` is faster and
-exact), or in tiny repositories where listing the tree is enough.
+Use `rg` instead when you already know an exact identifier, string or error message
+(`rg "fn parse_config"` is exact and faster), and skip `wn` in tiny repositories where listing the
+tree is enough.
 
 ## How
 
@@ -27,8 +30,9 @@ Write a self-contained query: what you are looking for plus any error text, not 
 Good: `wn ask --json "where are S3 upload retries configured; error: ReadTimeoutError in push.py"`.
 Bad: `wn ask --json "the other one"`.
 
-Useful flags: `--start` (task-start hint; skipped in small repositories), `--functions` (also rank
-functions), `-k 5` (more hints), `--context-file -` (pipe recent tool output on stdin).
+Useful flags: `--context-file -` (pipe recent tool output on stdin), `--functions` (also rank
+functions), `--start` (opt-in task-start mode; skipped in repositories under 3,000 source files; in
+trials it did not lower agent cost, so don't add it by default).
 
 ## Reading the answer
 
@@ -36,7 +40,8 @@ JSON fields: `state`, `files` (up to 3 `{path, similarity}`), `configs`, `functi
 `--functions`), `adapter`, and `abstain` or `error` with a reason.
 
 - `ok`: open the top files first. Similarities rank the files; they are not probabilities.
-- `abstain`: not confident enough. Use ordinary search (`rg`, reading the tree).
+- `abstain`: nothing scored above the calibrated threshold. Use ordinary search (`rg`, reading
+  the tree); rephrasing a vague query as a full sentence can also help.
 - `stale_index`: hints from an older index; still useful, verify them.
 - `empty_index`, `unsupported_scope`, `error`: nothing usable; search normally.
 

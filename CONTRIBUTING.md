@@ -4,7 +4,9 @@ Thanks for helping. Two rules shape the codebase.
 
 ## 1. Tests first
 
-Write the failing test, then make it pass. Every pull request runs:
+Write the failing test, then make it pass. Run `cargo build` once first: it downloads a prebuilt ONNX
+Runtime, so it needs macOS on Apple silicon or Linux with glibc 2.39+ (see
+[docs/install.md](docs/install.md#platforms)). Every pull request runs:
 
 ```sh
 cargo fmt --all --check

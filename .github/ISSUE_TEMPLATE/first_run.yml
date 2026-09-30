@@ -1,0 +1,74 @@
+name: First run
+description: Tried wn for the first time? Tell us how it went, good or bad.
+title: "first run: "
+labels: ["first-run"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying where-next. This takes about five minutes and is the most useful feedback we get.
+        Please don't paste private code, paths or repository names; describe them instead.
+  - type: input
+    id: platform
+    attributes:
+      label: OS and architecture
+      description: For example "macOS 15, Apple M2" or "Ubuntu 24.04, x86_64". `uname -sm` helps.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options:
+        - install.sh, prebuilt binary
+        - install.sh, built from source
+        - cargo install / built it myself
+        - Other (say below)
+        - It didn't install (say below)
+    validations:
+      required: true
+  - type: input
+    id: time_to_answer
+    attributes:
+      label: Time from install to first answer
+      description: Roughly, including the model download and `wn init`. For example "4 minutes".
+    validations:
+      required: true
+  - type: input
+    id: repo_size
+    attributes:
+      label: Repository size and language
+      description: For example "~2,000 files, mostly Python, 5 years of history". `git ls-files | wc -l` counts files.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: "`wn --version`"
+      placeholder: wn 0.0.1 (abc1234 2026-09-29)
+  - type: textarea
+    id: confused
+    attributes:
+      label: What confused you?
+      description: Anything in the README, the installer, the output or the errors that made you stop and wonder.
+  - type: textarea
+    id: questions
+    attributes:
+      label: Five questions, graded
+      description: |
+        Ask `wn` five real "where is X?" questions about your repository and grade each answer:
+        right (a top-3 file is where you'd start), partial (close, e.g. the right directory), or wrong.
+        Describe the question in general terms if the real one is private.
+      value: |
+        1. Question: … / Grade: right | partial | wrong
+        2. Question: … / Grade: right | partial | wrong
+        3. Question: … / Grade: right | partial | wrong
+        4. Question: … / Grade: right | partial | wrong
+        5. Question: … / Grade: right | partial | wrong
+    validations:
+      required: true
+  - type: textarea
+    id: other
+    attributes:
+      label: Anything else
+      description: Would you keep using it? What would make it more useful? `wn status` output helps if something looked wrong.

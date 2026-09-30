@@ -3,7 +3,7 @@
 History replay answers the question a user actually has: *how well does this work on my
 repository?* It replays the repository's past commits as if each one were a new task.
 
-## Try it on your repository in 60 seconds
+## Try it on your repository
 
 ```sh
 cd your-repo

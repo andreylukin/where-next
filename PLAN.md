@@ -30,7 +30,7 @@ One Rust workspace; one static binary, `wn`.
 | `wn-sources` | Resource plugins: code (tree-sitter skeletons), configs, logs, docs, CLI `--help` sections; untracked files included, deletions removed |
 | `wn-daemon` | Resident process keeping the model and index warm; file watching; atomic index snapshots |
 | `wn-mcp` | MCP server (`rmcp`) for Claude Code, Codex, Cursor and other agents |
-| `wn-cli` | `wn init`, `wn ask`, `wn status`, `wn train`, `wn rollback`, `wn bench`, `wn mcp` |
+| `wn-cli` | `wn init`, `wn ask`, `wn status`, `wn train`, `wn rollback`, `wn bench`, `wn mcp`, `wn model`, `wn skill`, `wn daemon`, `wn update`, `wn stats`, `wn report` |
 
 Other top-level folders:
 
@@ -46,7 +46,7 @@ Other top-level folders:
 - **The index** is the memory: one vector per file or function skeleton, stored per repository and
   updated only for changed files.
 - **The personal adapter** is a small query-side linear map fitted on the repository's past commits
-  (and later on local usage), in about a second on CPU. It never invalidates the index, because it
+  (and later on local usage), in seconds on CPU. It never invalidates the index, because it
   only transforms queries.
 - **The usage log** records suggestions and what was actually opened and used, for future adapter
   fits. It is local, opt-in for raw text, supports `--no-log`, and expires after 30 days.
@@ -90,6 +90,9 @@ Pure functions (ranking maths, tokenizing, normalization) get property tests ins
 - **Live agent trial (the product test):** the same agent with and without hints, on fresh tasks in
   unseen repositories, measuring success, cost, wall time, reads and wrong-hint detours. The gate:
   at least 15% lower cost per resolved task with no more than 2 points of success lost.
+  **Status: not met** in three trials with a cheap, capable agent (see
+  [benchmarks/agent-trial.md](benchmarks/agent-trial.md)), so `wn` is positioned as navigation for
+  people and an opt-in tool for agents, never as an agent cost-saver.
 
 ## Licensing
 
@@ -113,3 +116,17 @@ Pure functions (ranking maths, tokenizing, normalization) get property tests ins
    repositories (first which repository or service, then which file), with permissions respected.
 4. **M4: Public release.** Model and dataset on the Hugging Face Hub, `brew install where-next`, docs site,
    and published benchmark results including the live agent trial.
+
+## Roadmap
+
+- **Evidence still missing:** whether hints help people navigating by hand (time to the first right
+  file), and whether they help more expensive agents.
+- **Install:** Homebrew, `cargo install where-next`, an `npx` launcher that runs a pinned, verified
+  binary; Intel Mac and older-glibc Linux builds (both need ONNX Runtime built from source); tested
+  MCP configuration for Cursor and VS Code; an MCP registry listing; SBOM and provenance attestations
+  on every release.
+- **Trust:** a threat model for the MCP server (filesystem scope, prompt-injection text in indexed
+  files).
+- **Community:** acknowledge new issues within 2 business days and review small pull requests within
+  a week; `good first issue` only on bounded tasks with a clear definition of done; a changelog entry
+  for every release, with breaking MCP schema changes called out.

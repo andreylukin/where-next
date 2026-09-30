@@ -6,9 +6,12 @@ and a background daemon keeps it fast. MCP (`wn mcp`) remains available for clie
 ## The skill
 
 [`skills/where-next/SKILL.md`](../skills/where-next/SKILL.md) is a standard `SKILL.md` (name and
-description frontmatter, a page of instructions): call `wn ask --start` when starting a task in a
-large repository, ask "where does X live" questions and paste errors, skip it for exact-string
-lookups, and read the JSON `state` (`ok`, `abstain`, `stale_index`, …) before trusting the hints.
+description frontmatter, a page of instructions): ask "where does X live" questions and paste
+errors, use `rg` instead for exact names and strings, and read the JSON `state` (`ok`, `abstain`,
+`stale_index`, …) before trusting the hints. `wn ask` always exits 0 when it could run; the `state`
+field says whether there are hints. `--start` (a task-start hint, skipped in repositories under
+3,000 source files) is opt-in: in agent trials it did not lower cost, so the skill doesn't tell
+agents to use it.
 
 ## `wn skill sync`
 

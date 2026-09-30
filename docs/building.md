@@ -57,7 +57,7 @@ This checks Rust embeddings and text builders against the Python reference.
 ## Run the MCP server
 
 ```sh
-wn mcp --path <repo>            # what agents should run, e.g. claude mcp add where-next -- wn mcp
+wn mcp --path <repo>            # what agents should run, e.g. claude mcp add -s user where-next -- wn mcp
 ```
 
 Or run the standalone server binary:
@@ -75,7 +75,6 @@ cargo build --release -p wn-mcp --bin wn-mcp-server
 | `cargo run --release -p wn-embed --example encode_bench -- <model-dir>` | Single-query latency and document throughput on CPU |
 | `cargo run --release -p wn-mcp --example latency -- <repo> <model-dir> <cache-home>` | Warm-up, then p50/p95/max of warm `where_next` calls in-process |
 | `cargo run --release -p wn-mcp --example mcp_bench -- <server-bin> <repo> <model-dir> <cache-home>` | Round trips through `wn-mcp-server` over stdio, as an agent would call it |
-
 | `cargo run --release -p wn-embed --example doc_throughput -- <model-dir> <repo> [n]` | Document throughput on a real repository's skeletons, by batch size |
 
 Write a model manifest with `cargo run -p wn-embed --example manifest -- <model-dir>`.
@@ -90,7 +89,7 @@ On kubernetes (31,425 tracked files; 13,534 source and 6,620 config files indexe
 | Of which scan, read and skeletons | about 5 s; embedding is the rest | same |
 | Warm `where_next` query (resident MCP server) | p50 19 ms, p95 21 ms | p50 19 ms, p95 21 ms |
 | Reopen a stored index | 0.7 s; no-op refresh 0.6 s | 1.1 s; no-op refresh 0.6 s |
-| Cold `wn ask` (loads the model each time) | about 5 s, most of it model load: agents should use `wn mcp` | 5.7 s |
+| Cold `wn ask` without the daemon (loads the model each time) | about 5 s, most of it model load; the daemon (on by default) keeps it warm | 5.7 s |
 
 Document throughput for gemma-g2r: 75 docs/s at batch 16 (60 at 4, 70 at 8, 73 at 32, 61 at 64).
 Batches hold at most 16 documents and 8,192 padded tokens (`TOKEN_BUDGET`), so long documents
