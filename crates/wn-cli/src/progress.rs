@@ -148,6 +148,34 @@ impl Encoder for Counting<'_> {
     }
 }
 
+/// When progress lines are due: the first after a quiet period, then one per interval. Pure, so
+/// it is tested without clocks.
+#[derive(Debug, Clone, Copy)]
+pub struct Cadence {
+    next: Duration,
+    every: Duration,
+}
+
+impl Cadence {
+    pub fn new(first_after: Duration, every: Duration) -> Cadence {
+        Cadence {
+            next: first_after,
+            every,
+        }
+    }
+
+    /// Whether a line is due at `elapsed` (since the work started); if so, schedules the next.
+    pub fn due(&mut self, elapsed: Duration) -> bool {
+        if elapsed < self.next {
+            return false;
+        }
+        while self.next <= elapsed {
+            self.next += self.every.max(Duration::from_millis(1));
+        }
+        true
+    }
+}
+
 /// Sends the tracker's line to a sink every [`TICK`] after [`FIRST_AFTER`], until dropped.
 pub struct Ticker {
     stop: Arc<AtomicBool>,
@@ -172,24 +200,26 @@ impl Ticker {
 
     /// Sends `line()` to `sink` every [`TICK`] after [`FIRST_AFTER`], until dropped.
     pub fn lines(line: impl Fn() -> String + Send + 'static, sink: Arc<dyn Sink>) -> Ticker {
+        Ticker::with_cadence(Cadence::new(FIRST_AFTER, TICK), line, sink)
+    }
+
+    /// [`Ticker::lines`] on an explicit [`Cadence`].
+    pub fn with_cadence(
+        mut cadence: Cadence,
+        line: impl Fn() -> String + Send + 'static,
+        sink: Arc<dyn Sink>,
+    ) -> Ticker {
         let stop = Arc::new(AtomicBool::new(false));
         let spoke = Arc::new(AtomicBool::new(false));
         let (flag, said, out) = (stop.clone(), spoke.clone(), sink.clone());
         let handle = std::thread::spawn(move || {
-            let mut next = FIRST_AFTER;
-            loop {
-                let step = Duration::from_millis(50);
-                let mut waited = Duration::ZERO;
-                while waited < next {
-                    if flag.load(Ordering::SeqCst) {
-                        return;
-                    }
-                    std::thread::sleep(step);
-                    waited += step;
+            let started = Instant::now();
+            while !flag.load(Ordering::SeqCst) {
+                if cadence.due(started.elapsed()) {
+                    out.update(&line());
+                    said.store(true, Ordering::SeqCst);
                 }
-                out.update(&line());
-                said.store(true, Ordering::SeqCst);
-                next = TICK;
+                std::thread::sleep(Duration::from_millis(50));
             }
         });
         Ticker {
@@ -351,14 +381,36 @@ mod tests {
     }
 
     #[test]
-    fn a_ticker_is_silent_for_short_work_and_speaks_for_long_work() {
+    fn the_cadence_is_quiet_first_then_one_line_per_interval() {
+        let s = Duration::from_secs;
+        let mut c = Cadence::new(FIRST_AFTER, TICK);
+        assert!(!c.due(Duration::ZERO));
+        assert!(!c.due(FIRST_AFTER - Duration::from_millis(1)));
+        assert!(c.due(FIRST_AFTER));
+        assert!(
+            !c.due(FIRST_AFTER + Duration::from_millis(10)),
+            "once per tick"
+        );
+        assert!(c.due(FIRST_AFTER + TICK));
+        // A stalled thread catches up with one line, not a burst.
+        assert!(c.due(s(30)));
+        assert!(!c.due(s(30)));
+    }
+
+    #[test]
+    fn a_silent_ticker_says_nothing_and_a_speaking_one_ends_with_done() {
         let sink = Arc::new(Collect(Mutex::new(Vec::new())));
-        drop(Ticker::start(Tracker::new("r"), sink.clone()));
+        let quiet = Cadence::new(Duration::from_secs(3600), TICK);
+        drop(Ticker::with_cadence(quiet, || "x".into(), sink.clone()));
         assert!(sink.0.lock().unwrap().is_empty());
-        let ticker = Ticker::start(Tracker::new("r"), sink.clone());
-        std::thread::sleep(FIRST_AFTER + Duration::from_millis(300));
+
+        let at_once = Cadence::new(Duration::ZERO, Duration::from_secs(3600));
+        let ticker = Ticker::with_cadence(at_once, || "line".into(), sink.clone());
+        // Wait for the event itself (no timing assumption about how soon it comes).
+        while sink.0.lock().unwrap().is_empty() {
+            std::thread::yield_now();
+        }
         drop(ticker);
-        let got = sink.0.lock().unwrap().clone();
-        assert!(got.len() >= 2 && got.last().unwrap() == "done", "{got:?}");
+        assert_eq!(*sink.0.lock().unwrap(), vec!["line", "done"]);
     }
 }
