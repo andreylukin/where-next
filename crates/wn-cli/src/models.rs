@@ -75,7 +75,7 @@ pub struct KnownModel {
 /// Models `wn model pull NAME` can install without `--source`.
 pub const KNOWN_MODELS: &[KnownModel] = &[KnownModel {
     name: "gemma-xl1",
-    source: "hf:lukandrey/where-next-gemma-xl1@0ba99c9950a937762f7b908ed6dd05acae185b32",
+    source: "hf:lukandrey/where-next-gemma-xl1@4d8b82a2de6904c611589911dc7364983b77b2c3",
     family: "gemma",
     download_mb: 1250,
 }];
