@@ -287,6 +287,7 @@ struct Stub {
     state: AnswerState,
     delay: Duration,
     asked: Mutex<Vec<(String, String)>>,
+    warmed: Mutex<Vec<PathBuf>>,
 }
 
 impl Stub {
@@ -300,11 +301,16 @@ impl Stub {
             state,
             delay,
             asked: Mutex::new(Vec::new()),
+            warmed: Mutex::new(Vec::new()),
         })
     }
 }
 
 impl Asker for Stub {
+    fn warm(&self, root: &Path) {
+        self.warmed.lock().unwrap().push(root.to_path_buf());
+    }
+
     fn ask(&self, _root: &Path, query: &str, context: &str) -> Option<Outcome> {
         std::thread::sleep(self.delay);
         self.asked
@@ -780,4 +786,70 @@ fn the_kill_switch_and_garbage_input_are_silent() {
     // WN_NO_DAEMON: hooks never answer in-process.
     let (out, code, _) = hook_bin("claude-prompt", &input, &env, &[("WN_NO_DAEMON", "1")]);
     assert_eq!((out.as_str(), code), ("", Some(0)));
+}
+
+#[test]
+fn session_start_warms_the_daemon_up_and_prints_nothing() {
+    let w = World::new(true);
+    let root = w.repo.path().canonicalize().unwrap();
+    let stub = Stub::new(&["src/a.rs"]);
+    let deps = w.deps(stub.clone());
+    let claude = json!({
+        "session_id": "s1", "transcript_path": "/tmp/t.jsonl", "cwd": w.cwd(),
+        "hook_event_name": "SessionStart", "source": "startup", "model": "claude-opus"
+    });
+    let codex = json!({
+        "session_id": "thr_1", "transcript_path": null, "cwd": w.cwd(),
+        "hook_event_name": "SessionStart", "model": "gpt-5.5-codex", "source": "startup"
+    });
+    let cursor = json!({
+        "session_id": "c1", "conversation_id": "c1", "hook_event_name": "sessionStart",
+        "workspace_roots": [w.cwd()], "is_background_agent": false, "composer_mode": "agent"
+    });
+    for (kind, input) in [
+        (HookKind::ClaudeStart, claude),
+        (HookKind::CodexStart, codex),
+        (HookKind::CursorStart, cursor),
+    ] {
+        assert_eq!(hooks::run(kind, &input.to_string(), &deps), "", "{kind:?}");
+    }
+    assert_eq!(
+        *stub.warmed.lock().unwrap(),
+        vec![root.clone(), root.clone(), root]
+    );
+    assert!(
+        stub.asked.lock().unwrap().is_empty(),
+        "a warm-up asks nothing itself"
+    );
+    // Not indexed: no warm-up.
+    let cold = World::new(false);
+    let stub = Stub::new(&[]);
+    let input = json!({ "session_id": "s", "cwd": cold.cwd(), "hook_event_name": "SessionStart" });
+    hooks::run(
+        HookKind::ClaudeStart,
+        &input.to_string(),
+        &cold.deps(stub.clone()),
+    );
+    assert!(stub.warmed.lock().unwrap().is_empty());
+}
+
+#[test]
+fn the_start_hook_returns_at_once() {
+    let w = World::new(true);
+    let home = w.home.path().to_path_buf();
+    let model = home.join("gemma-xl1");
+    let env = [
+        ("WHERE_NEXT_HOME", home.as_path()),
+        ("HOME", home.as_path()),
+        ("WN_MODEL_DIR", model.as_path()),
+    ];
+    let input = json!({ "session_id": "s", "cwd": w.cwd(), "hook_event_name": "SessionStart", "source": "startup" });
+    let (out, code, took) = hook_bin(
+        "claude-start",
+        &input.to_string(),
+        &env,
+        &[("WN_NO_DAEMON", "1")],
+    );
+    assert_eq!((out.as_str(), code), ("", Some(0)));
+    assert!(took < Duration::from_millis(1000), "{took:?}");
 }

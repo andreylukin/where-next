@@ -62,15 +62,24 @@ pub enum HookKind {
     CodexSearch,
     /// Cursor `postToolUse` on Shell and Grep.
     CursorSearch,
+    /// Claude Code `SessionStart`: starts the daemon and loads the model in the background.
+    ClaudeStart,
+    /// Codex `SessionStart`: the same warm-up.
+    CodexStart,
+    /// Cursor `sessionStart`: the same warm-up.
+    CursorStart,
 }
 
 impl HookKind {
-    pub const ALL: [HookKind; 5] = [
+    pub const ALL: [HookKind; 8] = [
         HookKind::ClaudePrompt,
         HookKind::ClaudeSearch,
         HookKind::CodexPrompt,
         HookKind::CodexSearch,
         HookKind::CursorSearch,
+        HookKind::ClaudeStart,
+        HookKind::CodexStart,
+        HookKind::CursorStart,
     ];
 
     /// The subcommand name (`claude-prompt`, …).
@@ -81,15 +90,18 @@ impl HookKind {
             HookKind::CodexPrompt => "codex-prompt",
             HookKind::CodexSearch => "codex-search",
             HookKind::CursorSearch => "cursor-search",
+            HookKind::ClaudeStart => "claude-start",
+            HookKind::CodexStart => "codex-start",
+            HookKind::CursorStart => "cursor-start",
         }
     }
 
     /// `claude`, `codex` or `cursor`.
     pub fn agent(self) -> &'static str {
         match self {
-            HookKind::ClaudePrompt | HookKind::ClaudeSearch => "claude",
-            HookKind::CodexPrompt | HookKind::CodexSearch => "codex",
-            HookKind::CursorSearch => "cursor",
+            HookKind::ClaudePrompt | HookKind::ClaudeSearch | HookKind::ClaudeStart => "claude",
+            HookKind::CodexPrompt | HookKind::CodexSearch | HookKind::CodexStart => "codex",
+            HookKind::CursorSearch | HookKind::CursorStart => "cursor",
         }
     }
 
@@ -97,11 +109,21 @@ impl HookKind {
         matches!(self, HookKind::ClaudePrompt | HookKind::CodexPrompt)
     }
 
+    /// A session-start warm-up (prints nothing, never waits).
+    pub fn is_start(self) -> bool {
+        matches!(
+            self,
+            HookKind::ClaudeStart | HookKind::CodexStart | HookKind::CursorStart
+        )
+    }
+
     fn default_event(self) -> &'static str {
         match self {
             HookKind::ClaudePrompt | HookKind::CodexPrompt => "UserPromptSubmit",
             HookKind::ClaudeSearch | HookKind::CodexSearch => "PostToolUse",
             HookKind::CursorSearch => "postToolUse",
+            HookKind::ClaudeStart | HookKind::CodexStart => "SessionStart",
+            HookKind::CursorStart => "sessionStart",
         }
     }
 }
@@ -120,6 +142,8 @@ pub enum Moment {
         pattern: String,
         results: Option<usize>,
     },
+    /// A session started: warm the daemon up.
+    Start,
 }
 
 /// A parsed hook payload.
@@ -276,7 +300,9 @@ pub fn parse(kind: HookKind, input: &str) -> Option<Trigger> {
     let event = s(&v, "hook_event_name")
         .unwrap_or(kind.default_event())
         .to_string();
-    let moment = if kind.is_prompt() {
+    let moment = if kind.is_start() {
+        Moment::Start
+    } else if kind.is_prompt() {
         let prompt = s(&v, "prompt")?.trim();
         if prompt.is_empty() {
             return None;
@@ -765,6 +791,8 @@ pub fn load_runs(home: &Path, since: u64) -> Vec<HookRun> {
 /// Answers a query for a repository (the daemon in production, a stub in tests).
 pub trait Asker: Send + Sync + 'static {
     fn ask(&self, root: &Path, query: &str, context: &str) -> Option<Outcome>;
+    /// Starts loading the model and index for `root` in the background; returns at once.
+    fn warm(&self, root: &Path);
 }
 
 /// Asks the background daemon (starting it when needed); never answers in-process.
@@ -786,6 +814,28 @@ impl Asker for DaemonAsker {
             return None;
         }
         serde_json::from_str(&json).ok()
+    }
+
+    fn warm(&self, root: &Path) {
+        if std::env::var("WN_NO_DAEMON").is_ok_and(|v| !v.is_empty() && v != "0") {
+            return;
+        }
+        let Ok(exe) = std::env::current_exe() else {
+            return;
+        };
+        // A detached `wn ask` through the daemon: starts it, loads the model and the index.
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg("--path")
+            .arg(root)
+            .args(["ask", "--no-log", "--json", "where is the entry point"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        {
+            use std::os::unix::process::CommandExt as _;
+            cmd.process_group(0);
+        }
+        let _ = cmd.spawn();
     }
 }
 
@@ -859,7 +909,9 @@ fn truncate(s: &str, max: usize) -> String {
 /// The context text for new hints.
 pub fn render(moment: &Moment, paths: &[String]) -> String {
     let head = match moment {
-        Moment::Prompt(_) => format!("{HOOK_MARKER} starting with these files for this prompt"),
+        Moment::Prompt(_) | Moment::Start => {
+            format!("{HOOK_MARKER} starting with these files for this prompt")
+        }
         Moment::Search { pattern, .. } => format!(
             "{HOOK_MARKER} these files for the search `{}`",
             truncate(pattern, 60)
@@ -928,9 +980,14 @@ pub fn run(kind: HookKind, input: &str, deps: &Deps) -> String {
     if files < deps.min_files {
         return String::new();
     }
+    if trigger.moment == Moment::Start {
+        deps.asker.warm(&root);
+        return String::new();
+    }
     let mut session = load_session(&deps.home, &trigger.session, deps.now);
     let (query, context) = match &trigger.moment {
         Moment::Prompt(p) => (p.clone(), String::new()),
+        Moment::Start => return String::new(),
         Moment::Search { pattern, results } => {
             let wanted = results.is_some_and(|n| n == 0 || n > SEARCH_MANY);
             let Some(words) = intent(pattern).filter(|_| wanted) else {

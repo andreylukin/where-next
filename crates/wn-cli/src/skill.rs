@@ -236,10 +236,16 @@ pub struct HookEntry {
 
 /// The hooks installed for an agent. Claude Code and Codex share the `settings.json` hooks shape
 /// (`hooks.<Event>[].hooks[]`); Cursor uses `hooks.json` version 1 (`hooks.<event>[]`).
-/// Cursor's prompt hook (`beforeSubmitPrompt`) cannot add context, so Cursor gets the search
-/// hook only.
+/// Every agent gets a session-start warm-up. Cursor's prompt hook (`beforeSubmitPrompt`) cannot
+/// add context, so Cursor gets no prompt hook.
 pub fn hook_entries(agent: Agent) -> &'static [HookEntry] {
     const CLAUDE: &[HookEntry] = &[
+        // Warm-up: starts the daemon so the first prompt's hook does not wait for the model.
+        HookEntry {
+            event: "SessionStart",
+            matcher: None,
+            kind: HookKind::ClaudeStart,
+        },
         HookEntry {
             event: "UserPromptSubmit",
             matcher: None,
@@ -259,6 +265,11 @@ pub fn hook_entries(agent: Agent) -> &'static [HookEntry] {
     ];
     const CODEX: &[HookEntry] = &[
         HookEntry {
+            event: "SessionStart",
+            matcher: None,
+            kind: HookKind::CodexStart,
+        },
+        HookEntry {
             event: "UserPromptSubmit",
             matcher: None,
             kind: HookKind::CodexPrompt,
@@ -269,11 +280,18 @@ pub fn hook_entries(agent: Agent) -> &'static [HookEntry] {
             kind: HookKind::CodexSearch,
         },
     ];
-    const CURSOR: &[HookEntry] = &[HookEntry {
-        event: "postToolUse",
-        matcher: Some("Shell|Grep"),
-        kind: HookKind::CursorSearch,
-    }];
+    const CURSOR: &[HookEntry] = &[
+        HookEntry {
+            event: "sessionStart",
+            matcher: None,
+            kind: HookKind::CursorStart,
+        },
+        HookEntry {
+            event: "postToolUse",
+            matcher: Some("Shell|Grep"),
+            kind: HookKind::CursorSearch,
+        },
+    ];
     match agent {
         Agent::Claude => CLAUDE,
         Agent::Codex => CODEX,
@@ -284,8 +302,10 @@ pub fn hook_entries(agent: Agent) -> &'static [HookEntry] {
 fn our_command_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r#"(?:^|[\s/'"])wn['"]?\s+hook\s+(?:claude|codex|cursor)-(?:prompt|search)\s*$"#)
-            .expect("valid regex")
+        Regex::new(
+            r#"(?:^|[\s/'"])wn['"]?\s+hook\s+(?:claude|codex|cursor)-(?:prompt|search|start)\s*$"#,
+        )
+        .expect("valid regex")
     })
 }
 
@@ -356,6 +376,117 @@ fn remove_ours(list: &mut Vec<Value>, nested: bool) -> bool {
     *list != before
 }
 
+/// The settings entry for one of our hooks.
+fn entry_value(agent: Agent, e: &HookEntry, program: &str) -> Value {
+    let command = hook_command(program, e.kind);
+    let mut entry = serde_json::Map::new();
+    if agent != Agent::Cursor {
+        if let Some(m) = e.matcher {
+            entry.insert("matcher".into(), Value::from(m));
+        }
+        entry.insert(
+            "hooks".into(),
+            serde_json::json!([{
+                "type": "command",
+                "command": command,
+                "timeout": HOOK_TIMEOUT_S,
+            }]),
+        );
+    } else {
+        entry.insert("command".into(), Value::from(command));
+        if let Some(m) = e.matcher {
+            entry.insert("matcher".into(), Value::from(m));
+        }
+        entry.insert("timeout".into(), Value::from(HOOK_TIMEOUT_S));
+    }
+    Value::Object(entry)
+}
+
+/// Whether a settings entry is entirely ours.
+fn is_our_entry(v: &Value, agent: Agent) -> bool {
+    let ours = |h: &Value| {
+        h.get("command")
+            .and_then(Value::as_str)
+            .is_some_and(is_our_command)
+    };
+    if agent == Agent::Cursor {
+        return ours(v);
+    }
+    v.get("hooks")
+        .and_then(Value::as_array)
+        .is_some_and(|hs| !hs.is_empty() && hs.iter().all(ours))
+}
+
+/// Text-level removal of our entries (see [`crate::jsonedit`]). `None` when the text cannot be
+/// scanned.
+fn remove_text(text: &str, agent: Agent) -> Option<String> {
+    use crate::jsonedit::{elements, member_items, members, remove_item, root};
+    let mut t = text.to_string();
+    loop {
+        let b = t.as_bytes();
+        let open = root(&t)?;
+        let (rm, rclose) = members(b, open)?;
+        let Some(hi) = rm.iter().position(|m| m.key == "hooks") else {
+            return Some(t);
+        };
+        let hv = rm[hi].value;
+        if b[hv.start] != b'{' {
+            return Some(t);
+        }
+        let (hm, hclose) = members(b, hv.start)?;
+        let mut next = None;
+        'events: for (j, m) in hm.iter().enumerate() {
+            if b[m.value.start] != b'[' {
+                continue;
+            }
+            let (es, close) = elements(b, m.value.start)?;
+            for (k, e) in es.iter().enumerate() {
+                let v: Value = serde_json::from_str(&t[e.start..e.end]).ok()?;
+                if !is_our_entry(&v, agent) {
+                    continue;
+                }
+                next = Some(if es.len() > 1 {
+                    remove_item(&t, m.value.start, close, &es, k)
+                } else if hm.len() > 1 {
+                    remove_item(&t, hv.start, hclose, &member_items(&hm), j)
+                } else {
+                    remove_item(&t, open, rclose, &member_items(&rm), hi)
+                });
+                break 'events;
+            }
+        }
+        match next {
+            Some(n) => t = n,
+            None => return Some(t),
+        }
+    }
+}
+
+/// Text-level insertion of our entries. `None` when the text cannot be scanned.
+fn add_text(text: &str, agent: Agent, program: &str) -> Option<String> {
+    use crate::jsonedit::{insert_member, members, push_element, root};
+    let mut t = text.to_string();
+    for e in hook_entries(agent) {
+        let entry = entry_value(agent, e, program);
+        let b = t.as_bytes();
+        let open = root(&t)?;
+        let (rm, _) = members(b, open)?;
+        t = match rm.iter().find(|m| m.key == "hooks") {
+            None => insert_member(&t, open, "hooks", &serde_json::json!({ e.event: [entry] }))?,
+            Some(h) if b[h.value.start] == b'{' => {
+                let (hm, _) = members(b, h.value.start)?;
+                match hm.iter().find(|m| m.key == e.event) {
+                    Some(m) if b[m.value.start] == b'[' => push_element(&t, m.value.start, &entry)?,
+                    Some(_) => return None,
+                    None => insert_member(&t, h.value.start, e.event, &serde_json::json!([entry]))?,
+                }
+            }
+            Some(_) => return None,
+        };
+    }
+    Some(t)
+}
+
 /// Adds (`add`) or removes our hook entries for `agent` in a settings value; other content is
 /// untouched. Removing drops only entries, event lists and the `hooks` object that our removal
 /// left empty.
@@ -389,30 +520,7 @@ pub fn edit_hooks(settings: &mut Value, agent: Agent, program: &str, add: bool) 
     let removed_any = !touched_events.is_empty();
     if add {
         for e in hook_entries(agent) {
-            let command = hook_command(program, e.kind);
-            let entry = if nested {
-                let mut entry = serde_json::Map::new();
-                if let Some(m) = e.matcher {
-                    entry.insert("matcher".into(), Value::from(m));
-                }
-                entry.insert(
-                    "hooks".into(),
-                    serde_json::json!([{
-                        "type": "command",
-                        "command": command,
-                        "timeout": HOOK_TIMEOUT_S,
-                    }]),
-                );
-                Value::Object(entry)
-            } else {
-                let mut entry = serde_json::Map::new();
-                entry.insert("command".into(), Value::from(command));
-                if let Some(m) = e.matcher {
-                    entry.insert("matcher".into(), Value::from(m));
-                }
-                entry.insert("timeout".into(), Value::from(HOOK_TIMEOUT_S));
-                Value::Object(entry)
-            };
+            let entry = entry_value(agent, e, program);
             let list = hooks
                 .entry(e.event)
                 .or_insert_with(|| Value::Array(Vec::new()));
@@ -587,18 +695,25 @@ pub fn hook_item(
     if uninstall && created && is_bare(&after) {
         return item(HookAction::Delete, None);
     }
-    // Byte-identical restore when the result is exactly what the file held before we came.
-    let original = record
-        .and_then(|r| r.original.as_deref())
-        .filter(|o| uninstall && serde_json::from_str::<Value>(o).is_ok_and(|v| v == after));
-    let text = match original {
-        Some(o) => o.to_string(),
-        None => {
-            let mut t = serde_json::to_string_pretty(&after).unwrap_or_default();
-            t.push('\n');
-            t
-        }
-    };
+    // Edit the text in place when possible, so other bytes stay as they are and uninstall gives
+    // back exactly what was there; otherwise re-serialise.
+    let textual = existing
+        .as_deref()
+        .filter(|t| !t.trim().is_empty())
+        .and_then(|t| remove_text(t, agent))
+        .and_then(|t| {
+            if uninstall {
+                Some(t)
+            } else {
+                add_text(&t, agent, program)
+            }
+        })
+        .filter(|t| serde_json::from_str::<Value>(t).is_ok_and(|v| v == after));
+    let text = textual.unwrap_or_else(|| {
+        let mut t = serde_json::to_string_pretty(&after).unwrap_or_default();
+        t.push('\n');
+        t
+    });
     let d = diff(existing.as_deref().unwrap_or(""), &text);
     let action = match (&existing, uninstall) {
         (_, true) => HookAction::Remove { diff: d },
@@ -690,9 +805,6 @@ pub struct HookRecord {
     /// `wn setup` created the file (it is deleted again when only our entries remain).
     #[serde(default)]
     pub created: bool,
-    /// The file's bytes before the first install (restored by uninstall when nothing else changed).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub original: Option<String>,
 }
 
 /// Recorded installs (`$WHERE_NEXT_HOME/skills.json`).
@@ -723,20 +835,52 @@ pub fn load_state(home: &Path) -> State {
                 agent: Agent::Claude,
                 path,
                 created: false,
-                original: None,
             });
         }
     }
     state
 }
 
-fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+/// Replaces `path` with `text` atomically: through a symlink to its target, keeping the file's
+/// permissions (`mode` for a new file), via a unique temporary file in the same directory.
+fn write_file(path: &Path, text: &str, mode: u32) -> std::io::Result<()> {
+    use std::io::Write as _;
+    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+    let target = match std::fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => std::fs::canonicalize(path)?,
+        _ => path.to_path_buf(),
+    };
+    let dir = target.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(dir)?;
+    let keep = std::fs::metadata(&target).ok().map(|m| m.permissions());
+    let name = target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let tmp = dir.join(format!(".{name}.wn-{}-{nanos}", std::process::id()));
+    let result = (|| {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(mode)
+            .open(&tmp)?;
+        f.write_all(text.as_bytes())?;
+        f.sync_all()?;
+        let perms = keep.unwrap_or_else(|| std::fs::Permissions::from_mode(mode));
+        std::fs::set_permissions(&tmp, perms)?;
+        std::fs::rename(&tmp, &target)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
     }
-    let tmp = path.with_extension("wn-tmp");
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, path)
+    result
+}
+
+fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
+    write_file(path, text, 0o644)
 }
 
 /// Applies a plan and records the result. Returns human-readable lines.
@@ -744,6 +888,22 @@ pub fn apply(plan: &Plan, home: &Path, uninstall: bool) -> Result<Vec<String>, S
     let mut lines = Vec::new();
     let mut state = load_state(home);
     let new = rendered();
+    // A settings file edited since the plan was shown is not overwritten.
+    for h in &plan.hooks {
+        let writes = matches!(
+            h.action,
+            HookAction::Create { .. }
+                | HookAction::Update { .. }
+                | HookAction::Remove { .. }
+                | HookAction::Delete
+        );
+        if writes && std::fs::read_to_string(&h.path).ok() != h.before {
+            return Err(format!(
+                "{} changed since the plan was shown; nothing was written to it (run wn setup again)",
+                h.path.display()
+            ));
+        }
+    }
     for (target, action) in &plan.items {
         match action {
             Action::Create | Action::Update { .. } => {
@@ -786,19 +946,11 @@ pub fn apply(plan: &Plan, home: &Path, uninstall: bool) -> Result<Vec<String>, S
                 write_atomic(&h.path, text).map_err(|e| format!("{}: {e}", h.path.display()))?;
                 lines.push(format!("{} hooks: wrote {}", h.agent, h.path.display()));
                 let previous = recorded.map(|i| state.hooks.remove(i));
-                let (created, original) = match previous {
-                    Some(r) => (r.created, r.original),
-                    // First install: remember what was there so uninstall can put it back.
-                    None => (
-                        h.before.is_none(),
-                        h.before.clone().filter(|b| !has_our_entries(b)),
-                    ),
-                };
+                let created = previous.map_or(h.before.is_none(), |r| r.created);
                 state.hooks.push(HookRecord {
                     agent: h.agent,
                     path: h.path.clone(),
                     created,
-                    original,
                 });
             }
             (HookAction::Remove { .. }, Some(text)) => {
@@ -819,7 +971,6 @@ pub fn apply(plan: &Plan, home: &Path, uninstall: bool) -> Result<Vec<String>, S
                 agent: h.agent,
                 path: h.path.clone(),
                 created: false,
-                original: None,
             }),
             (HookAction::Absent, _) => state.hooks.retain(|r| r.path != h.path),
             _ => {}
@@ -829,7 +980,7 @@ pub fn apply(plan: &Plan, home: &Path, uninstall: bool) -> Result<Vec<String>, S
     state.hooks.sort();
     state.version = plan.version.clone();
     let text = serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?;
-    write_atomic(&state_path(home), &(text + "\n")).map_err(|e| e.to_string())?;
+    write_file(&state_path(home), &(text + "\n"), 0o600).map_err(|e| e.to_string())?;
     Ok(lines)
 }
 

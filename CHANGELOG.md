@@ -22,6 +22,8 @@ explicitly.
 - **`wn uninstall`** removes everything wn added (agent skill and hooks, daemon, caches, models,
   source checkout, binary), after showing the list; `--keep-models`. `install.sh --uninstall` runs
   it.
+- A session-start hook (all three agents) starts the daemon and loads the model in the background,
+  so the first prompt's hook does not time out.
 - The installer asks to connect detected agents after the model step (default yes; `--yes`
   connects; skipped without a terminal). `wn init` suggests `wn setup` when no agent is connected.
 

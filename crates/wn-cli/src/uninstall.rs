@@ -42,11 +42,15 @@ Examples:
   wn uninstall                             ask, then remove everything
   wn uninstall --keep-models --yes         keep the downloaded models";
 
-/// One path to remove.
+/// What to remove under one location: exactly `items` (files or directories wn created), then
+/// `path` itself when it is a directory left empty. Nothing else in `path` is touched.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Removal {
     pub what: String,
     pub path: PathBuf,
+    pub items: Vec<PathBuf>,
+    /// Entries in `path` that are not wn's and stay.
+    pub others: usize,
 }
 
 /// What `wn uninstall` will do.
@@ -88,42 +92,221 @@ impl Locations {
     }
 }
 
-/// Plans the uninstall.
-pub fn plan(loc: &Locations, keep_models: bool) -> Plan {
-    let setup = uninstall_args();
-    let state = skill::load_state(&loc.wn_home);
-    let (targets, hooks) = skill::resolve(&setup, None, &loc.user_home, &state);
-    let agents = skill::plan(&targets, true, &hooks, "wn");
+/// Which wn directory a root is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// `$WHERE_NEXT_HOME`.
+    Cache,
+    /// `$WN_MODELS_HOME`.
+    Models,
+    /// `$WN_HOME` (source checkout).
+    Data,
+}
+
+impl Kind {
+    fn var(self) -> &'static str {
+        match self {
+            Kind::Cache => "WHERE_NEXT_HOME",
+            Kind::Models => "WN_MODELS_HOME",
+            Kind::Data => "WN_HOME",
+        }
+    }
+}
+
+fn canon(p: &Path) -> PathBuf {
+    p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
+}
+
+/// Refuses a directory that must never be removed recursively: empty or relative paths, `/`, a
+/// top-level directory, your home directory or anything containing it.
+pub fn check_root(kind: Kind, path: &Path, home: &Path) -> Result<(), String> {
+    let refuse = |why: &str| {
+        Err(format!(
+            "refusing to remove {} ({}): {why}",
+            if path.as_os_str().is_empty() {
+                "\"\"".to_string()
+            } else {
+                path.display().to_string()
+            },
+            kind.var()
+        ))
+    };
+    if path.as_os_str().is_empty() {
+        return refuse("the path is empty");
+    }
+    if !path.is_absolute() {
+        return refuse("the path is relative");
+    }
+    let p = canon(path);
+    match p.parent() {
+        None => return refuse("it is /"),
+        Some(parent) if parent.parent().is_none() => return refuse("it is a top-level directory"),
+        _ => {}
+    }
+    let h = canon(home);
+    if p == h {
+        return refuse("it is your home directory");
+    }
+    if h.starts_with(&p) {
+        return refuse("it contains your home directory");
+    }
+    Ok(())
+}
+
+fn repo_dir_name(name: &str) -> bool {
+    name.rsplit_once('-').is_some_and(|(stem, hash)| {
+        !stem.is_empty() && hash.len() == 16 && hash.bytes().all(|b| b.is_ascii_hexdigit())
+    })
+}
+
+/// The entries of `root` that wn created, and how many others there are.
+pub fn owned(kind: Kind, root: &Path) -> (Vec<PathBuf>, usize) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return (Vec::new(), 0);
+    };
+    let mut ours = Vec::new();
+    let mut others = 0;
+    for e in entries.flatten() {
+        let path = e.path();
+        let name = e.file_name().to_string_lossy().into_owned();
+        let dir = path.is_dir() && !e.file_type().is_ok_and(|t| t.is_symlink());
+        let has = |f: &str| path.join(f).exists();
+        let mine = match kind {
+            Kind::Cache => {
+                matches!(
+                    name.as_str(),
+                    "daemon.log"
+                        | "daemon.sock"
+                        | "skills.json"
+                        | "hook-log.jsonl"
+                        | "fingerprints.json"
+                ) || (dir && name == "hook-sessions")
+                    || name.starts_with(".skills.json.wn-")
+                    || (dir && repo_dir_name(&name))
+                    || (dir
+                        && name == "models"
+                        && std::fs::read_dir(&path).is_ok_and(|mut it| {
+                            it.any(|m| {
+                                m.ok().is_some_and(|m| {
+                                    let p = m.path();
+                                    p.join("wn-model.json").exists()
+                                        || p.join("model.safetensors").exists()
+                                })
+                            })
+                        }))
+            }
+            Kind::Models => {
+                dir && (has("wn-model.json")
+                    || (name.starts_with('.') && name.ends_with(".pulling")))
+            }
+            Kind::Data => dir && name == "src" && has(".git"),
+        };
+        if mine {
+            ours.push(path);
+        } else {
+            others += 1;
+        }
+    }
+    ours.sort();
+    (ours, others)
+}
+
+/// Files the release installer put beside the binary, when its records say so: the paths listed
+/// in `wn.install-files` (which must list this binary), or, for installs from before that file,
+/// a `wn.install-method` that says `release` plus the bundled `libonnxruntime.so`.
+fn installer_files(exe: &Path) -> Vec<PathBuf> {
+    let Some(dir) = exe.parent() else {
+        return Vec::new();
+    };
+    let marker = dir.join("wn.install-method");
+    let manifest = dir.join("wn.install-files");
+    let sidecar = |p: &Path| {
+        p.parent() == Some(dir)
+            && matches!(
+                p.file_name().and_then(|n| n.to_str()),
+                Some("libonnxruntime.so" | "wn.install-method" | "wn.install-files")
+            )
+    };
+    if let Ok(text) = std::fs::read_to_string(&manifest) {
+        let listed: Vec<PathBuf> = text.lines().map(PathBuf::from).collect();
+        if !listed.iter().any(|p| canon(p) == canon(exe)) {
+            return Vec::new();
+        }
+        let mut out: Vec<PathBuf> = listed
+            .into_iter()
+            .filter(|p| sidecar(p) && p.exists())
+            .collect();
+        out.push(manifest);
+        if marker.exists() && !out.contains(&marker) {
+            out.push(marker);
+        }
+        return out;
+    }
+    if std::fs::read_to_string(&marker).is_ok_and(|t| t.trim() == "release") {
+        let lib = dir.join("libonnxruntime.so");
+        return [lib, marker].into_iter().filter(|p| p.exists()).collect();
+    }
+    Vec::new()
+}
+
+/// Plans the uninstall. Refuses (before looking at anything else) a location it must not remove.
+pub fn plan(loc: &Locations, keep_models: bool) -> Result<Plan, String> {
+    for (kind, path) in [
+        (Kind::Cache, &loc.wn_home),
+        (Kind::Models, &loc.models),
+        (Kind::Data, &loc.data),
+    ] {
+        check_root(kind, path, &loc.user_home)?;
+    }
     let mut paths = Vec::new();
     let mut kept = Vec::new();
     let mut notes = Vec::new();
-    let mut add = |what: &str, path: &Path| {
-        if path.exists() {
-            paths.push(Removal {
-                what: what.into(),
-                path: path.to_path_buf(),
-            });
+    let root = |kind: Kind, what: &str, path: &Path| -> Result<Option<Removal>, String> {
+        if !path.exists() {
+            return Ok(None);
         }
+        let (items, others) = owned(kind, path);
+        if items.is_empty() && others > 0 {
+            return Err(format!(
+                "refusing to touch {} ({}): nothing in it looks like wn's",
+                path.display(),
+                kind.var()
+            ));
+        }
+        Ok(Some(Removal {
+            what: what.into(),
+            path: path.to_path_buf(),
+            items,
+            others,
+        }))
     };
-    add(
+    let cache = root(
+        Kind::Cache,
         "indexes, adapters, usage and hook logs, setup state",
         &loc.wn_home,
-    );
+    )?;
+    let models = root(Kind::Models, "models", &loc.models)?;
+    let data = root(Kind::Data, "source checkout used by `wn update`", &loc.data)?;
+    paths.extend(cache);
+    let single = |what: &str, path: &Path| Removal {
+        what: what.into(),
+        path: path.to_path_buf(),
+        items: vec![path.to_path_buf()],
+        others: 0,
+    };
     let socket = crate::daemon::socket_path(&loc.wn_home);
-    if !socket.starts_with(&loc.wn_home) {
-        add("daemon socket", &socket);
+    if !socket.starts_with(&loc.wn_home) && socket.exists() {
+        paths.push(single("daemon socket", &socket));
     }
-    if keep_models {
-        if loc.models.exists() {
-            kept.push(Removal {
-                what: "models (--keep-models)".into(),
-                path: loc.models.clone(),
-            });
-        }
-    } else {
-        add("models", &loc.models);
+    match (models, keep_models) {
+        (Some(m), true) => kept.push(Removal {
+            what: "models (--keep-models)".into(),
+            ..m
+        }),
+        (Some(m), false) => paths.push(m),
+        (None, _) => {}
     }
-    add("source checkout used by `wn update`", &loc.data);
+    paths.extend(data);
     if let Some(exe) = &loc.exe {
         let text = exe.to_string_lossy();
         let managed = if text.contains("/Cellar/") || text.contains("/homebrew/") {
@@ -138,12 +321,10 @@ pub fn plan(loc: &Locations, keep_models: bool) -> Plan {
                 "the wn binary belongs to a package manager: remove it with `{cmd}`"
             )),
             None => {
+                for f in installer_files(exe) {
+                    paths.push(single("installed with wn by install.sh", &f));
+                }
                 if let Some(dir) = exe.parent() {
-                    add(
-                        "ONNX Runtime library installed with wn",
-                        &dir.join("libonnxruntime.so"),
-                    );
-                    add("installer marker", &dir.join("wn.install-method"));
                     if dir.ends_with(".cargo/bin") {
                         notes.push(
                             "cargo still lists the package: `cargo uninstall where-next` clears that record"
@@ -155,17 +336,28 @@ pub fn plan(loc: &Locations, keep_models: bool) -> Plan {
                         dir.display()
                     ));
                 }
-                add("the wn binary", exe);
+                paths.push(single("the wn binary", exe));
             }
         }
     }
-    Plan {
+    for r in paths.iter().filter(|r| r.others > 0) {
+        notes.push(format!(
+            "{} other entries in {} are not wn's and stay",
+            r.others,
+            r.path.display()
+        ));
+    }
+    let setup = uninstall_args();
+    let state = skill::load_state(&loc.wn_home);
+    let (targets, hooks) = skill::resolve(&setup, None, &loc.user_home, &state);
+    let agents = skill::plan(&targets, true, &hooks, "wn");
+    Ok(Plan {
         daemon: crate::daemon::client::stats(&loc.wn_home).is_some(),
         agents,
         paths,
         kept,
         notes,
-    }
+    })
 }
 
 fn uninstall_args() -> SyncArgs {
@@ -220,7 +412,26 @@ pub fn render(p: &Plan) -> String {
         }
     }
     for r in &p.paths {
-        out.push(format!("  {}  ({})", r.path.display(), r.what));
+        if r.items == [r.path.clone()] {
+            out.push(format!("  {}  ({})", r.path.display(), r.what));
+        } else {
+            out.push(format!(
+                "  {}  ({}: {} {} wn created{})",
+                r.path.display(),
+                r.what,
+                r.items.len(),
+                if r.items.len() == 1 {
+                    "entry"
+                } else {
+                    "entries"
+                },
+                if r.others > 0 {
+                    "; other files stay"
+                } else {
+                    ""
+                }
+            ));
+        }
     }
     if p.is_empty() {
         out.push("  nothing: no wn files found".into());
@@ -258,10 +469,23 @@ pub fn apply(p: &Plan, loc: &Locations) -> (Vec<String>, Vec<String>) {
         }
     }
     for r in &p.paths {
-        match remove(&r.path) {
-            Ok(()) => done.push(format!("removed {}", r.path.display())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => failed.push(format!("{}: {e}", r.path.display())),
+        let mut ok = true;
+        for item in &r.items {
+            match remove(item) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    ok = false;
+                    failed.push(format!("{}: {e}", item.display()));
+                }
+            }
+        }
+        // The directory itself only when nothing else is left in it.
+        if r.items != [r.path.clone()] && r.path.is_dir() {
+            let _ = std::fs::remove_dir(&r.path);
+        }
+        if ok {
+            done.push(format!("removed {}", r.path.display()));
         }
     }
     (done, failed)
@@ -281,7 +505,10 @@ pub struct Report {
 /// Runs `wn uninstall`.
 pub fn run(args: &UninstallArgs, json: bool) -> (String, i32) {
     let loc = Locations::detect();
-    let plan = plan(&loc, args.keep_models);
+    let plan = match plan(&loc, args.keep_models) {
+        Ok(p) => p,
+        Err(e) => return (format!("wn uninstall: {e}; nothing was removed"), 1),
+    };
     let mut life = SyncLifecycle::default();
     let mut removed = Vec::new();
     let mut failed = Vec::new();

@@ -46,8 +46,10 @@ Guarantees:
 - **Idempotent.** Each skill file carries a marker line with the skill version; hook entries are
   recognised by their command (`… wn hook <agent>-<moment>`). Re-running changes nothing when both
   are current.
-- **Merges, never clobbers.** Hooks are added next to your other settings and hooks; nothing else
-  in the file changes (it is rewritten as formatted JSON). A settings file that is not valid JSON
+- **Merges, never clobbers.** Hooks are inserted as text next to your other settings and hooks;
+  the rest of the file keeps its bytes. A symlinked settings file is written through the link,
+  permissions are kept, and a file edited after the plan was shown is not overwritten. wn keeps
+  no copy of your settings (`skills.json` records only which files it touched, mode 0600). A settings file that is not valid JSON
   is reported and left alone, and so is a `SKILL.md` without the marker. Codex: when
   `~/.codex/config.toml` defines hooks inline, `hooks.json` is left alone (Codex warns when a layer
   has both).
@@ -70,20 +72,26 @@ agent's context. The agent never has to remember wn exists.
 
 | Agent | Event (matcher) | Command |
 |---|---|---|
+| Claude Code | `SessionStart` | `wn hook claude-start` |
 | Claude Code | `UserPromptSubmit` | `wn hook claude-prompt` |
 | Claude Code | `PostToolUse` (`Grep\|Glob\|Bash`), `PostToolUseFailure` (`Bash`) | `wn hook claude-search` |
+| Codex | `SessionStart` | `wn hook codex-start` |
 | Codex | `UserPromptSubmit` | `wn hook codex-prompt` |
 | Codex | `PostToolUse` (`Bash`) | `wn hook codex-search` |
+| Cursor | `sessionStart` | `wn hook cursor-start` |
 | Cursor | `postToolUse` (`Shell\|Grep`) | `wn hook cursor-search` |
 
 Each entry has a 5-second agent-side `timeout`. The command names `wn` when that is the binary on
 your `PATH`, else its absolute path. Cursor has no prompt hook that can add context
-(`beforeSubmitPrompt` can only allow or block), so it gets the search hook only. **Codex runs new
+(`beforeSubmitPrompt` can only allow or block), so it gets the warm-up and search hooks. **Codex runs new
 hooks only after you trust them**: open Codex, run `/hooks` and trust the where-next entries.
 Claude Code and Cursor pick them up in new sessions.
 
 **When they fire**
 
+- *Session start* (all three): in an indexed repository, starts a background `wn ask` through the
+  daemon so the model and index are loaded before the first prompt, and returns at once with no
+  output.
 - *Prompt* (Claude Code, Codex): on every prompt, the prompt is asked as a query.
 - *Search* (all three): after `rg`, `grep`, `git grep`, `ag`, `ack`, `fd` or `find` in a shell, or
   the Grep/Glob tools, when the search found nothing or more than 30 results. The pattern is asked,
@@ -104,10 +112,11 @@ session, no model is installed (the lexical fallback has no calibrated threshold
 not in a git repository, the repository has no index for the installed model (`wn init` once per
 repository), the payload is not one it understands, or `WN_HOOKS=0`. It never loads a model or
 builds an index itself: it asks the background daemon (starting it if needed) and gives up after
-1.5 s. The first hook after the daemon has been idle usually gives up while the daemon loads the
-model; the next ones are fast. On this repository (101 source files, gemma-xl1, debug build, Apple
+1.5 s. The session-start warm-up loads the model first; without it (or when the daemon has been
+idle for 15 minutes mid-session) the first hook can give up while the model loads. On this repository (101 source files, gemma-xl1, debug build, Apple
 Silicon) warm prompt and search hooks took 35–42 ms end to end, including process start, and a
-shell command that is not a search 10 ms.
+shell command that is not a search 10 ms. The session-start hook returned in 11 ms, and the first
+prompt hook a few seconds later answered in 112 ms.
 
 **Local state.** Per session, the paths already injected are kept in
 `$WHERE_NEXT_HOME/hook-sessions/` and expire after a day. Each run that asked the daemon is logged

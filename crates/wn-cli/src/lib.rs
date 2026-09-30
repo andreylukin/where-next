@@ -8,6 +8,7 @@ pub mod ask_text;
 pub mod bench;
 pub mod daemon;
 pub mod hooks;
+pub mod jsonedit;
 pub mod progress;
 pub mod report;
 pub mod update;

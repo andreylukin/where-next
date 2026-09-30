@@ -91,12 +91,20 @@ It removes, in this order:
    your other settings and hooks stay, and a file restored to what it was before `wn setup` gets
    its original bytes back. A hooks file that `wn setup` created and that holds nothing else is
    deleted.
-3. `~/.cache/where-next` (`$WHERE_NEXT_HOME`): indexes, adapters, usage and hook logs, setup state,
-   daemon log and socket.
-4. `~/.cache/where-next-models` (`$WN_MODELS_HOME`), unless `--keep-models`.
-5. `~/.local/share/where-next` (`$WN_HOME`): the source checkout used by `wn update`, if present.
-6. The `wn` binary it runs as, and beside it `libonnxruntime.so` (Linux release installs) and the
-   installer's `wn.install-method` marker.
+3. In `~/.cache/where-next` (`$WHERE_NEXT_HOME`): the per-repository index directories
+   (`<name>-<16 hex digits>`), `daemon.log`, `daemon.sock`, `fingerprints.json`, `skills.json`,
+   `hook-log.jsonl`, `hook-sessions/`; then the directory if that left it empty.
+4. In `~/.cache/where-next-models` (`$WN_MODELS_HOME`), unless `--keep-models`: each model
+   directory with a `wn-model.json` and interrupted `.<name>.pulling` downloads; then the directory
+   if empty.
+5. In `~/.local/share/where-next` (`$WN_HOME`): `src/`, the source checkout used by `wn update`.
+6. The `wn` binary it runs as, and the files the release installer recorded beside it in
+   `wn.install-files` (`libonnxruntime.so` on Linux, `wn.install-method`); for installs from before
+   that file, `libonnxruntime.so` only when `wn.install-method` says `release`.
+
+Anything else in those directories stays. It refuses, before removing anything, when one of
+them is empty, relative, `/`, a top-level directory, your home directory or a directory above
+it, or holds files but nothing wn wrote.
 
 It says what it removed and what it could not remove. It never edits your shell profile: if you
 added the install directory to `PATH`, remove that line yourself. A `wn` binary inside a Homebrew
@@ -105,7 +113,7 @@ where-next` also clears cargo's record.
 
 Without a working `wn`, the installer does the same file removals:
 `curl -fsSL https://raw.githubusercontent.com/andreylukin/where-next/main/install.sh | sh -s -- --uninstall`
-(it runs `wn uninstall --yes` when `wn` is there). Hook entries in agent settings can only be
+(it runs `wn uninstall --yes` when `wn` is there, with the same refusals and the same list). Hook entries in agent settings can only be
 removed by `wn`; without it, delete the where-next entries (`… wn hook …`) by hand.
 
 ## Updating

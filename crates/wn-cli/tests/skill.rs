@@ -463,3 +463,69 @@ fn init_suggests_setup_until_an_agent_is_connected() {
     assert_eq!(code, 0, "{out}");
     assert!(!init().contains(wn_cli::skill::CONNECT_HINT));
 }
+
+#[test]
+fn settings_behind_a_symlink_keep_the_link_and_their_permissions() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let env = Env::new(&[".claude"]);
+    let real_dir = env.home().join("dotfiles");
+    fs::create_dir_all(&real_dir).unwrap();
+    let real = real_dir.join("claude-settings.json");
+    let original = "{\n  \"env\": { \"API_KEY\": \"sk-secret-canary\" }\n}\n";
+    fs::write(&real, original).unwrap();
+    fs::set_permissions(&real, fs::Permissions::from_mode(0o600)).unwrap();
+    let link = env.home().join(".claude/settings.json");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    let (out, code) = env.wn(&["setup", "--yes", "--agent", "claude"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(fs::symlink_metadata(&link)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert!(fs::read_to_string(&real)
+        .unwrap()
+        .contains("wn hook claude-prompt"));
+    assert_eq!(
+        fs::metadata(&real).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    // wn keeps no copy of the settings: only which files it touched, privately.
+    let state = env.wn_home.path().join("skills.json");
+    assert!(!fs::read_to_string(&state)
+        .unwrap()
+        .contains("sk-secret-canary"));
+    assert_eq!(
+        fs::metadata(&state).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let leftovers: Vec<_> = fs::read_dir(&real_dir).unwrap().flatten().collect();
+    assert_eq!(leftovers.len(), 1, "no temporary files left behind");
+
+    let (out, code) = env.wn(&["setup", "--uninstall", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(fs::symlink_metadata(&link)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(fs::read_to_string(&real).unwrap(), original);
+}
+
+#[test]
+fn a_file_edited_after_the_plan_is_not_overwritten() {
+    use wn_cli::skill::{apply, plan, Agent, HookRecord};
+    let env = Env::new(&[".claude"]);
+    let settings = env.home().join(".claude/settings.json");
+    fs::write(&settings, "{\"model\": \"opus\"}\n").unwrap();
+    let files: Vec<(Agent, std::path::PathBuf, Option<HookRecord>)> =
+        vec![(Agent::Claude, settings.clone(), None)];
+    let p = plan(&[], false, &files, "wn");
+    assert!(p.has_changes());
+    fs::write(&settings, "{\"model\": \"sonnet\"}\n").unwrap();
+    let err = apply(&p, env.wn_home.path(), false).unwrap_err();
+    assert!(err.contains("changed since the plan"), "{err}");
+    assert_eq!(
+        fs::read_to_string(&settings).unwrap(),
+        "{\"model\": \"sonnet\"}\n"
+    );
+}

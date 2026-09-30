@@ -236,7 +236,8 @@ WN_NO_MODEL="" WN_MODEL_SOURCE="$models" src_install --yes --no-model 2>"$work/n
 grep -q "wn model pull" "$work/nomodel.err" || fail "--no-model did not say how to install later"
 
 # 14. --uninstall asks wn to remove everything, and removes the binary, clone and caches itself too.
-mkdir -p "$work/home/.cache/where-next/repo-1" "$work/home/.cache/where-next-models/gemma-xl1"
+mkdir -p "$work/home/.cache/where-next/repo-0123456789abcdef" "$work/home/.cache/where-next-models/gemma-xl1"
+printf '{}' > "$work/home/.cache/where-next-models/gemma-xl1/wn-model.json"
 src_install --uninstall 2>/dev/null
 grep -qx 'uninstall --yes' "$FAKE_ROOT/uninstall.log" || fail "uninstall did not run wn uninstall --yes"
 [ ! -e "$FAKE_ROOT/bin/wn" ] || fail "uninstall left the binary"
@@ -319,6 +320,10 @@ printf '\n' > "$work/tty-yes"
 WN_INSTALL_TTY="$work/tty-yes" agents_install ttyyes
 grep -qx 'setup --yes' "$work/ttyyes.log" || fail "the default answer did not run wn setup"
 ! grep -A6 'next steps:' "$work/ttyyes.err" | grep -q 'wn setup' || fail "next steps repeat wn setup after connecting"
+: > "$work/tty-eof"
+WN_INSTALL_TTY="$work/tty-eof" agents_install ttyeof
+[ "$(setups ttyeof | tr -d ' ')" = 1 ] || fail "a failed terminal read connected agents ($(setups ttyeof) setup calls)"
+! grep -qx 'setup --yes' "$work/ttyeof.log" || fail "a failed terminal read counted as yes"
 rm -rf "$work/noagent-home"; mkdir -p "$work/noagent-home"
 printf '\n' > "$work/tty-none"
 FAKE_SETUP_LOG="$work/noagent.log" HOME="$work/noagent-home" WN_INSTALL_TTY="$work/tty-none" WN_RELEASE_BASE="file://$work/logging" \
@@ -328,7 +333,34 @@ mkdir -p "$work/ttyyes-home/.cache/where-next-models/gemma-xl1"
 HOME="$work/ttyyes-home" WN_INSTALL_DIR="$work/ttyyes-bin" FAKE_SETUP_LOG="$work/ttyyes.log" sh "$root/install.sh" --uninstall --keep-models 2>/dev/null
 grep -qx 'uninstall --yes --keep-models' "$work/ttyyes.log" || fail "uninstall did not run wn uninstall --keep-models"
 [ -d "$work/ttyyes-home/.cache/where-next-models/gemma-xl1" ] || fail "--keep-models removed the models"
-echo "install.sh: 8 agent-setup tests passed"
+echo "install.sh: 9 agent-setup tests passed"
+
+# Uninstall never removes a directory it must not: $HOME, /, its parents, a relative path; and in
+# a directory shared with other files it removes only what wn wrote.
+guard_home="$work/guard/users/me"
+mkdir -p "$guard_home/src/.git" "$guard_home/projects"
+printf 'mine\n' > "$guard_home/notes.txt"
+printf 'x\n' > "$guard_home/projects/thesis.tex"
+for var in WHERE_NEXT_HOME WN_MODELS_HOME WN_HOME; do
+  for value in "$guard_home" / "$work/guard/users" relative/dir /usr; do
+    if env HOME="$guard_home" "$var=$value" WN_INSTALL_DIR="$guard_home/bin" sh "$root/install.sh" --uninstall 2>"$work/guard.err"; then
+      fail "uninstall accepted $var=$value"
+    fi
+    grep -q 'refusing' "$work/guard.err" || fail "uninstall with $var=$value did not say it refused"
+    [ -f "$guard_home/notes.txt" ] && [ -f "$guard_home/projects/thesis.tex" ] && [ -d "$guard_home/src/.git" ] \
+      || fail "uninstall with $var=$value removed files"
+  done
+done
+shared="$guard_home/shared"
+mkdir -p "$shared/where-next-0123456789abcdef/index"
+printf 'log\n' > "$shared/daemon.log"
+printf 'keep\n' > "$shared/other-app.db"
+HOME="$guard_home" WHERE_NEXT_HOME="$shared" WN_INSTALL_DIR="$guard_home/bin" sh "$root/install.sh" --uninstall 2>/dev/null \
+  || fail "uninstall with a shared cache directory failed"
+[ -f "$shared/other-app.db" ] || fail "uninstall removed a file that is not wn's"
+[ ! -e "$shared/daemon.log" ] && [ ! -e "$shared/where-next-0123456789abcdef" ] || fail "uninstall left wn's files"
+[ -d "$guard_home/src/.git" ] || fail "uninstall removed a non-wn ~/src"
+echo "install.sh: uninstall guard tests passed"
 
 # Explicit source mode without --ref uses the latest release tag, not the moving main branch.
 g -C "$up" tag v99.0.0-rc1 "$second"
