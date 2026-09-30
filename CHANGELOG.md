@@ -7,6 +7,11 @@ explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- Index Vue, Svelte and Astro components as source files, with compact component content in their
+  file embeddings.
+
 ### Fixed
 
 - Text output escapes terminal controls in repository paths and symbol names, including with
