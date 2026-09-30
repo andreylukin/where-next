@@ -7,6 +7,7 @@ pub mod agents;
 pub mod ask_text;
 pub mod bench;
 pub mod daemon;
+pub mod hooks;
 pub mod progress;
 pub mod report;
 pub mod update;
@@ -35,6 +36,7 @@ use wn_sources::{read_text, Kind, MAX_CONFIG_BYTES, MAX_SOURCE_BYTES};
 pub mod models;
 pub mod skill;
 pub mod stats;
+pub mod uninstall;
 
 /// `wn --version`: the crate version plus the commit it was built from, e.g. `0.1.0 (abc1234 2026-09-29)`.
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("WN_VERSION_SUFFIX"));
@@ -81,7 +83,7 @@ Examples:
   wn ask \"where is the retry logic for S3 upload timeouts\"
   wn bench                                 replay this repository's history: hit@1/3/10
   wn stats                                 did your agents use the hints? replay vs grep, speed
-  wn skill sync                            let Claude Code / Codex / Cursor call wn
+  wn setup                                 connect Claude Code / Codex / Cursor (skill + hooks)
 
 Docs: https://github.com/andreylukin/where-next#quick-start";
 
@@ -154,7 +156,7 @@ Examples:
   wn stats --no-agents                     skip reading agent transcripts";
 
 const MCP_EXAMPLES: &str = "\
-Most agents only need the skill (`wn skill sync`), which calls `wn ask` directly. Use the MCP
+Most agents only need `wn setup` (skill + hooks), which calls `wn ask` directly. Use the MCP
 server for clients that prefer tools; it answers for the repository it is started in.
 
 Examples:
@@ -167,6 +169,11 @@ pub enum Command {
     /// Index the repository and fit its personal adapter from git history.
     #[command(after_help = INIT_EXAMPLES)]
     Init,
+    /// Connect Claude Code, Codex and Cursor so hints reach them automatically (skill + hooks).
+    ///
+    /// Asks first; `wn setup --uninstall` removes everything it added.
+    #[command(after_help = skill::SETUP_EXAMPLES)]
+    Setup(skill::SyncArgs),
     /// Rank the files (and optionally functions) to open next for a task.
     #[command(after_help = ASK_EXAMPLES)]
     Ask {
@@ -286,7 +293,7 @@ pub enum Command {
         #[command(subcommand)]
         action: daemon::DaemonAction,
     },
-    /// Install or update the where-next skill for Claude Code, Codex and Cursor.
+    /// The where-next skill (`wn skill sync` is `wn setup`; `wn skill show` prints it).
     Skill {
         #[command(subcommand)]
         action: skill::SkillAction,
@@ -295,8 +302,13 @@ pub enum Command {
     #[command(hide = true)]
     Hook {
         #[command(subcommand)]
-        action: HookAction,
+        kind: hooks::HookKind,
     },
+    /// Remove wn and everything it added: agent skill and hooks, caches, models, the binary.
+    ///
+    /// Shows the full list first and asks once.
+    #[command(after_help = uninstall::UNINSTALL_EXAMPLES)]
+    Uninstall(uninstall::UninstallArgs),
     /// Install, list or remove models.
     #[cfg(feature = "onnx")]
     Model {
@@ -305,11 +317,12 @@ pub enum Command {
     },
 }
 
-/// `wn hook …`
-#[derive(Debug, Clone, Subcommand)]
-pub enum HookAction {
-    /// Claude Code `UserPromptSubmit`: reads the event on stdin, prints hints for the context.
-    ClaudePrompt,
+/// The user's home directory (where agents keep their settings).
+pub fn skill_home() -> PathBuf {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
 }
 
 /// Cache root: `$WHERE_NEXT_HOME`, else `~/.cache/where-next`.
@@ -1066,13 +1079,17 @@ fn run_command(cli: Cli) -> (String, i32) {
     if let Command::Skill { action } = &cli.command {
         return skill::run(action, &cli);
     }
-    if let Command::Hook {
-        action: HookAction::ClaudePrompt,
-    } = &cli.command
-    {
+    if let Command::Setup(args) = &cli.command {
+        return skill::run_sync(args, &cli);
+    }
+    if let Command::Uninstall(args) = &cli.command {
+        return uninstall::run(args, cli.json);
+    }
+    if let Command::Hook { kind } = &cli.command {
+        // Fail open: a hook always exits 0 and prints nothing unless it has hints.
         let mut input = String::new();
         let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut input);
-        return (skill::claude_prompt_hook(&input), 0);
+        return (hooks::run(*kind, &input, &hooks::Deps::from_env()), 0);
     }
     let json = cli.json;
     // `ask` and `status` go through the background daemon (warm model and index) when it is
@@ -1093,7 +1110,13 @@ fn run_command(cli: Cli) -> (String, i32) {
     ws.progress = Some(render);
     let out = |value: &dyn erased::Json, text: String| if json { value.to_json() } else { text };
     match cli.command {
-        Command::Init => status_command(&mut ws, StatusKind::Init, json),
+        Command::Init => {
+            let out = status_command(&mut ws, StatusKind::Init, json);
+            if !json && out.1 == 0 && !skill::connected(&skill_home(), Some(&ws.root)) {
+                eprintln!("{}", skill::CONNECT_HINT);
+            }
+            out
+        }
         Command::Status => status_command(&mut ws, StatusKind::Status, json),
         Command::Train => status_command(&mut ws, StatusKind::Train, json),
         Command::Ask {
@@ -1136,6 +1159,8 @@ fn run_command(cli: Cli) -> (String, i32) {
         | Command::Stats { .. }
         | Command::Daemon { .. }
         | Command::Skill { .. }
+        | Command::Setup(_)
+        | Command::Uninstall(_)
         | Command::Hook { .. } => {
             unreachable!("handled above")
         }
@@ -1164,7 +1189,7 @@ pub fn run_stats(cli: &Cli, opts: &StatsArgs) -> (String, i32) {
     let since = now.saturating_sub(days * 86_400);
     // Match calls against every repository's answers, so a call is never pinned on the wrong one.
     let score = read_agents.then(|| agents::collect(&agents::Roots::detect(), &usage, since));
-    let Some(stats) = stats::build(
+    let Some(mut stats) = stats::build(
         &usage,
         root.as_deref(),
         score.as_ref(),
@@ -1189,6 +1214,8 @@ pub fn run_stats(cli: &Cli, opts: &StatsArgs) -> (String, i32) {
         };
         return (msg, 0);
     };
+    let installed = skill::connected(&skill_home(), root.as_deref());
+    stats::add_hooks(&mut stats, &hooks::load_runs(&home(), since), installed);
     let card = opts.share.then(|| stats::ShareCard::from_stats(&stats));
     let mut text = match (&card, cli.json) {
         (Some(c), true) => erased::Json::to_json(c),

@@ -19,6 +19,10 @@ transcripts on this machine (see below); it stores nothing from them and sends n
 - Query text is never stored.
 - `--no-log` skips logging for a single `wn ask`; setting `WN_NO_LOG` (to anything) turns logging
   off everywhere, including `wn mcp`.
+- Agent hooks (`wn setup`) log each run that asked wn in `~/.cache/where-next/hook-log.jsonl`
+  (time, agent, session id, repository root, latency, outcome, injected paths) and keep the paths
+  already shown per session in `hook-sessions/` for a day; no prompt text. `WN_NO_LOG` turns the
+  log off.
 - Query events expire after 30 days.
 - Nothing in the log is sent anywhere by wn. It only feeds `wn stats` and `wn report`, below.
 

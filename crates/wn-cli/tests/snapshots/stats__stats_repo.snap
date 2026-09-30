@@ -3,6 +3,7 @@ source: crates/wn-cli/tests/stats.rs
 expression: "stats::render(&repo_stats(), PLAIN)"
 ---
 wn stats · harbor-demo · last 30 days
+hooks: not installed → `wn setup` connects Claude Code, Codex and Cursor so hints arrive automatically
 
 Agents used the hint  ████████████░░░░░░░░  60% exact · 20% near  (10 answers)
                       on the hinted file: read 3 · ran 1 · edited 2 · took #1 first 4 of 6

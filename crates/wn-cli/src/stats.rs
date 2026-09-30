@@ -15,6 +15,7 @@ use serde::Serialize;
 use wn_daemon::usage::{RepoUsage, RETENTION_DAYS};
 
 use crate::agents::{Action, Agent, AgentCounts, AgentScore, Similarity};
+use crate::hooks::HookRun;
 use crate::report::{hint_edits, percentile, round_ms, EditedFn, KnownModel, Language};
 
 const DAY: u64 = 86_400;
@@ -72,6 +73,9 @@ pub struct AgentSummary {
     pub first_pick: Ratio,
     /// Sessions with a matched call, per agent.
     pub sessions: BTreeMap<Agent, usize>,
+    /// Hook injections found in transcripts, and those after which the agent touched a hinted
+    /// file.
+    pub hook_acted: Ratio,
 }
 
 impl AgentSummary {
@@ -90,6 +94,7 @@ impl AgentSummary {
             exact_edited: c.exact_action(Action::Edited),
             first_pick: Ratio::new(c.first_pick, c.count(Similarity::Exact)),
             sessions: c.sessions_by_agent(),
+            hook_acted: Ratio::new(c.hook_exact, c.hook_answered),
         }
     }
 }
@@ -132,9 +137,74 @@ pub struct Summary {
     /// Commits the adapter was fitted on.
     pub adapter_commits: Option<usize>,
     pub agents: AgentSummary,
+    /// What the agent hooks (`wn setup`) did.
+    pub hooks: HookSummary,
     /// Answers with hints after which you changed a hinted file within a day (git).
     pub you_edited: Ratio,
     pub replay: Option<Replay>,
+}
+
+/// Agent hook runs (from `$WHERE_NEXT_HOME/hook-log.jsonl`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+pub struct HookSummary {
+    /// Runs that asked wn (a hook that stays silent before asking is not logged).
+    pub runs: usize,
+    /// Runs that added hints to the agent's context.
+    pub injections: usize,
+    /// Files injected.
+    pub files: usize,
+    /// Sessions with at least one injection.
+    pub sessions: usize,
+    /// Runs that gave up at the time budget.
+    pub timeouts: usize,
+    /// Median wall time of a run.
+    pub p50_ms: Option<u64>,
+    /// Hooks are installed for at least one agent (`wn setup`).
+    pub installed: bool,
+}
+
+impl HookSummary {
+    pub fn of(runs: &[&HookRun]) -> HookSummary {
+        let mut ms: Vec<u64> = runs.iter().map(|r| r.ms).collect();
+        ms.sort_unstable();
+        let injected: Vec<&&HookRun> = runs.iter().filter(|r| r.outcome == "injected").collect();
+        let sessions: std::collections::BTreeSet<(&str, &str)> = injected
+            .iter()
+            .map(|r| (r.agent.as_str(), r.session.as_str()))
+            .collect();
+        HookSummary {
+            runs: runs.len(),
+            injections: injected.len(),
+            files: injected.iter().map(|r| r.injected.len()).sum(),
+            sessions: sessions.len(),
+            timeouts: runs.iter().filter(|r| r.outcome == "timeout").count(),
+            p50_ms: percentile(&ms, 0.5),
+            installed: false,
+        }
+    }
+}
+
+/// Fills in the hook summaries from the hook log (`runs`, already windowed). `installed`: some
+/// agent has where-next hooks.
+pub fn add_hooks(stats: &mut Stats, runs: &[HookRun], installed: bool) {
+    let pick = |root: Option<&str>| -> HookSummary {
+        let chosen: Vec<&HookRun> = runs
+            .iter()
+            .filter(|r| root.map_or(true, |x| same_root(&r.root, Path::new(x))))
+            .collect();
+        HookSummary {
+            installed,
+            ..HookSummary::of(&chosen)
+        }
+    };
+    stats.summary.hooks = if stats.scope == "repo" {
+        pick(Some(stats.summary.root.as_deref().unwrap_or("")))
+    } else {
+        pick(None)
+    };
+    for s in &mut stats.repos {
+        s.hooks = pick(Some(s.root.as_deref().unwrap_or("")));
+    }
 }
 
 /// Everything `wn stats` shows.
@@ -287,6 +357,7 @@ pub fn summarize(
         adapter: last.is_some_and(|q| q.adapter),
         adapter_commits,
         agents: AgentSummary::from_counts(&counts, agents.is_some()),
+        hooks: HookSummary::default(),
         you_edited: Ratio::new(useful, checked),
         replay,
     }
@@ -456,10 +527,7 @@ fn agent_rows(a: &AgentSummary, style: Style) -> Vec<String> {
         return vec![row(LABEL_AGENTS, "not checked (--no-agents)")];
     }
     if a.calls == 0 {
-        return vec![
-            row(LABEL_AGENTS, "no agent calls found yet"),
-            more("`wn skill sync` lets Claude Code, Codex and Cursor call wn"),
-        ];
+        return vec![row(LABEL_AGENTS, "no agent calls found yet")];
     }
     if a.answered == 0 {
         return vec![
@@ -550,8 +618,59 @@ fn model_value(s: &Summary) -> Option<String> {
     })
 }
 
+/// The line under the title: what the hooks did, or how to install them.
+pub fn hooks_line(s: &Summary) -> String {
+    let h = &s.hooks;
+    if h.runs == 0 {
+        return if h.installed {
+            "hooks: installed; nothing injected yet (they answer in repositories indexed with `wn init`)"
+                .into()
+        } else {
+            "hooks: not installed → `wn setup` connects Claude Code, Codex and Cursor so hints arrive automatically"
+                .into()
+        };
+    }
+    let mut line = format!(
+        "hooks: {} in {}",
+        plural(h.injections, "injection", "injections"),
+        plural(h.sessions, "session", "sessions")
+    );
+    let acted = s.agents.hook_acted;
+    if s.agents.scanned && acted.of > 0 {
+        line.push_str(&match acted.pct() {
+            Some(p) => format!(
+                " · the agent then opened a hinted file after {p}% ({} of {})",
+                acted.n, acted.of
+            ),
+            None => format!(
+                " · the agent then opened a hinted file after {} of {}",
+                acted.n, acted.of
+            ),
+        });
+    }
+    if !h.installed {
+        line.push_str(" · not installed now (`wn setup`)");
+    }
+    line
+}
+
+fn hook_rows(s: &Summary) -> Vec<String> {
+    let h = &s.hooks;
+    if h.runs == 0 {
+        return Vec::new();
+    }
+    let quiet = h.runs - h.injections - h.timeouts;
+    let mut parts = vec![plural(h.files, "file injected", "files injected")];
+    if let Some(ms) = h.p50_ms {
+        parts.push(format!("median {ms} ms"));
+    }
+    parts.push(format!("quiet {quiet} · timed out {}", h.timeouts));
+    vec![row("Hooks", &parts.join(" · "))]
+}
+
 fn summary_rows(s: &Summary, style: Style, with_replay: bool) -> Vec<String> {
     let mut lines = agent_rows(&s.agents, style);
+    lines.extend(hook_rows(s));
     lines.push(row(
         "You edited a hint",
         &if s.you_edited.of == 0 {
@@ -654,7 +773,7 @@ pub fn render(stats: &Stats, style: Style) -> String {
         stats.summary.name,
         plural(stats.days as usize, "day", "days")
     ));
-    let mut lines = vec![title, String::new()];
+    let mut lines = vec![title, hooks_line(&stats.summary), String::new()];
     let all = stats.scope == "all";
     lines.extend(summary_rows(&stats.summary, style, !all));
     if all {

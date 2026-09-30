@@ -25,6 +25,7 @@ fn help_texts() {
         ("report", &["report"][..]),
         ("stats", &["stats"][..]),
         ("skill_sync", &["skill", "sync"][..]),
+        ("setup", &["setup"][..]),
     ] {
         insta::assert_snapshot!(format!("help_{name}"), help(path));
     }
@@ -32,14 +33,14 @@ fn help_texts() {
 
 #[test]
 fn examples_mention_commands_that_exist() {
-    let text = help(&[]) + &help(&["ask"]) + &help(&["skill", "sync"]);
+    let text = help(&[]) + &help(&["ask"]) + &help(&["setup"]);
     for word in [
         "wn init",
         "wn status",
         "wn ask",
         "wn bench",
         "wn stats",
-        "wn skill sync",
+        "wn setup",
         "--context-file",
         "--start",
         "--dry-run",

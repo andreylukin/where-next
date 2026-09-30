@@ -2,9 +2,11 @@
 source: crates/wn-cli/tests/help.rs
 expression: help(path)
 ---
-Same as `wn setup`: install or update the where-next skill and hooks for coding agents
+Connect Claude Code, Codex and Cursor so hints reach them automatically (skill + hooks).
 
-Usage: wn skill sync [OPTIONS]
+Asks first; `wn setup --uninstall` removes everything it added.
+
+Usage: wn setup [OPTIONS]
 
 Options:
       --agent <AGENTS>
@@ -54,7 +56,7 @@ Options:
           Re-sync exactly the targets recorded by earlier runs (used by `wn update`)
 
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
 Installs, per detected agent, the where-next skill and hooks that add wn's hints to the agent's
 context: on every prompt (Claude Code, Codex) and after a search that found nothing or too much

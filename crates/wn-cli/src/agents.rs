@@ -1,5 +1,5 @@
 //! Did the agent act on wn's hints? Reads Claude Code and Codex transcripts **locally and
-//! read-only** to find each `wn ask` (or where-next MCP call, or start hint), then looks at the
+//! read-only** to find each `wn ask` (or where-next MCP call, or hook injection), then looks at the
 //! agent's next [`FOLLOW_CALLS`] tool calls, up to the next user turn, for the files it touched:
 //! read (Read tool, `cat`, `rg`, …), ran (`pytest`, `cargo test`, `python`, …) or edited (Edit /
 //! Write tools, `sed -i`, redirects, patches).
@@ -13,7 +13,8 @@
 //!
 //! Each transcript is walked by a small state machine ([`TRANSITIONS`]):
 //! Seeking → (wn call) → Following → (N tool calls, user turn, next call, end) → Seeking, with
-//! Armed for start hints, which arrive with the user's prompt, before any tool call.
+//! Armed for hook injections, which arrive with the prompt or a tool result, before the next
+//! tool call.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
@@ -33,7 +34,7 @@ pub const MATCH_BEFORE_S: u64 = 5;
 pub const MATCH_AFTER_S: u64 = 600;
 /// Opt-out: skip reading agent transcripts.
 pub const OPT_OUT_ENV: &str = "WN_STATS_NO_AGENTS";
-/// The first line of a start hint (see `skill::claude_prompt_hook`).
+/// The first words of every hook injection (see [`crate::hooks::render`]).
 pub const HOOK_MARKER: &str = "where-next (local index of this repository) suggests";
 
 // ---------------------------------------------------------------------------------------------
@@ -45,7 +46,7 @@ pub const HOOK_MARKER: &str = "where-next (local index of this repository) sugge
 pub enum TrackState {
     /// Looking for a wn call.
     Seeking,
-    /// A start hint arrived with the user's prompt; waiting for the agent's first tool call.
+    /// A hook injected hints; waiting for the agent's next tool call.
     Armed,
     /// Watching the tool calls after a wn answer.
     Following,
@@ -58,7 +59,7 @@ pub enum TrackState {
 pub enum TrackEvent {
     /// A `wn ask` / where-next MCP call.
     Call,
-    /// A start hint injected by the prompt hook.
+    /// Hints injected by a hook (see `wn setup`).
     Hook,
     /// Any other tool call.
     Tool,
@@ -138,7 +139,7 @@ pub enum Source {
     Cli,
     /// The where-next MCP tool.
     Mcp,
-    /// The start-hint prompt hook.
+    /// A where-next hook (prompt or search; see `wn setup`).
     Hook,
 }
 
@@ -403,10 +404,18 @@ pub fn claude_items(line: &str, everything: bool) -> Vec<Item> {
     };
     let ts = line_ts(&v);
     match str_field(&v, "type") {
-        Some("attachment") if maybe_hook => vec![Item::Call {
-            ts,
-            source: Source::Hook,
-        }],
+        // The context itself (`hook_additional_context`); `hook_success` repeats the hook's raw
+        // stdout for the same injection and is not counted twice.
+        Some("attachment")
+            if maybe_hook
+                && v.pointer("/attachment/type").and_then(Value::as_str)
+                    != Some("hook_success") =>
+        {
+            vec![Item::Call {
+                ts,
+                source: Source::Hook,
+            }]
+        }
         Some("assistant") => v
             .pointer("/message/content")
             .and_then(Value::as_array)
@@ -495,7 +504,9 @@ pub fn codex_items(line: &str, everything: bool) -> Vec<Item> {
     let maybe_call =
         call && (line.contains("wn") || line.contains("where_next") || line.contains("where-next"));
     let maybe_user = everything && line.contains(r#""role":"user""#);
-    if !(maybe_call || maybe_user || (everything && call)) {
+    // Hook context (`additionalContext`) arrives as a developer or user message.
+    let maybe_hook = line.contains(HOOK_MARKER) && line.contains(r#""message""#);
+    if !(maybe_call || maybe_user || maybe_hook || (everything && call)) {
         return Vec::new();
     }
     let Ok(v) = serde_json::from_str::<Value>(line) else {
@@ -525,6 +536,14 @@ pub fn codex_items(line: &str, everything: bool) -> Vec<Item> {
             } else {
                 Vec::new()
             }
+        }
+        Some("message")
+            if maybe_hook && matches!(str_field(p, "role"), Some("developer" | "user")) =>
+        {
+            vec![Item::Call {
+                ts,
+                source: Source::Hook,
+            }]
         }
         Some("message") if everything && str_field(p, "role") == Some("user") => {
             vec![Item::UserTurn]
@@ -1051,6 +1070,10 @@ pub struct AgentCounts {
     pub first_pick: usize,
     /// Sessions with at least one matched call.
     pub sessions: BTreeSet<(Agent, String)>,
+    /// Of `answered`, hints injected by a hook…
+    pub hook_answered: usize,
+    /// …and of those, answers after which the agent touched a hinted file.
+    pub hook_exact: usize,
 }
 
 impl AgentCounts {
@@ -1076,6 +1099,8 @@ impl AgentCounts {
         }
         self.first_pick += o.first_pick;
         self.sessions.extend(o.sessions.iter().cloned());
+        self.hook_answered += o.hook_answered;
+        self.hook_exact += o.hook_exact;
     }
 
     /// Sessions per agent.
@@ -1140,6 +1165,10 @@ pub fn score(
             *c.exact_by.entry(a).or_insert(0) += 1;
         }
         c.first_pick += usize::from(rank == Some(1));
+        if o.source == Source::Hook {
+            c.hook_answered += 1;
+            c.hook_exact += usize::from(similarity == Similarity::Exact);
+        }
     }
     out
 }
@@ -1631,6 +1660,58 @@ mod tests {
         assert_eq!(c.exact_action(Action::Edited), 1);
         assert_eq!(c.first_pick, 0);
         assert_eq!(s.unmatched, 1);
+    }
+
+    #[test]
+    fn a_search_hook_injection_is_counted_once_and_scored_as_a_hook() {
+        // Claude Code writes the context (`hook_additional_context`) and the raw stdout
+        // (`hook_success`) for the same PostToolUse hook; only the first is an injection.
+        let context = format!(
+            r#"{{"type":"attachment","timestamp":"1970-01-01T00:01:40Z","attachment":{{"type":"hook_additional_context","content":["{HOOK_MARKER} these files for the search `retry`; verify before relying on them:\n- src/retry.rs"],"hookName":"PostToolUse:Bash","hookEvent":"PostToolUse"}}}}"#
+        );
+        let success = format!(
+            r#"{{"type":"attachment","timestamp":"1970-01-01T00:01:40Z","attachment":{{"type":"hook_success","hookName":"PostToolUse:Bash","stdout":"{{\"hookSpecificOutput\":{{\"additionalContext\":\"{HOOK_MARKER} these files\"}}}}","exitCode":0}}}}"#
+        );
+        assert!(claude_items(&success, false).is_empty());
+        let lines = [
+            r#"{"type":"user","message":{"content":"fix the retries"}}"#.to_string(),
+            r#"{"type":"assistant","timestamp":"1970-01-01T00:01:39Z","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"rg RetryPolicy"}}]}}"#.to_string(),
+            context,
+            success,
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/r/src/retry.rs"}}]}}"#.to_string(),
+        ];
+        let o = observe(Agent::ClaudeCode, "s", &lines.join("\n"));
+        assert_eq!(o.len(), 1, "{o:?}");
+        assert_eq!((o[0].ts, o[0].source), (100, Source::Hook));
+        let usage = vec![RepoUsage {
+            root: Some(PathBuf::from("/r")),
+            queries: vec![q(100, "ok", &["src/retry.rs"])],
+            index: None,
+            bench: None,
+        }];
+        let c = &score(&o, &usage, &|_: &Path| true).per_root[Path::new("/r")];
+        assert_eq!((c.hook_answered, c.hook_exact), (1, 1));
+    }
+
+    #[test]
+    fn codex_hook_context_is_a_hook() {
+        let dev = format!(
+            r#"{{"timestamp":"1970-01-01T00:00:30Z","type":"response_item","payload":{{"type":"message","role":"developer","content":[{{"type":"input_text","text":"{HOOK_MARKER} starting with these files"}}]}}}}"#
+        );
+        assert_eq!(
+            codex_items(&dev, false),
+            vec![Item::Call {
+                ts: 30,
+                source: Source::Hook
+            }]
+        );
+        let output = format!(
+            r#"{{"timestamp":"1970-01-01T00:00:31Z","type":"response_item","payload":{{"type":"function_call_output","output":"{HOOK_MARKER}"}}}}"#
+        );
+        assert!(
+            codex_items(&output, false).is_empty(),
+            "tool output quoting the marker"
+        );
     }
 
     #[test]

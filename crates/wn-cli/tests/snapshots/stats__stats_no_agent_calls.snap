@@ -3,9 +3,9 @@ source: crates/wn-cli/tests/stats.rs
 expression: "stats::render(&s, PLAIN)"
 ---
 wn stats · harbor-demo · last 30 days
+hooks: not installed → `wn setup` connects Claude Code, Codex and Cursor so hints arrive automatically
 
 Agents used the hint  no agent calls found yet
-                      `wn skill sync` lets Claude Code, Codex and Cursor call wn
 You edited a hint     no answers with hints yet
 Replay (top 3)        not run yet → `wn bench` (~20 s to a few min for 300 commits)
 Speed                 p50 14 ms · p95 41 ms · 294 files

@@ -9,6 +9,14 @@ description: Find which files to open or edit next in a repository with the loca
 repository's own git history (about 100 ms per call once its background daemon is warm). Treat its
 answers as hints: open the files and verify.
 
+## Hints that arrive on their own
+
+With `wn setup`, hooks add a short note to your context that starts with "where-next (local index
+of this repository) suggests": after a prompt, and after a search (`rg`, `grep`, `find`, the Grep
+or Glob tools) that found nothing or too much. It lists at most 3 files wn is confident about and
+never repeats a file in the same session. Open them first when they fit the task; they are hints,
+so verify them.
+
 ## When to call it
 
 - You need where something lives but don't know what it's called: "where is X implemented /

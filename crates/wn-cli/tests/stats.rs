@@ -9,7 +9,9 @@ use std::process::Command;
 use proptest::prelude::*;
 use wn_cli::agents::{self, Action, Agent, Followed, Observation, Similarity, Source};
 use wn_cli::report::Language;
-use wn_cli::stats::{self, AgentSummary, Ratio, Replay, ShareCard, Stats, Style, Summary};
+use wn_cli::stats::{
+    self, AgentSummary, HookSummary, Ratio, Replay, ShareCard, Stats, Style, Summary,
+};
 use wn_daemon::usage::{BenchEvent, IndexEvent, QueryEvent, RepoUsage};
 
 const DAY: u64 = 86_400;
@@ -51,7 +53,9 @@ fn summary(name: &str) -> Summary {
             exact_edited: 2,
             first_pick: Ratio::new(4, 6),
             sessions: BTreeMap::from([(Agent::ClaudeCode, 3), (Agent::Codex, 1)]),
+            hook_acted: Ratio::default(),
         },
+        hooks: HookSummary::default(),
         you_edited: Ratio::new(7, 15),
         replay: Some(Replay {
             tasks: 300,
@@ -110,6 +114,77 @@ fn text_with_little_data_and_no_agents() {
 
     s.summary.agents.scanned = false;
     assert!(stats::render(&s, PLAIN).contains("not checked (--no-agents)"));
+}
+
+#[test]
+fn hook_rows_show_injections_what_the_agent_did_and_latency() {
+    use wn_cli::hooks::HookRun;
+    let run = |session: &str, outcome: &str, ms: u64, files: &[&str]| HookRun {
+        ts: NOW - 60,
+        agent: "claude".into(),
+        moment: "prompt".into(),
+        root: PathBuf::from("/home/dev/harbor-demo"),
+        session: session.into(),
+        ms,
+        outcome: outcome.into(),
+        injected: files.iter().map(|f| f.to_string()).collect(),
+    };
+    let runs = vec![
+        run("a", "injected", 120, &["src/a.py", "src/b.py"]),
+        run("a", "injected", 90, &["src/c.py"]),
+        run("b", "injected", 140, &["src/a.py"]),
+        run("b", "quiet", 80, &[]),
+        run("c", "timeout", 1500, &[]),
+        HookRun {
+            root: PathBuf::from("/elsewhere"),
+            ..run("z", "injected", 1, &["x.py"])
+        },
+    ];
+    let mut s = repo_stats();
+    s.summary.agents.hook_acted = Ratio::new(2, 3);
+    stats::add_hooks(&mut s, &runs, true);
+    assert_eq!(
+        s.summary.hooks,
+        HookSummary {
+            runs: 5,
+            injections: 3,
+            files: 4,
+            sessions: 2,
+            timeouts: 1,
+            p50_ms: Some(120),
+            installed: true,
+        }
+    );
+    let text = stats::render(&s, PLAIN);
+    assert_eq!(
+        text.lines().nth(1).unwrap(),
+        "hooks: 3 injections in 2 sessions · the agent then opened a hinted file after 2 of 3"
+    );
+    assert!(
+        text.contains(
+            "Hooks                 4 files injected · median 120 ms · quiet 1 · timed out 1"
+        ),
+        "{text}"
+    );
+    assert!(!text.contains("saved"), "no savings claims");
+    // Installed, nothing yet: says so, and no row.
+    let mut quiet = repo_stats();
+    stats::add_hooks(&mut quiet, &[], true);
+    let text = stats::render(&quiet, PLAIN);
+    assert!(text
+        .lines()
+        .nth(1)
+        .unwrap()
+        .starts_with("hooks: installed; nothing injected yet"));
+    assert!(!text.contains("Hooks "));
+    // Not installed: a one-line nudge.
+    let mut none = repo_stats();
+    stats::add_hooks(&mut none, &[], false);
+    assert!(stats::render(&none, PLAIN)
+        .lines()
+        .nth(1)
+        .unwrap()
+        .contains("`wn setup`"));
 }
 
 #[test]

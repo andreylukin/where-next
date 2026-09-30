@@ -1,16 +1,17 @@
-//! `wn skill sync`: installs the where-next agent skill (`SKILL.md`) for Claude Code, Codex and
-//! Cursor, keeps it current, and optionally adds a Claude Code hook that injects task-start hints.
+//! `wn setup` (alias `wn skill sync`): connects Claude Code, Codex and Cursor to wn. Per agent it
+//! installs the where-next skill (`SKILL.md`) and hooks that add wn's hints to the agent's context
+//! (see [`crate::hooks`]), keeps both current, and removes them again with `--uninstall`.
 //!
-//! All three agents read the same `SKILL.md` format from their own directories:
+//! | agent  | skill (user scope; `--project`: same under the repository) | hooks                     |
+//! |--------|--------------------------------------------------------------|---------------------------|
+//! | claude | `~/.claude/skills/where-next/SKILL.md`                       | `~/.claude/settings.json` |
+//! | codex  | `~/.agents/skills/where-next/SKILL.md`                       | `~/.codex/hooks.json`     |
+//! | cursor | `~/.cursor/skills/where-next/SKILL.md`                       | `~/.cursor/hooks.json`    |
 //!
-//! | agent  | user scope                            | project scope (`--project`)     |
-//! |--------|---------------------------------------|---------------------------------|
-//! | claude | `~/.claude/skills/where-next/`         | `<repo>/.claude/skills/where-next/` |
-//! | codex  | `~/.agents/skills/where-next/`         | `<repo>/.agents/skills/where-next/` |
-//! | cursor | `~/.cursor/skills/where-next/`         | `<repo>/.cursor/skills/where-next/` |
-//!
-//! Only files carrying the managed marker are updated or removed; anything else at the target is
-//! reported as a conflict and left alone. Installed targets are recorded in
+//! Only files carrying the managed marker are updated or removed; anything else at a skill target
+//! is reported as a conflict and left alone. Hook entries are recognised by their command
+//! (`… wn hook <agent>-<moment>`); everything else in a settings file is kept as it is, and a
+//! file that is not valid JSON is left alone. Installed targets are recorded in
 //! `$WHERE_NEXT_HOME/skills.json` so `wn update` can re-sync them (`--from-state`).
 //!
 //! The sync itself is an explicit state machine ([`SyncState`]): plan, review (diff + confirm),
@@ -19,64 +20,79 @@
 use std::fmt;
 use std::io::IsTerminal as _;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
-use clap::{Subcommand, ValueEnum};
+use clap::{Args, Subcommand, ValueEnum};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-/// The skill source, compiled in so `wn skill sync` works without a checkout.
+use crate::hooks::HookKind;
+
+/// The skill source, compiled in so `wn setup` works without a checkout.
 pub const SKILL: &str = include_str!("../assets/where-next/SKILL.md");
 
 /// Marker line identifying files this command manages.
 pub const MARKER: &str = "<!-- managed by `wn skill sync`";
 
-/// Command a Claude Code hook runs (also how our hook entry is recognised).
-pub const HOOK_COMMAND: &str = "wn hook claude-prompt";
+/// Seconds an agent waits for one of our hooks before giving up (the hook itself answers within
+/// [`crate::hooks::DEFAULT_BUDGET_MS`] or prints nothing).
+pub const HOOK_TIMEOUT_S: u64 = 5;
 
 /// `wn skill …`
 #[derive(Debug, Clone, Subcommand)]
 pub enum SkillAction {
-    /// Install or update the where-next skill for coding agents.
-    #[command(after_help = SYNC_EXAMPLES)]
-    Sync {
-        /// Agents to sync (default: those detected in your home directory).
-        #[arg(long = "agent", value_enum)]
-        agents: Vec<AgentArg>,
-        /// Install into this repository (`.claude/skills`, `.agents/skills`, `.cursor/skills`)
-        /// instead of your home directory.
-        #[arg(long)]
-        project: bool,
-        /// Show what would change without writing anything.
-        #[arg(long)]
-        dry_run: bool,
-        /// Remove the skill (and hook) instead.
-        #[arg(long)]
-        uninstall: bool,
-        /// Apply without asking.
-        #[arg(long, short)]
-        yes: bool,
-        /// Re-sync exactly the targets recorded by earlier syncs (used by `wn update`).
-        #[arg(long)]
-        from_state: bool,
-        /// Also add a Claude Code hook that runs `wn ask --start` on the first prompt of a session
-        /// in large repositories and adds the hints to the context (off by default).
-        #[arg(long)]
-        with_hook: bool,
-    },
+    /// Same as `wn setup`: install or update the where-next skill and hooks for coding agents.
+    #[command(after_help = SETUP_EXAMPLES)]
+    Sync(SyncArgs),
     /// Print the skill.
     Show,
 }
 
-const SYNC_EXAMPLES: &str = "\
-Shows what it will write and asks first. Only a marked where-next block is ever edited, and
-`wn update` re-syncs installed skills.
+/// Options of `wn setup` / `wn skill sync`.
+#[derive(Debug, Clone, Args)]
+pub struct SyncArgs {
+    /// Agents to connect (default: those detected in your home directory).
+    #[arg(long = "agent", value_enum)]
+    pub agents: Vec<AgentArg>,
+    /// Install into this repository (`.claude/`, `.agents/`, `.codex/`, `.cursor/`) instead of
+    /// your home directory.
+    #[arg(long)]
+    pub project: bool,
+    /// Show what would change without writing anything.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Remove the skill and hooks instead.
+    #[arg(long)]
+    pub uninstall: bool,
+    /// Apply without asking.
+    #[arg(long, short)]
+    pub yes: bool,
+    /// Only the skill: no hooks.
+    #[arg(long)]
+    pub no_hooks: bool,
+    /// Re-sync exactly the targets recorded by earlier runs (used by `wn update`).
+    #[arg(long)]
+    pub from_state: bool,
+    /// Accepted for compatibility: hooks are installed by default now.
+    #[arg(long, hide = true)]
+    pub with_hook: bool,
+}
+
+pub const SETUP_EXAMPLES: &str = "\
+Installs, per detected agent, the where-next skill and hooks that add wn's hints to the agent's
+context: on every prompt (Claude Code, Codex) and after a search that found nothing or too much
+(rg/grep/find/fd, Grep/Glob tools). Shows every file it will write and asks first. Hooks never
+block: they answer within 1.5 s or print nothing, and stay silent when wn is unsure, the repository
+is not indexed, or WN_HOOKS=0. `wn stats` shows what they did.
 
 Examples:
-  wn skill sync --dry-run                  show what would change, write nothing
-  wn skill sync                            agents detected in your home directory
-  wn skill sync --agent claude --yes
-  wn skill sync --project                  this repository's .claude/.agents/.cursor skills
-  wn skill sync --with-hook                also the Claude Code start-hint hook (large repos only)
-  wn skill sync --uninstall";
+  wn setup --dry-run                       show what would change, write nothing
+  wn setup                                 agents detected in your home directory
+  wn setup --agent claude --yes
+  wn setup --no-hooks                      only the skill
+  wn setup --project                       this repository's .claude/.agents/.codex/.cursor
+  wn setup --uninstall                     remove everything wn setup added";
 
 /// `--agent` values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -112,12 +128,30 @@ impl Agent {
         base.join(self.dir_name()).join("skills").join("where-next")
     }
 
+    /// The file holding this agent's hooks under `base`.
+    pub fn hook_file(self, base: &Path) -> PathBuf {
+        match self {
+            Agent::Claude => base.join(".claude").join("settings.json"),
+            Agent::Codex => base.join(".codex").join("hooks.json"),
+            Agent::Cursor => base.join(".cursor").join("hooks.json"),
+        }
+    }
+
     /// Whether the agent looks installed for the user whose home is `home`.
     pub fn detected(self, home: &Path) -> bool {
         match self {
             Agent::Claude => home.join(".claude").is_dir(),
             Agent::Codex => home.join(".codex").is_dir() || home.join(".agents").is_dir(),
             Agent::Cursor => home.join(".cursor").is_dir(),
+        }
+    }
+
+    /// Display name.
+    pub fn label(self) -> &'static str {
+        match self {
+            Agent::Claude => "Claude Code",
+            Agent::Codex => "Codex",
+            Agent::Cursor => "Cursor",
         }
     }
 }
@@ -186,26 +220,392 @@ pub enum Action {
     Absent,
 }
 
-/// What happens to the Claude Code hook, when requested.
+// ---------------------------------------------------------------------------------------------
+// Hook entries in agent settings
+// ---------------------------------------------------------------------------------------------
+
+/// One hook handler we install.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HookEntry {
+    /// The agent's event name.
+    pub event: &'static str,
+    /// Tool-name matcher, when the event takes one.
+    pub matcher: Option<&'static str>,
+    pub kind: HookKind,
+}
+
+/// The hooks installed for an agent. Claude Code and Codex share the `settings.json` hooks shape
+/// (`hooks.<Event>[].hooks[]`); Cursor uses `hooks.json` version 1 (`hooks.<event>[]`).
+/// Cursor's prompt hook (`beforeSubmitPrompt`) cannot add context, so Cursor gets the search
+/// hook only.
+pub fn hook_entries(agent: Agent) -> &'static [HookEntry] {
+    const CLAUDE: &[HookEntry] = &[
+        HookEntry {
+            event: "UserPromptSubmit",
+            matcher: None,
+            kind: HookKind::ClaudePrompt,
+        },
+        HookEntry {
+            event: "PostToolUse",
+            matcher: Some("Grep|Glob|Bash"),
+            kind: HookKind::ClaudeSearch,
+        },
+        // `rg`/`grep` exit 1 when nothing matches, which Claude Code reports as a failure.
+        HookEntry {
+            event: "PostToolUseFailure",
+            matcher: Some("Bash"),
+            kind: HookKind::ClaudeSearch,
+        },
+    ];
+    const CODEX: &[HookEntry] = &[
+        HookEntry {
+            event: "UserPromptSubmit",
+            matcher: None,
+            kind: HookKind::CodexPrompt,
+        },
+        HookEntry {
+            event: "PostToolUse",
+            matcher: Some("Bash"),
+            kind: HookKind::CodexSearch,
+        },
+    ];
+    const CURSOR: &[HookEntry] = &[HookEntry {
+        event: "postToolUse",
+        matcher: Some("Shell|Grep"),
+        kind: HookKind::CursorSearch,
+    }];
+    match agent {
+        Agent::Claude => CLAUDE,
+        Agent::Codex => CODEX,
+        Agent::Cursor => CURSOR,
+    }
+}
+
+fn our_command_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r#"(?:^|[\s/'"])wn['"]?\s+hook\s+(?:claude|codex|cursor)-(?:prompt|search)\s*$"#)
+            .expect("valid regex")
+    })
+}
+
+/// Whether a hook command is one `wn setup` installed (any `wn` path, any of our hook names).
+pub fn is_our_command(command: &str) -> bool {
+    our_command_re().is_match(command.trim())
+}
+
+/// How hook commands name the binary: `wn` when that is this binary on `PATH`, else its absolute
+/// path (agents started outside a login shell may not have `wn` on `PATH`).
+pub fn hook_program() -> String {
+    let Ok(exe) = std::env::current_exe() else {
+        return "wn".into();
+    };
+    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let on_path = std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|d| d.join("wn"))
+            .find(|p| p.is_file())
+    });
+    if on_path.is_some_and(|p| canon(&p) == canon(&exe)) {
+        return "wn".into();
+    }
+    let path = exe.to_string_lossy().into_owned();
+    if path
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "/._-+".contains(c))
+    {
+        path
+    } else {
+        format!("'{}'", path.replace('\'', r"'\''"))
+    }
+}
+
+/// The command a hook entry runs.
+pub fn hook_command(program: &str, kind: HookKind) -> String {
+    format!("{program} hook {}", kind.name())
+}
+
+fn remove_ours(list: &mut Vec<Value>, nested: bool) -> bool {
+    let before = list.clone();
+    if nested {
+        let mut emptied = vec![false; list.len()];
+        for (i, entry) in list.iter_mut().enumerate() {
+            if let Some(hs) = entry.get_mut("hooks").and_then(Value::as_array_mut) {
+                let n = hs.len();
+                hs.retain(|h| {
+                    !h.get("command")
+                        .and_then(Value::as_str)
+                        .is_some_and(is_our_command)
+                });
+                emptied[i] = n > 0 && hs.is_empty();
+            }
+        }
+        let mut i = 0;
+        list.retain(|_| {
+            let keep = !emptied[i];
+            i += 1;
+            keep
+        });
+    } else {
+        list.retain(|h| {
+            !h.get("command")
+                .and_then(Value::as_str)
+                .is_some_and(is_our_command)
+        });
+    }
+    *list != before
+}
+
+/// Adds (`add`) or removes our hook entries for `agent` in a settings value; other content is
+/// untouched. Removing drops only entries, event lists and the `hooks` object that our removal
+/// left empty.
+pub fn edit_hooks(settings: &mut Value, agent: Agent, program: &str, add: bool) {
+    let Some(obj) = settings.as_object_mut() else {
+        return;
+    };
+    let nested = agent != Agent::Cursor;
+    let had_hooks = obj.contains_key("hooks");
+    if !had_hooks && !add {
+        return;
+    }
+    // A new Cursor hooks.json needs `version: 1`; an existing file keeps what it has.
+    if add && agent == Agent::Cursor && obj.is_empty() {
+        obj.insert("version".into(), Value::from(1));
+    }
+    let hooks = obj
+        .entry("hooks")
+        .or_insert_with(|| Value::Object(Default::default()));
+    let Some(hooks) = hooks.as_object_mut() else {
+        return;
+    };
+    let mut touched_events = Vec::new();
+    for (event, list) in hooks.iter_mut() {
+        if let Some(list) = list.as_array_mut() {
+            if remove_ours(list, nested) && list.is_empty() {
+                touched_events.push(event.clone());
+            }
+        }
+    }
+    let removed_any = !touched_events.is_empty();
+    if add {
+        for e in hook_entries(agent) {
+            let command = hook_command(program, e.kind);
+            let entry = if nested {
+                let mut entry = serde_json::Map::new();
+                if let Some(m) = e.matcher {
+                    entry.insert("matcher".into(), Value::from(m));
+                }
+                entry.insert(
+                    "hooks".into(),
+                    serde_json::json!([{
+                        "type": "command",
+                        "command": command,
+                        "timeout": HOOK_TIMEOUT_S,
+                    }]),
+                );
+                Value::Object(entry)
+            } else {
+                let mut entry = serde_json::Map::new();
+                entry.insert("command".into(), Value::from(command));
+                if let Some(m) = e.matcher {
+                    entry.insert("matcher".into(), Value::from(m));
+                }
+                entry.insert("timeout".into(), Value::from(HOOK_TIMEOUT_S));
+                Value::Object(entry)
+            };
+            let list = hooks
+                .entry(e.event)
+                .or_insert_with(|| Value::Array(Vec::new()));
+            if let Some(list) = list.as_array_mut() {
+                list.push(entry);
+            }
+        }
+    }
+    // Event lists our removal emptied (and adding did not refill) go; keys keep their order.
+    for event in &touched_events {
+        if hooks
+            .get(event)
+            .and_then(Value::as_array)
+            .is_some_and(Vec::is_empty)
+        {
+            hooks.shift_remove(event);
+        }
+    }
+    let empty = hooks.is_empty();
+    if empty && (removed_any || !had_hooks) {
+        obj.shift_remove("hooks");
+    }
+}
+
+/// Whether a settings text already holds hook entries of ours.
+fn has_our_entries(text: &str) -> bool {
+    serde_json::from_str::<Value>(text).is_ok_and(|v| {
+        v.get("hooks")
+            .and_then(Value::as_object)
+            .is_some_and(|hooks| {
+                hooks
+                    .values()
+                    .filter_map(Value::as_array)
+                    .flatten()
+                    .any(|e| {
+                        let direct = e.get("command").and_then(Value::as_str);
+                        let nested = e
+                            .get("hooks")
+                            .and_then(Value::as_array)
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|h| h.get("command").and_then(Value::as_str));
+                        direct.into_iter().chain(nested).any(is_our_command)
+                    })
+            })
+    })
+}
+
+/// Whether any agent has where-next hooks, in the user's settings or in the repository at `root`.
+pub fn connected(home: &Path, root: Option<&Path>) -> bool {
+    Agent::ALL.iter().any(|a| {
+        std::iter::once(home).chain(root).any(|base| {
+            std::fs::read_to_string(a.hook_file(base)).is_ok_and(|t| has_our_entries(&t))
+        })
+    })
+}
+
+/// The one-line nudge shown where hooks would help but none are installed.
+pub const CONNECT_HINT: &str = "Connect your agents so they get hints automatically: wn setup";
+
+/// Whether a settings value holds nothing but what an empty file of this kind would.
+fn is_bare(v: &Value) -> bool {
+    v.as_object().is_some_and(|o| {
+        o.iter()
+            .all(|(k, val)| k == "version" && val == &Value::from(1))
+    })
+}
+
+/// Whether Codex's `config.toml` next to `hooks.json` defines hooks inline (Codex warns when a
+/// layer has both, so we leave such a layer alone).
+fn codex_inline_hooks(hooks_json: &Path) -> bool {
+    let toml = hooks_json.with_file_name("config.toml");
+    std::fs::read_to_string(toml).is_ok_and(|t| {
+        t.lines().any(|l| {
+            let l = l.trim_start();
+            l.starts_with("[hooks") || l.starts_with("[[hooks")
+        })
+    })
+}
+
+/// What happens to one agent's hook file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum HookAction {
-    Add {
-        settings: PathBuf,
-    },
-    Present {
-        settings: PathBuf,
-    },
-    Remove {
-        settings: PathBuf,
-    },
-    Absent {
-        settings: PathBuf,
-    },
-    /// The settings file exists but is not valid JSON; left alone.
-    Invalid {
-        settings: PathBuf,
-    },
+    /// A new file.
+    Create { diff: String },
+    /// Our entries are added or updated.
+    Update { diff: String },
+    /// Already as it should be.
+    Unchanged,
+    /// Our entries are removed; everything else stays.
+    Remove { diff: String },
+    /// The file only held our entries and `wn setup` created it: it is deleted.
+    Delete,
+    /// Nothing of ours to remove.
+    Absent,
+    /// Not valid JSON (or not an object): left alone.
+    Invalid,
+    /// Left alone for another reason.
+    Skipped { reason: String },
+}
+
+/// One agent's hook file in a plan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HookItem {
+    pub agent: Agent,
+    pub path: PathBuf,
+    #[serde(flatten)]
+    pub action: HookAction,
+    /// The text to write (for create/update/remove).
+    #[serde(skip)]
+    pub write: Option<String>,
+    /// The file as it was when planned (`None`: absent).
+    #[serde(skip)]
+    pub before: Option<String>,
+}
+
+/// Plans the hook file of `agent` at `path`. `record`: what an earlier `wn setup` recorded about
+/// this file (whether it created it, and its bytes before the first install, which uninstall
+/// restores exactly when nothing else changed since).
+pub fn hook_item(
+    agent: Agent,
+    path: &Path,
+    program: &str,
+    uninstall: bool,
+    record: Option<&HookRecord>,
+) -> HookItem {
+    let existing = match std::fs::read_to_string(path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => None,
+    };
+    let item = |action, write| HookItem {
+        agent,
+        path: path.to_path_buf(),
+        action,
+        write,
+        before: existing.clone(),
+    };
+    if path.exists() && existing.is_none() {
+        return item(HookAction::Invalid, None);
+    }
+    let value = match existing.as_deref() {
+        None => Value::Object(Default::default()),
+        Some(t) if t.trim().is_empty() => Value::Object(Default::default()),
+        Some(t) => match serde_json::from_str::<Value>(t) {
+            Ok(v) if v.is_object() => v,
+            _ => return item(HookAction::Invalid, None),
+        },
+    };
+    if !uninstall && agent == Agent::Codex && codex_inline_hooks(path) {
+        return item(
+            HookAction::Skipped {
+                reason: "config.toml next to it defines hooks inline; add them there by hand (see docs/skill.md)".into(),
+            },
+            None,
+        );
+    }
+    let mut after = value.clone();
+    edit_hooks(&mut after, agent, program, !uninstall);
+    if after == value {
+        return item(
+            if uninstall {
+                HookAction::Absent
+            } else {
+                HookAction::Unchanged
+            },
+            None,
+        );
+    }
+    let created = record.is_some_and(|r| r.created);
+    if uninstall && created && is_bare(&after) {
+        return item(HookAction::Delete, None);
+    }
+    // Byte-identical restore when the result is exactly what the file held before we came.
+    let original = record
+        .and_then(|r| r.original.as_deref())
+        .filter(|o| uninstall && serde_json::from_str::<Value>(o).is_ok_and(|v| v == after));
+    let text = match original {
+        Some(o) => o.to_string(),
+        None => {
+            let mut t = serde_json::to_string_pretty(&after).unwrap_or_default();
+            t.push('\n');
+            t
+        }
+    };
+    let d = diff(existing.as_deref().unwrap_or(""), &text);
+    let action = match (&existing, uninstall) {
+        (_, true) => HookAction::Remove { diff: d },
+        (None, false) => HookAction::Create { diff: d },
+        (Some(_), false) => HookAction::Update { diff: d },
+    };
+    item(action, Some(text))
 }
 
 /// A sync plan.
@@ -213,7 +613,7 @@ pub enum HookAction {
 pub struct Plan {
     pub version: String,
     pub items: Vec<(Target, Action)>,
-    pub hook: Option<HookAction>,
+    pub hooks: Vec<HookItem>,
 }
 
 impl Plan {
@@ -222,10 +622,15 @@ impl Plan {
         self.items
             .iter()
             .any(|(_, a)| matches!(a, Action::Create | Action::Update { .. } | Action::Remove))
-            || matches!(
-                self.hook,
-                Some(HookAction::Add { .. } | HookAction::Remove { .. })
-            )
+            || self.hooks.iter().any(|h| {
+                matches!(
+                    h.action,
+                    HookAction::Create { .. }
+                        | HookAction::Update { .. }
+                        | HookAction::Remove { .. }
+                        | HookAction::Delete
+                )
+            })
     }
 }
 
@@ -238,8 +643,14 @@ pub fn diff(old: &str, new: &str) -> String {
         .to_string()
 }
 
-/// Plans installing (or, with `uninstall`, removing) the skill at `targets`.
-pub fn plan(targets: &[Target], uninstall: bool, hook: Option<(PathBuf, bool)>) -> Plan {
+/// Plans installing (or, with `uninstall`, removing) the skill at `targets` and the hooks in
+/// `hook_files` (`(agent, file, what an earlier run recorded about it)`).
+pub fn plan(
+    targets: &[Target],
+    uninstall: bool,
+    hook_files: &[(Agent, PathBuf, Option<HookRecord>)],
+    program: &str,
+) -> Plan {
     let new = rendered();
     let items = targets
         .iter()
@@ -260,84 +671,28 @@ pub fn plan(targets: &[Target], uninstall: bool, hook: Option<(PathBuf, bool)>) 
             (t.clone(), action)
         })
         .collect();
-    let hook = hook.map(|(settings, remove)| hook_plan(&settings, remove));
+    let hooks = hook_files
+        .iter()
+        .map(|(agent, path, record)| hook_item(*agent, path, program, uninstall, record.as_ref()))
+        .collect();
     Plan {
         version: skill_version(),
         items,
-        hook,
+        hooks,
     }
 }
 
-fn has_our_hook(settings: &serde_json::Value) -> bool {
-    settings
-        .pointer("/hooks/UserPromptSubmit")
-        .and_then(|v| v.as_array())
-        .is_some_and(|entries| {
-            entries.iter().any(|e| {
-                e.get("hooks").and_then(|h| h.as_array()).is_some_and(|hs| {
-                    hs.iter()
-                        .any(|h| h.get("command").and_then(|c| c.as_str()) == Some(HOOK_COMMAND))
-                })
-            })
-        })
-}
-
-fn hook_plan(settings: &Path, remove: bool) -> HookAction {
-    let path = settings.to_path_buf();
-    let value = match std::fs::read_to_string(settings) {
-        Err(_) => serde_json::json!({}),
-        Ok(text) if text.trim().is_empty() => serde_json::json!({}),
-        Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
-            Ok(v) if v.is_object() => v,
-            _ => return HookAction::Invalid { settings: path },
-        },
-    };
-    match (remove, has_our_hook(&value)) {
-        (false, true) => HookAction::Present { settings: path },
-        (false, false) => HookAction::Add { settings: path },
-        (true, true) => HookAction::Remove { settings: path },
-        (true, false) => HookAction::Absent { settings: path },
-    }
-}
-
-/// Adds or removes our hook entry in a Claude Code settings value; other content is untouched.
-pub fn edit_hook(settings: &mut serde_json::Value, add: bool) {
-    let Some(obj) = settings.as_object_mut() else {
-        return;
-    };
-    let hooks = obj.entry("hooks").or_insert_with(|| serde_json::json!({}));
-    let Some(hooks) = hooks.as_object_mut() else {
-        return;
-    };
-    let list = hooks
-        .entry("UserPromptSubmit")
-        .or_insert_with(|| serde_json::json!([]));
-    let Some(list) = list.as_array_mut() else {
-        return;
-    };
-    // Drop our command from every entry, then drop entries left empty.
-    for entry in list.iter_mut() {
-        if let Some(hs) = entry.get_mut("hooks").and_then(|h| h.as_array_mut()) {
-            hs.retain(|h| h.get("command").and_then(|c| c.as_str()) != Some(HOOK_COMMAND));
-        }
-    }
-    list.retain(|e| {
-        e.get("hooks")
-            .and_then(|h| h.as_array())
-            .map_or(true, |hs| !hs.is_empty())
-    });
-    if add {
-        list.push(serde_json::json!({
-            "hooks": [{ "type": "command", "command": HOOK_COMMAND, "timeout": 15 }]
-        }));
-    }
-    let empty_list = list.is_empty();
-    if empty_list {
-        hooks.remove("UserPromptSubmit");
-    }
-    if hooks.is_empty() {
-        obj.remove("hooks");
-    }
+/// A hook file `wn setup` manages.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+pub struct HookRecord {
+    pub agent: Agent,
+    pub path: PathBuf,
+    /// `wn setup` created the file (it is deleted again when only our entries remain).
+    #[serde(default)]
+    pub created: bool,
+    /// The file's bytes before the first install (restored by uninstall when nothing else changed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original: Option<String>,
 }
 
 /// Recorded installs (`$WHERE_NEXT_HOME/skills.json`).
@@ -345,7 +700,11 @@ pub fn edit_hook(settings: &mut serde_json::Value, add: bool) {
 pub struct State {
     pub version: String,
     pub targets: Vec<Target>,
+    /// Hook files (Claude settings, Codex and Cursor hooks.json).
     #[serde(default)]
+    pub hooks: Vec<HookRecord>,
+    /// Older releases recorded only a Claude settings file here.
+    #[serde(default, skip_serializing)]
     pub hook_settings: Option<PathBuf>,
 }
 
@@ -354,10 +713,21 @@ pub fn state_path(home: &Path) -> PathBuf {
 }
 
 pub fn load_state(home: &Path) -> State {
-    std::fs::read_to_string(state_path(home))
+    let mut state: State = std::fs::read_to_string(state_path(home))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if let Some(path) = state.hook_settings.take() {
+        if !state.hooks.iter().any(|h| h.path == path) {
+            state.hooks.push(HookRecord {
+                agent: Agent::Claude,
+                path,
+                created: false,
+                original: None,
+            });
+        }
+    }
+    state
 }
 
 fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
@@ -387,8 +757,11 @@ pub fn apply(plan: &Plan, home: &Path, uninstall: bool) -> Result<Vec<String>, S
             Action::Remove => {
                 std::fs::remove_file(&target.path)
                     .map_err(|e| format!("{}: {e}", target.path.display()))?;
-                if let Some(dir) = target.path.parent() {
-                    let _ = std::fs::remove_dir(dir);
+                // `…/where-next`, then `skills` if that left it empty.
+                for dir in target.path.ancestors().skip(1).take(2) {
+                    if std::fs::remove_dir(dir).is_err() {
+                        break;
+                    }
                 }
                 lines.push(format!(
                     "{}: removed {}",
@@ -406,42 +779,73 @@ pub fn apply(plan: &Plan, home: &Path, uninstall: bool) -> Result<Vec<String>, S
             }
         }
     }
-    if let Some(hook) = &plan.hook {
-        match hook {
-            HookAction::Add { settings } | HookAction::Remove { settings } => {
-                let add = matches!(hook, HookAction::Add { .. });
-                let mut value = std::fs::read_to_string(settings)
-                    .ok()
-                    .filter(|t| !t.trim().is_empty())
-                    .and_then(|t| serde_json::from_str(&t).ok())
-                    .unwrap_or_else(|| serde_json::json!({}));
-                edit_hook(&mut value, add);
-                let mut text = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
-                text.push('\n');
-                write_atomic(settings, &text)
-                    .map_err(|e| format!("{}: {e}", settings.display()))?;
-                lines.push(format!(
-                    "claude hook: {} {}",
-                    if add { "added to" } else { "removed from" },
-                    settings.display()
-                ));
-                state.hook_settings = add.then(|| settings.clone());
+    for h in &plan.hooks {
+        let recorded = state.hooks.iter().position(|r| r.path == h.path);
+        match (&h.action, &h.write) {
+            (HookAction::Create { .. } | HookAction::Update { .. }, Some(text)) => {
+                write_atomic(&h.path, text).map_err(|e| format!("{}: {e}", h.path.display()))?;
+                lines.push(format!("{} hooks: wrote {}", h.agent, h.path.display()));
+                let previous = recorded.map(|i| state.hooks.remove(i));
+                let (created, original) = match previous {
+                    Some(r) => (r.created, r.original),
+                    // First install: remember what was there so uninstall can put it back.
+                    None => (
+                        h.before.is_none(),
+                        h.before.clone().filter(|b| !has_our_entries(b)),
+                    ),
+                };
+                state.hooks.push(HookRecord {
+                    agent: h.agent,
+                    path: h.path.clone(),
+                    created,
+                    original,
+                });
             }
-            HookAction::Present { settings } => state.hook_settings = Some(settings.clone()),
-            HookAction::Absent { .. } | HookAction::Invalid { .. } => {}
+            (HookAction::Remove { .. }, Some(text)) => {
+                write_atomic(&h.path, text).map_err(|e| format!("{}: {e}", h.path.display()))?;
+                lines.push(format!(
+                    "{} hooks: removed from {}",
+                    h.agent,
+                    h.path.display()
+                ));
+                state.hooks.retain(|r| r.path != h.path);
+            }
+            (HookAction::Delete, _) => {
+                std::fs::remove_file(&h.path).map_err(|e| format!("{}: {e}", h.path.display()))?;
+                lines.push(format!("{} hooks: deleted {}", h.agent, h.path.display()));
+                state.hooks.retain(|r| r.path != h.path);
+            }
+            (HookAction::Unchanged, _) if recorded.is_none() => state.hooks.push(HookRecord {
+                agent: h.agent,
+                path: h.path.clone(),
+                created: false,
+                original: None,
+            }),
+            (HookAction::Absent, _) => state.hooks.retain(|r| r.path != h.path),
+            _ => {}
         }
     }
     state.targets.sort();
+    state.hooks.sort();
     state.version = plan.version.clone();
     let text = serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?;
     write_atomic(&state_path(home), &(text + "\n")).map_err(|e| e.to_string())?;
     Ok(lines)
 }
 
+fn indent(out: &mut Vec<String>, text: &str) {
+    for line in text.lines() {
+        out.push(format!("         {line}"));
+    }
+}
+
 /// Text form of a plan.
 pub fn render_plan(plan: &Plan) -> String {
     let mut out = vec![format!("where-next skill {}", plan.version)];
     for (t, a) in &plan.items {
+        if matches!(a, Action::Absent) {
+            continue;
+        }
         let what = match a {
             Action::Create => "create".to_string(),
             Action::Update { .. } => "update".to_string(),
@@ -457,30 +861,41 @@ pub fn render_plan(plan: &Plan) -> String {
             t.path.display()
         ));
         if let Action::Update { diff } = a {
-            for line in diff.lines() {
-                out.push(format!("         {line}"));
-            }
+            indent(&mut out, diff);
         }
     }
-    if let Some(h) = &plan.hook {
-        out.push(match h {
-            HookAction::Add { settings } => format!("  claude hook: add to {}", settings.display()),
-            HookAction::Present { settings } => {
-                format!("  claude hook: already in {}", settings.display())
-            }
-            HookAction::Remove { settings } => {
-                format!("  claude hook: remove from {}", settings.display())
-            }
-            HookAction::Absent { settings } => {
-                format!("  claude hook: not in {}", settings.display())
-            }
-            HookAction::Invalid { settings } => {
-                format!(
-                    "  claude hook: {} is not valid JSON; left alone",
-                    settings.display()
-                )
-            }
-        });
+    if plan
+        .hooks
+        .iter()
+        .any(|h| !matches!(h.action, HookAction::Absent) || h.path.exists())
+    {
+        out.push("hooks (add wn's hints to the agent's context; WN_HOOKS=0 turns them off)".into());
+    }
+    for h in &plan.hooks {
+        if matches!(h.action, HookAction::Absent) && !h.path.exists() {
+            continue;
+        }
+        let what = match &h.action {
+            HookAction::Create { .. } => "create".to_string(),
+            HookAction::Update { .. } => "add where-next hooks".to_string(),
+            HookAction::Unchanged => "up to date".to_string(),
+            HookAction::Remove { .. } => "remove where-next hooks".to_string(),
+            HookAction::Delete => "delete (only where-next hooks in it)".to_string(),
+            HookAction::Absent => "no where-next hooks".to_string(),
+            HookAction::Invalid => "not valid JSON; left alone".to_string(),
+            HookAction::Skipped { reason } => format!("skip: {reason}"),
+        };
+        out.push(format!(
+            "  {:<6} {}  ({what})",
+            h.agent.to_string(),
+            h.path.display()
+        ));
+        if let HookAction::Create { diff }
+        | HookAction::Update { diff }
+        | HookAction::Remove { diff } = &h.action
+        {
+            indent(&mut out, diff);
+        }
     }
     out.join("\n")
 }
@@ -681,7 +1096,7 @@ pub fn targets(
         .collect()
 }
 
-/// Report of `wn skill sync` (for `--json`).
+/// Report of `wn setup` (for `--json`).
 #[derive(Debug, Clone, Serialize)]
 pub struct SyncReport {
     pub state: String,
@@ -693,50 +1108,129 @@ pub struct SyncReport {
 
 /// Runs `wn skill …`.
 pub fn run(action: &SkillAction, cli: &crate::Cli) -> (String, i32) {
-    let SkillAction::Sync {
-        agents,
-        project,
-        dry_run,
-        uninstall,
-        yes,
-        from_state,
-        with_hook,
-    } = action
-    else {
-        return (rendered(), 0);
+    match action {
+        SkillAction::Sync(args) => run_sync(args, cli),
+        SkillAction::Show => (rendered(), 0),
+    }
+}
+
+/// A hook file a run touches, with what an earlier run recorded about it.
+pub type HookFile = (Agent, PathBuf, Option<HookRecord>);
+
+fn hook_files(args: &SyncArgs, targets: &[Target], base: &Path, state: &State) -> Vec<HookFile> {
+    let record = |p: &Path| state.hooks.iter().find(|r| r.path == p).cloned();
+    if args.from_state {
+        return state
+            .hooks
+            .iter()
+            .map(|r| (r.agent, r.path.clone(), Some(r.clone())))
+            .collect();
+    }
+    if args.no_hooks {
+        return Vec::new();
+    }
+    let mut agents: Vec<Agent> = targets.iter().map(|t| t.agent).collect();
+    agents.sort();
+    agents.dedup();
+    let mut out: Vec<HookFile> = agents
+        .iter()
+        .map(|a| {
+            let p = a.hook_file(base);
+            let r = record(&p);
+            (*a, p, r)
+        })
+        .collect();
+    if args.uninstall {
+        // Also anything recorded for these agents elsewhere (e.g. `--project` installs).
+        for r in &state.hooks {
+            if agents.contains(&r.agent) && !out.iter().any(|(_, p, _)| *p == r.path) {
+                out.push((r.agent, r.path.clone(), Some(r.clone())));
+            }
+        }
+    }
+    out
+}
+
+/// Everything a run touches: skill targets and hook files. `--uninstall` without `--agent` covers
+/// every agent, plus every recorded install (any scope) for the chosen agents.
+pub fn resolve(
+    args: &SyncArgs,
+    root: Option<&Path>,
+    home: &Path,
+    state: &State,
+) -> (Vec<Target>, Vec<HookFile>) {
+    let agents: Vec<AgentArg> = if args.uninstall && args.agents.is_empty() {
+        vec![AgentArg::All]
+    } else {
+        args.agents.clone()
     };
+    let recorded = args.from_state.then_some(state);
+    let mut targets = targets(&agents, root, home, recorded);
+    if args.uninstall && !args.from_state {
+        let chosen: Vec<Agent> = targets.iter().map(|t| t.agent).collect();
+        for t in &state.targets {
+            if chosen.contains(&t.agent)
+                && !targets.contains(t)
+                && (root.is_none() || t.scope == "project")
+            {
+                targets.push(t.clone());
+            }
+        }
+    }
+    let base = root.unwrap_or(home);
+    let hooks = hook_files(args, &targets, base, state);
+    (targets, hooks)
+}
+
+fn after_notes(plan: &Plan, uninstall: bool) -> Vec<String> {
+    let changed: Vec<&HookItem> = plan
+        .hooks
+        .iter()
+        .filter(|h| {
+            matches!(
+                h.action,
+                HookAction::Create { .. } | HookAction::Update { .. }
+            )
+        })
+        .collect();
+    if uninstall || changed.is_empty() {
+        return Vec::new();
+    }
+    let mut notes = vec![
+        "next:".to_string(),
+        "  new agent sessions pick up the hooks; they answer only in indexed repositories (`wn init` once per repository)".to_string(),
+    ];
+    if changed.iter().any(|h| h.agent == Agent::Codex) {
+        notes.push(
+            "  Codex runs new hooks only after you trust them: open Codex, run /hooks, trust the where-next hooks".into(),
+        );
+    }
+    notes.push(
+        "  see what they did: wn stats · turn off: WN_HOOKS=0, or wn setup --uninstall".into(),
+    );
+    notes
+}
+
+/// Runs `wn setup` / `wn skill sync`.
+pub fn run_sync(args: &SyncArgs, cli: &crate::Cli) -> (String, i32) {
     let wn_home = crate::home();
     let home = user_home();
-    let root = project.then(|| wn_git::repo_root(&cli.path));
-    let state = from_state.then(|| load_state(&wn_home));
-    if state
-        .as_ref()
-        .is_some_and(|s| s.targets.is_empty() && s.hook_settings.is_none())
-    {
+    let root = args.project.then(|| wn_git::repo_root(&cli.path));
+    let recorded = load_state(&wn_home);
+    if args.from_state && recorded.targets.is_empty() && recorded.hooks.is_empty() {
         return ("no synced skills recorded; nothing to do".into(), 0);
     }
-    let targets = targets(agents, root.as_deref(), &home, state.as_ref());
-    let hook_settings = if *from_state {
-        state.as_ref().and_then(|s| s.hook_settings.clone())
-    } else if *with_hook || (*uninstall && load_state(&wn_home).hook_settings.is_some()) {
-        Some(match &root {
-            Some(r) => r.join(".claude").join("settings.json"),
-            None => home.join(".claude").join("settings.json"),
-        })
-    } else {
-        None
-    };
-    let hook = hook_settings.map(|s| (s, *uninstall));
+    let (targets, hooks) = resolve(args, root.as_deref(), &home, &recorded);
     let mut life = SyncLifecycle::default();
-    let plan = plan(&targets, *uninstall, hook);
+    let plan = plan(&targets, args.uninstall, &hooks, &hook_program());
     let mut applied = Vec::new();
     let mut message = None;
     if plan.has_changes() {
         let _ = life.handle(E::Planned);
         let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
-        let decision = if *dry_run {
+        let decision = if args.dry_run {
             E::Preview
-        } else if *yes {
+        } else if args.yes {
             E::Confirm
         } else if interactive {
             eprintln!("{}", render_plan(&plan));
@@ -755,7 +1249,7 @@ pub fn run(action: &SkillAction, cli: &crate::Cli) -> (String, i32) {
         };
         let _ = life.handle(decision);
         if life.state() == S::Applying {
-            match apply(&plan, &wn_home, *uninstall) {
+            match apply(&plan, &wn_home, args.uninstall) {
                 Ok(lines) => {
                     applied = lines;
                     let _ = life.handle(E::Applied);
@@ -768,9 +1262,9 @@ pub fn run(action: &SkillAction, cli: &crate::Cli) -> (String, i32) {
         }
     } else {
         let _ = life.handle(E::NothingToDo);
-        if !*dry_run {
+        if !args.dry_run {
             // Record up-to-date targets so `wn update` keeps them current.
-            let _ = apply(&plan, &wn_home, *uninstall);
+            let _ = apply(&plan, &wn_home, args.uninstall);
         }
     }
     let report = SyncReport {
@@ -808,75 +1302,11 @@ pub fn run(action: &SkillAction, cli: &crate::Cli) -> (String, i32) {
     };
     text.push('\n');
     text.push_str(&tail);
+    if life.state() == S::Done {
+        for note in after_notes(&report.plan, args.uninstall) {
+            text.push('\n');
+            text.push_str(&note);
+        }
+    }
     (text, code)
-}
-
-/// `wn hook claude-prompt`: reads a Claude Code `UserPromptSubmit` event from stdin and, on the
-/// first prompt of a session in a large repository, prints where-next hints for Claude's context.
-/// Prints nothing otherwise; always exits 0 so a hook never blocks a prompt.
-pub fn claude_prompt_hook(input: &str) -> String {
-    #[derive(Deserialize)]
-    struct Event {
-        #[serde(default)]
-        session_id: String,
-        #[serde(default)]
-        prompt: String,
-        #[serde(default)]
-        cwd: Option<String>,
-    }
-    let Ok(event) = serde_json::from_str::<Event>(input) else {
-        return String::new();
-    };
-    if event.prompt.trim().is_empty() || !first_prompt_of(&event.session_id) {
-        return String::new();
-    }
-    let cwd = event.cwd.unwrap_or_else(|| ".".into());
-    let parsed = <crate::Cli as clap::Parser>::try_parse_from([
-        "wn",
-        "--path",
-        cwd.as_str(),
-        "--json",
-        "ask",
-        "--start",
-        event.prompt.as_str(),
-    ]);
-    let Ok(cli) = parsed else {
-        return String::new();
-    };
-    let (json, _) = crate::run(cli);
-    let Ok(outcome) = serde_json::from_str::<wn_core::rank::Outcome>(&json) else {
-        return String::new();
-    };
-    if outcome.state != wn_core::rank::AnswerState::Ok || outcome.hints.files.is_empty() {
-        return String::new();
-    }
-    let mut lines = vec![
-        "where-next (local index of this repository) suggests starting with these files; verify before relying on them:".to_string(),
-    ];
-    for h in &outcome.hints.files {
-        lines.push(format!("- {} (similarity {:.2})", h.path, h.similarity));
-    }
-    lines.join("\n")
-}
-
-/// Records the session and returns whether this is its first prompt.
-fn first_prompt_of(session: &str) -> bool {
-    if session.is_empty() {
-        return true;
-    }
-    let path = crate::home().join("hook-sessions.json");
-    let mut seen: Vec<String> = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
-    if seen.iter().any(|s| s == session) {
-        return false;
-    }
-    seen.push(session.to_string());
-    let keep = seen.len().saturating_sub(200);
-    let _ = write_atomic(
-        &path,
-        &serde_json::to_string(&seen[keep..]).unwrap_or_else(|_| "[]".into()),
-    );
-    true
 }
