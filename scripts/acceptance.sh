@@ -7,6 +7,7 @@
 # Groups: abstain, guard, lock, progress, flags, bench, docs, install
 # Fixture repositories are cloned once into $WN_ACCEPT_CACHE (default ~/.cache/wn-acceptance).
 # Checks may be tightened, never loosened, without the integrator's agreement.
+# JSON is parsed from stdout only; progress and diagnostics go to stderr.
 set -uo pipefail
 
 WN=${WN:-wn}
@@ -44,7 +45,7 @@ if sel abstain; then
     s=$("$WN" ask "$q" --json --path "$GIN" 2>/dev/null | state_of)
     [ "$s" = "abstain" ] && pass "abstain: \"$q\"" || fail "abstain: \"$q\"" "state=$s (want abstain)"
   done
-  out=$("$WN" ask "" --json --path "$GIN" 2>&1); rc=$?
+  out=$("$WN" ask "" --json --path "$GIN" 2>/dev/null); rc=$?
   n=$(echo "$out" | nfiles_of)
   if [ $rc -ne 0 ] || [ "${n:-0}" = "0" ]; then pass "abstain: empty query gives no hints"; else fail "abstain: empty query gives no hints" "rc=$rc files=$n"; fi
   s=$("$WN" ask "where is the request logger that prints status and latency" --json --path "$GIN" 2>/dev/null | state_of)
@@ -117,10 +118,10 @@ fi
 
 # --- flags: -k and --functions do what they say, or are rejected ---------------------------------
 if sel flags; then
-  out=$("$WN" ask "where are routes registered" -k 5 --json --no-abstain --path "$GIN" 2>&1); rc=$?
+  out=$("$WN" ask "where are routes registered" -k 5 --json --no-abstain --path "$GIN" 2>/dev/null); rc=$?
   n=$(echo "$out" | nfiles_of)
   if [ $rc -ne 0 ] || [ "${n:-0}" -gt 3 ]; then pass "flags: -k 5 honoured or rejected"; else fail "flags: -k 5 honoured or rejected" "rc=0, got $n files silently"; fi
-  out=$("$WN" ask "where are routes registered" --functions --json --no-abstain --path "$GIN" 2>&1); rc=$?
+  out=$("$WN" ask "where are routes registered" --functions --json --no-abstain --path "$GIN" 2>/dev/null); rc=$?
   nf=$(echo "$out" | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("functions",[])))' 2>/dev/null)
   if [ $rc -ne 0 ] || [ "${nf:-0}" -gt 0 ]; then pass "flags: --functions returns functions or is rejected"; else fail "flags: --functions returns functions or is rejected" "functions=[]"; fi
 fi
