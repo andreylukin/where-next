@@ -25,7 +25,8 @@ abstention.
 
 Issue-style tasks with executable verification from repositories held out from training. Three trials
 ran: a 50-task pilot, a 50-task trial on large repositories, and a pre-declared confirmatory trial on new
-tasks from repositories with at least 3,000 source files.
+tasks from repositories with at least 3,000 source files. Trials 4 and 5 reuse the confirmatory tasks with
+a different design (forced hints and an oracle arm), described in their own sections.
 
 ### Measures
 
@@ -142,9 +143,159 @@ have a valid trial in both arms; timeouts count as outcomes.
 - **The size trend from trial 2 didn't replicate:** within these repositories, size didn't predict the
   cost change (ρ −0.03, interval −0.30 to +0.26).
 
-## Conclusion across the three trials
+## Trial 4: oracle headroom, Codex (September 30, 2026)
+
+Trials 1–3 asked whether wn's hints save cost. Trial 4 asks a prior question: would even a **perfect**
+hint help? If not, navigation isn't the agent's bottleneck and no hint tool can help it.
+
+**Pre-declared** (written before any run, index build or hint computation):
+
+- **Gate 1, headroom.** The oracle arm resolves at least 8 points more than no hint, or its median wall
+  time is at most 0.8× no hint's (point estimates; intervals reported alongside). If neither holds, the
+  verdict is "no headroom: navigation isn't this agent's bottleneck", and wn's arm is reported
+  descriptively only.
+- **Gate 2, wn's share of the gap** (only if gate 1 passes): (W − A) / (O − A) for success, and the
+  matching ratio for wall time.
+
+**Setup:**
+
+- **Tasks:** the 58 confirmatory tasks from trial 3 (17 repositories, each with at least 3,000 files).
+  None excluded.
+- **Agent:** Codex CLI (`codex exec`) with `gpt-6-luna`, reasoning effort medium, on Harbor/Modal, one
+  attempt per task per arm.
+- **Cap:** 600 s of agent wall time. On a timeout the tests still run on the final state, so the
+  outcome is "resolved within 600 s".
+- **Arms:**
+  - **A:** no hint, the task text unchanged.
+  - **W:** wn's top 3 files (`wn ask --start`, `gemma-xl1` with its shipped calibration and the
+    per-repo adapter fitted only on ancestors of the task's base commit), computed off the container at
+    the base commit. If wn abstained, W gets A's prompt; it didn't abstain on any task.
+  - **O (oracle):** the files the gold patch edits that exist at the base commit, top 3 by lines
+    changed.
+- **Hint delivery:** prepended to the task prompt, with identical wording in W and O (only the paths
+  differ, no scores):
+
+  ```
+  Hint: these files are likely relevant to this task (verify before relying on them):
+  - <path 1>
+  - <path 2>
+  - <path 3>
+  ```
+
+  The hint is forced, so this measures what a hint does when it arrives, separate from whether an agent
+  would ask for one.
+
+**Results.** All 58 tasks have a valid trial in every arm.
+
+| Arm | Resolved | Median wall time | Median API calls | Median tokens | Cost per resolved task | Median time / tokens to first gold file named |
+|---|---|---|---|---|---|---|
+| A: no hint | 32/58 (55.2%) | 110 s | 19 | 488k | $0.0299 | 6.1 s / 12.8k |
+| W: wn hint | 34/58 (58.6%) | 101 s | 17 | 554k | $0.0314 | 4.3 s / 12.4k |
+| O: oracle hint | 34/58 (58.6%) | 98.5 s | 15 | 342k | $0.0246 | 3.9 s / 0 |
+
+Paired over the same tasks (95% bootstrap intervals, 4,000 resamples):
+
+| Comparison | Success difference, by task | By repository | Median wall-time ratio, by task | Cost-per-resolved ratio |
+|---|---|---|---|---|
+| O − A | +3.4 pts [−5.2, +12.1] | [−3.6, +12.0] | 0.90 [0.67, 1.12] | 0.83 [0.66, 1.01] |
+| W − A | +3.4 pts [−3.4, +10.3] | [−2.6, +17.2] | 0.92 [0.72, 1.18] | 1.05 [0.81, 1.38] |
+| O − W | 0.0 pts [−8.6, +8.6] | [−10.5, +5.0] | 0.98 [0.80, 1.14] | 0.79 [0.60, 1.01] |
+
+### Verdict
+
+**Gate 1 failed: no headroom. Navigation isn't this agent's bottleneck.** A perfect hint raised success
+by 3.4 points (threshold +8) and cut median wall time to 0.90× (threshold 0.8×). Gate 2 was not
+evaluated, as pre-declared.
+
+- **Why:** without any hint, the agent named a gold file in 57 of 58 tasks, within a median of about 6 s
+  and 13k tokens. The median run took 110 s, far under the cap (3–4 timeouts per arm). Finding the file
+  is not the constraint; understanding and editing are.
+- **The one oracle effect is cost:** fewer tokens, 0.83× cost per resolved task, with an interval that
+  just reaches no change. The wn hint didn't share it (1.05×; W used more tokens than A).
+- **Descriptive only:** wn's hint contained a gold file in 31 of 58 tasks, the same count as trial 3.
+
+**Deviations:** 12 A/O trials (6 tasks × 2 arms) failed at agent install from a Harbor dependency bug
+and were rerun once after a fix, as the plan allowed; all succeeded. A full disk on the hint-building
+machine corrupted two hint entries, which were recomputed before W ran. W ran about 45 minutes after
+A and O, a declared limitation for its wall-time comparison.
+
+**Spend:** LLM $2.86 (recomputed from token usage at list price, not invoice-verified); Modal at most
+$5.72 (that billing window also includes some other jobs).
+
+## Trial 5: weak model, preliminary (September 30, 2026)
+
+Trial 4 found no headroom for a capable agent. Trial 5 asks whether a weak model, which plausibly
+navigates poorly, has some. Same gates, hint wording, hint delivery, cap and analysis as trial 4.
+
+**Setup:**
+
+- **Model, chosen by a pre-declared smoke rule** (3 tasks, no-hint arm, first candidate to resolve at
+  least 1 of 3 wins): `gpt-oss-20b` resolved 0/3 with malformed tool calls; `qwen3-coder-30b-a3b`
+  resolved 1/3 and was used.
+- **Agent:** Claude Code pointed at the model through OpenRouter. Codex could not drive either model
+  through OpenRouter, so the harness differs from trial 4 and the two trials aren't directly comparable.
+- **Tasks:** the 58 minus the 7 teleport tasks (their verifier took about 17 minutes per trial, too
+  costly), then a seeded random 36 of the remaining 51 (`random.Random(1).sample`), decided before any
+  main-run result to fit the budget.
+- **Arms:** A, O and, since gate 1 passed, W using trial 4's wn hints unchanged.
+- **Cap:** 600 s agent wall time.
+
+**Results, A vs O** (36 tasks):
+
+| Arm | Resolved | Median wall time | Median API calls | Median tokens | Cost per resolved task | Gold file named in |
+|---|---|---|---|---|---|---|
+| A: no hint | 1/36 (2.8%) | 27.5 s | 2 | 87k | $0.614 | 15/36 |
+| O: oracle hint | 5/36 (13.9%) | 102.9 s | 6 | 259k | $0.179 | 30/36 |
+
+O − A success: **+11.1 points** [+2.8, +22.2] by task, [0.0, +17.8] by repository. Wall time doesn't
+apply as a criterion: O runs are longer (median ratio 3.74), because A often stops almost at once.
+
+**Results, A vs W vs O** (the 25 tasks where all three arms completed):
+
+| Arm | Resolved | Median wall time | Median API calls | Median tokens | Cost per resolved task | Gold file named in |
+|---|---|---|---|---|---|---|
+| A: no hint | 1/25 | 29 s | 2 | 87k | $0.363 | 11/25 |
+| W: wn hint | 6/25 | 238 s | 17 | 598k | $0.213 | 19/25 |
+| O: oracle hint | 4/25 | 119 s | 7 | 273k | $0.151 | 21/25 |
+
+W − A: +20 points [0, +40] by task, [−5.6, +40] by repository. O − A: +12 points [0, +24]. O − W: −8
+points [−28, +12]. Gate 2 (W's share of the gap): 1.67 [0.0, 6.0]. All 6 of W's solves were on the 17
+tasks where wn's hint contained a gold file; on the other 8 it solved none.
+
+### Verdict
+
+**Gate 1 passed on success, but this is not a claim.** It is the first setting with measurable
+headroom, and wn's hint arm did well (W 6/25 vs A 1/25), but:
+
+- **Confound: the hint may just make the model start working.** Without a hint, the model's median run
+  is 2 API calls and 28 s: it often replies with plain text ("I'll explore the codebase…") and no tool
+  call, and the session ends. Any concrete file list at the top of the prompt may push it into using
+  tools, whether or not the list is right. W's solves all being on correct-hint tasks points the other
+  way, but separating the two needs a **placebo arm** (the same block with plausible wrong files),
+  which was not pre-declared and not run.
+- **W is incomplete:** 11 of 36 W trials were cancelled by the spend guard, and they were the
+  longest-running ones, so the 25-task comparison may be biased in an unknown direction.
+- **Near the floor:** the counts are 1, 4 and 6 solves, and the intervals are wide.
+
+**Deviations** (logged as plan amendments before or during the runs): the task subset for budget; a
+first run routed to the cheapest provider returned empty responses in 44 of 70 trials and was voided
+and rerun with default routing; one launch was killed by a spend guard reading a shared API key and
+voided; the W job was stopped by the guard, as above.
+
+**Spend:** LLM $3.49 recomputed at list price, including the voided runs (default routing may have
+used pricier providers, so the bill could be higher). Modal about $4.4, **over the $3 budget**, mostly
+from about 110 wasted trials in the voided and killed runs.
+
+A real test would pre-declare A, a placebo, W and O on the 51 tasks, with a harness that doesn't end
+on the model's first text-only turn.
+
+## Conclusion across the trials
 
 For a cheap, capable agent, automatic start hints don't save cost or improve success at any repository
-size tested. where-next stays an **opt-in** tool for agents (the agent called it on its own in 23 of 58
-tasks in trial 3), with the start hint off by default, and is positioned as fast local navigation for
-people. Not tested: more expensive agents, and people navigating by hand.
+size tested (trials 1–3). Trial 4 shows why: **capable agents don't need navigation hints; even perfect
+ones barely help**, because the agent finds a right file within seconds on its own. Weak models might
+benefit (trial 5), but that is untested: the only signal so far is confounded and was not checked
+against a placebo. where-next stays an **opt-in** tool for agents (the agent called it on its own in 23
+of 58 tasks in trial 3), with the start hint off by default, and is positioned as fast local navigation
+for people. Not tested: more expensive agents, a placebo-controlled weak-model trial, and people
+navigating by hand.

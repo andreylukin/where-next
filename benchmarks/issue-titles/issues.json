@@ -1,0 +1,1436 @@
+[
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 142526,
+  "pr": 142527,
+  "gold": [
+   "staging/src/k8s.io/apimachinery/pkg/util/yaml/decoder.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 142415,
+  "pr": 142459,
+  "gold": [
+   "staging/src/k8s.io/dynamic-resource-allocation/resourceslice/resourceslicecontroller.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 142302,
+  "pr": 142493,
+  "gold": [
+   "staging/src/k8s.io/apiserver/pkg/admission/conversion.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 142210,
+  "pr": 142215,
+  "gold": [
+   "staging/src/k8s.io/kubectl/pkg/describe/describe.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 142209,
+  "pr": 142214,
+  "gold": [
+   "staging/src/k8s.io/kubectl/pkg/describe/describe.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 142142,
+  "pr": 142247,
+  "gold": [
+   "pkg/controller/job/job_controller.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 142129,
+  "pr": 142138,
+  "gold": [
+   "pkg/proxy/util/nodeport_addresses.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 142002,
+  "pr": 142003,
+  "gold": [
+   "staging/src/k8s.io/dynamic-resource-allocation/kubeletplugin/draplugin.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141974,
+  "pr": 141976,
+  "gold": [
+   "vendor/google.golang.org/grpc/internal/transport/http2_server.go",
+   "vendor/google.golang.org/grpc/version.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141943,
+  "pr": 142035,
+  "gold": [
+   "pkg/proxy/conntrack/sysctls.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141885,
+  "pr": 141886,
+  "gold": [
+   "vendor/golang.org/x/crypto/internal/poly1305/mac_noasm.go",
+   "vendor/golang.org/x/crypto/internal/poly1305/sum_asm.go",
+   "vendor/golang.org/x/crypto/ssh/certs.go",
+   "vendor/golang.org/x/crypto/ssh/channel.go",
+   "vendor/golang.org/x/crypto/ssh/client_auth.go",
+   "vendor/golang.org/x/crypto/ssh/common.go",
+   "vendor/golang.org/x/crypto/ssh/connection.go",
+   "vendor/golang.org/x/crypto/ssh/handshake.go",
+   "vendor/golang.org/x/crypto/ssh/keys.go",
+   "vendor/golang.org/x/crypto/ssh/messages.go",
+   "vendor/golang.org/x/crypto/ssh/mux.go",
+   "vendor/golang.org/x/crypto/ssh/server.go",
+   "vendor/golang.org/x/crypto/ssh/ssh_gss.go",
+   "vendor/golang.org/x/crypto/ssh/streamlocal.go",
+   "vendor/golang.org/x/crypto/ssh/tcpip.go",
+   "vendor/golang.org/x/crypto/ssh/transport.go",
+   "vendor/golang.org/x/tools/go/types/objectpath/objectpath.go",
+   "vendor/golang.org/x/tools/internal/imports/fix.go",
+   "vendor/golang.org/x/tools/internal/imports/mod.go",
+   "vendor/golang.org/x/tools/internal/imports/source_env.go",
+   "vendor/golang.org/x/tools/internal/stdlib/deps.go",
+   "vendor/golang.org/x/tools/internal/stdlib/manifest.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141842,
+  "pr": 141861,
+  "gold": [
+   "pkg/apis/core/types.go",
+   "pkg/volume/util/hostutil/hostutil_windows.go",
+   "pkg/volume/util/operationexecutor/operation_generator.go",
+   "staging/src/k8s.io/api/core/v1/types.go",
+   "staging/src/k8s.io/api/core/v1/types_swagger_doc_generated.go",
+   "staging/src/k8s.io/client-go/applyconfigurations/core/v1/attachedvolume.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141839,
+  "pr": 141863,
+  "gold": [
+   "pkg/volume/iscsi/iscsi_util.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141829,
+  "pr": 141898,
+  "gold": [
+   "staging/src/k8s.io/dynamic-resource-allocation/structured/internal/allocatortesting/allocator_testing.go",
+   "staging/src/k8s.io/dynamic-resource-allocation/structured/internal/experimental/allocator_experimental.go",
+   "staging/src/k8s.io/dynamic-resource-allocation/structured/internal/incubating/allocator_incubating.go",
+   "staging/src/k8s.io/dynamic-resource-allocation/structured/internal/stable/allocator_stable.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141798,
+  "pr": 142410,
+  "gold": [
+   "vendor/github.com/felixge/httpsnoop/capture_metrics.go",
+   "vendor/github.com/felixge/httpsnoop/wrap_generated_gteq_1.8.go",
+   "vendor/github.com/felixge/httpsnoop/wrap_generated_lt_1.8.go",
+   "vendor/github.com/go-logr/logr/context_noslog.go",
+   "vendor/github.com/go-logr/logr/context_slog.go",
+   "vendor/github.com/go-logr/logr/funcr/funcr.go",
+   "vendor/github.com/go-logr/logr/funcr/slogsink.go",
+   "vendor/github.com/go-logr/logr/sloghandler.go",
+   "vendor/github.com/go-logr/logr/slogr.go",
+   "vendor/github.com/go-logr/logr/slogr/slogr.go",
+   "vendor/github.com/go-logr/logr/slogsink.go",
+   "vendor/go.etcd.io/etcd/api/v3/version/version.go",
+   "vendor/go.etcd.io/etcd/client/pkg/v3/fileutil/purge.go",
+   "vendor/go.etcd.io/etcd/server/v3/etcdserver/api/snap/db.go",
+   "vendor/go.etcd.io/etcd/server/v3/etcdserver/api/snap/snapshotter.go",
+   "vendor/go.etcd.io/etcd/server/v3/storage/storage.go",
+   "vendor/go.etcd.io/etcd/server/v3/storage/wal/wal.go",
+   "vendor/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/config.go",
+   "vendor/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/doc.go",
+   "vendor/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/interceptor.go",
+   "vendor/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/interceptorinfo.go",
+   "vendor/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/internal/parse.go",
+   "vendor/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/metadata_supplier.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141703,
+  "pr": 141704,
+  "gold": [
+   "staging/src/k8s.io/kubectl/pkg/cmd/kuberc/set.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141653,
+  "pr": 141695,
+  "gold": [
+   "pkg/scheduler/backend/queue/scheduling_queue.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141620,
+  "pr": 141648,
+  "gold": [
+   "staging/src/k8s.io/dynamic-resource-allocation/resourceslice/tracker/tracker.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141617,
+  "pr": 141618,
+  "gold": [
+   "pkg/controller/volume/persistentvolume/pv_controller.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141592,
+  "pr": 141593,
+  "gold": [
+   "staging/src/k8s.io/endpointslice/reconciler.go",
+   "staging/src/k8s.io/endpointslice/util/endpointslice_tracker.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141565,
+  "pr": 141591,
+  "gold": [
+   "staging/src/k8s.io/api/core/v1/types.go",
+   "staging/src/k8s.io/api/core/v1/types_swagger_doc_generated.go",
+   "staging/src/k8s.io/client-go/applyconfigurations/core/v1/limitrangeitem.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141521,
+  "pr": 141522,
+  "gold": [
+   "pkg/kubelet/volumemanager/cache/actual_state_of_world.go",
+   "pkg/kubelet/volumemanager/populator/desired_state_of_world_populator.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141508,
+  "pr": 141509,
+  "gold": [
+   "pkg/controller/endpoint/endpoints_controller.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141495,
+  "pr": 141499,
+  "gold": [
+   "pkg/scheduler/testing/wrappers.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141488,
+  "pr": 141489,
+  "gold": [
+   "pkg/proxy/winkernel/hns.go",
+   "pkg/proxy/winkernel/testing/hcnutils_mock.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141473,
+  "pr": 141487,
+  "gold": [
+   "pkg/kubelet/prober/prober_manager.go",
+   "pkg/kubelet/prober/worker.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141467,
+  "pr": 141556,
+  "gold": [
+   "pkg/apis/core/validation/validation.go",
+   "pkg/scheduler/framework/plugins/dynamicresources/dynamicresources.go",
+   "pkg/scheduler/framework/plugins/dynamicresources/nodeallocatabledynamicresources.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141433,
+  "pr": 141966,
+  "gold": [
+   "staging/src/k8s.io/dynamic-resource-allocation/kubeletplugin/draplugin.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141410,
+  "pr": 141463,
+  "gold": [
+   "pkg/scheduler/schedule_one.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141404,
+  "pr": 142277,
+  "gold": [
+   "staging/src/k8s.io/apimachinery/pkg/api/resource/quantity.go",
+   "staging/src/k8s.io/apimachinery/pkg/api/resource/quantity_proto.go",
+   "staging/src/k8s.io/component-base/logs/api/v1/options.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141346,
+  "pr": 141329,
+  "gold": [
+   "pkg/controller/job/job_controller.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141339,
+  "pr": 141340,
+  "gold": [
+   "pkg/scheduler/framework/plugins/podtopologyspread/common.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141323,
+  "pr": 141307,
+  "gold": [
+   "staging/src/k8s.io/dynamic-resource-allocation/structured/internal/allocatortesting/allocator_testing.go",
+   "staging/src/k8s.io/dynamic-resource-allocation/structured/internal/experimental/allocator_experimental.go",
+   "staging/src/k8s.io/dynamic-resource-allocation/structured/internal/incubating/allocator_incubating.go",
+   "staging/src/k8s.io/dynamic-resource-allocation/structured/internal/stable/allocator_stable.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141298,
+  "pr": 141302,
+  "gold": [
+   "pkg/controller/podautoscaler/replica_calculator.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141290,
+  "pr": 142289,
+  "gold": [
+   "pkg/controller/devicetainteviction/device_taint_eviction.go",
+   "pkg/controller/resourceclaim/controller.go",
+   "pkg/scheduler/framework/plugins/dynamicresources/dynamicresources.go",
+   "plugin/pkg/auth/authorizer/node/graph.go",
+   "staging/src/k8s.io/dynamic-resource-allocation/resourceclaim/pod.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141274,
+  "pr": 141276,
+  "gold": [
+   "pkg/controller/resourceclaim/controller.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141262,
+  "pr": 141261,
+  "gold": [
+   "pkg/kubelet/cm/cpumanager/policy_static.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141237,
+  "pr": 141238,
+  "gold": [
+   "pkg/kubelet/cm/cpumanager/cpu_assignment.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141210,
+  "pr": 141211,
+  "gold": [
+   "pkg/kubelet/util/sliceutils/sliceutils.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141178,
+  "pr": 141500,
+  "gold": [
+   "staging/src/k8s.io/apiextensions-apiserver/pkg/cmd/server/testing/testserver.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141155,
+  "pr": 141342,
+  "gold": [
+   "pkg/kubelet/kubelet_pods.go"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "kubernetes/kubernetes",
+  "issue": 141151,
+  "pr": 141158,
+  "gold": [
+   "pkg/controller/volume/attachdetach/attach_detach_controller.go",
+   "pkg/controller/volume/attachdetach/testing/testvolumespec.go",
+   "pkg/volume/util/operationexecutor/operation_generator.go",
+   "pkg/volume/util/util.go"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15808,
+  "pr": 15815,
+  "gold": [
+   "src/t_stream.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15745,
+  "pr": 15758,
+  "gold": [
+   "src/tls.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15638,
+  "pr": 15695,
+  "gold": [
+   "src/cluster_asm.c",
+   "src/db.c",
+   "src/module.c",
+   "src/networking.c",
+   "src/server.c",
+   "src/server.h",
+   "src/t_hash.c"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15597,
+  "pr": 15699,
+  "gold": [
+   "src/bitops.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15586,
+  "pr": 15587,
+  "gold": [
+   "src/t_list.c"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15562,
+  "pr": 15594,
+  "gold": [
+   "src/blocked.c"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15550,
+  "pr": 15545,
+  "gold": [
+   "src/bitops.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15502,
+  "pr": 15556,
+  "gold": [
+   "redis.conf",
+   "src/cli_common.c",
+   "src/cli_common.h",
+   "src/config.c",
+   "src/redis-benchmark.c",
+   "src/redis-cli.c",
+   "src/server.h",
+   "src/tls.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15498,
+  "pr": 15499,
+  "gold": [
+   "src/networking.c",
+   "src/object.c"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15488,
+  "pr": 15489,
+  "gold": [
+   "src/t_stream.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15484,
+  "pr": 15491,
+  "gold": [
+   "deps/xxhash/Makefile"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15472,
+  "pr": 15530,
+  "gold": [
+   "src/cluster_legacy.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15465,
+  "pr": 15466,
+  "gold": [
+   "src/cluster.c",
+   "src/cluster_asm.c",
+   "src/debug.c",
+   "src/server.h"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15461,
+  "pr": 15462,
+  "gold": [
+   "src/dict.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15452,
+  "pr": 15453,
+  "gold": [
+   "src/db.c"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15410,
+  "pr": 15412,
+  "gold": [
+   "src/expire.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15404,
+  "pr": 15409,
+  "gold": [
+   "src/config.c"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15403,
+  "pr": 15408,
+  "gold": [
+   "src/db.c"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15402,
+  "pr": 15407,
+  "gold": [
+   "src/t_list.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15389,
+  "pr": 15433,
+  "gold": [
+   "src/bitops.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15387,
+  "pr": 15436,
+  "gold": [
+   "src/aof.c"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15384,
+  "pr": 15392,
+  "gold": [
+   "modules/vector-sets/vset.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15269,
+  "pr": 15270,
+  "gold": [
+   "modules/vector-sets/vset.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15250,
+  "pr": 15262,
+  "gold": [
+   "src/redis-cli.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15175,
+  "pr": 15212,
+  "gold": [
+   "modules/redisearch/Makefile"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15082,
+  "pr": 15095,
+  "gold": [
+   "src/rdb.c"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 15001,
+  "pr": 15000,
+  "gold": [
+   "src/cluster_asm.c",
+   "src/db.c",
+   "src/server.h"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 14951,
+  "pr": 14953,
+  "gold": [
+   "src/cluster.c",
+   "src/cluster.h",
+   "src/module.c",
+   "src/redismodule.h"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 14278,
+  "pr": 15045,
+  "gold": [
+   "src/commands.def",
+   "src/server.h",
+   "src/t_string.c",
+   "src/util.h"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 13992,
+  "pr": 15391,
+  "gold": [
+   "src/ae.c"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 11085,
+  "pr": 15255,
+  "gold": [
+   "src/cli_common.c",
+   "src/redis-cli.c"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "redis/redis",
+  "issue": 9956,
+  "pr": 15107,
+  "gold": [
+   "deps/hiredis/net.c"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 22718,
+  "pr": 37580,
+  "gold": [
+   "packages/react-dom-bindings/src/events/plugins/SimpleEventPlugin.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 37578,
+  "pr": 37579,
+  "gold": [
+   "packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 37553,
+  "pr": 37576,
+  "gold": [
+   "compiler/packages/babel-plugin-react-compiler/src/HIR/Globals.ts",
+   "compiler/packages/babel-plugin-react-compiler/src/HIR/ObjectShape.ts",
+   "compiler/packages/babel-plugin-react-compiler/src/Inference/InferMutationAliasingEffects.ts"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 37361,
+  "pr": 37542,
+  "gold": [
+   "packages/react-client/src/ReactFlightClient.js"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 37343,
+  "pr": 37481,
+  "gold": [
+   "packages/react-client/src/ReactFlightClient.js"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 37280,
+  "pr": 37475,
+  "gold": [
+   "packages/react-devtools-shared/src/backend/fiber/renderer.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 37450,
+  "pr": 37457,
+  "gold": [
+   "packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 37387,
+  "pr": 37389,
+  "gold": [
+   "packages/react-dom-bindings/src/events/SyntheticEvent.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 37240,
+  "pr": 37258,
+  "gold": [
+   "packages/react-client/src/ReactFlightClient.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 37124,
+  "pr": 37125,
+  "gold": [
+   "packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 37003,
+  "pr": 37009,
+  "gold": [
+   "packages/react-devtools-extensions/src/contentScripts/proxy.js"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 29862,
+  "pr": 36980,
+  "gold": [
+   "packages/react-dom-bindings/src/client/ReactDOMInput.js",
+   "packages/react-dom-bindings/src/events/plugins/ChangeEventPlugin.js"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 30659,
+  "pr": 36950,
+  "gold": [
+   "packages/react-reconciler/src/ReactFiberBeginWork.js",
+   "packages/react-reconciler/src/ReactFiberHotReloading.js",
+   "packages/react-refresh/src/ReactFreshRuntime.js"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 30994,
+  "pr": 36949,
+  "gold": [
+   "packages/react-dom-bindings/src/client/ReactDOMComponent.js"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 29585,
+  "pr": 36948,
+  "gold": [
+   "packages/react-reconciler/src/ReactChildFiber.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 27670,
+  "pr": 36947,
+  "gold": [
+   "packages/react-reconciler/src/ReactFiberHooks.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 36200,
+  "pr": 36913,
+  "gold": [
+   "packages/shared/ReactPerformanceTrackProperties.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 33580,
+  "pr": 36911,
+  "gold": [
+   "packages/react-reconciler/src/ReactFiberWorkLoop.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 36890,
+  "pr": 36903,
+  "gold": [
+   "packages/react-server/src/ReactFizzServer.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 36563,
+  "pr": 36803,
+  "gold": [
+   "packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 36181,
+  "pr": 36795,
+  "gold": [
+   "packages/react-server/src/ReactFlightServer.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 34905,
+  "pr": 36734,
+  "gold": [
+   "compiler/packages/babel-plugin-react-compiler/src/Validation/ValidateNoSetStateInEffects.ts"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 34971,
+  "pr": 36732,
+  "gold": [
+   "compiler/packages/babel-plugin-react-compiler/src/ReactiveScopes/InferReactiveScopeVariables.ts"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 36601,
+  "pr": 36688,
+  "gold": [
+   "compiler/packages/babel-plugin-react-compiler/src/HIR/BuildHIR.ts"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 36440,
+  "pr": 36564,
+  "gold": [
+   "packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": true,
+  "rgsrc_full_hit": true
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 32552,
+  "pr": 36347,
+  "gold": [
+   "packages/react-devtools-shared/src/devtools/utils.js",
+   "packages/react-devtools-shared/src/hydration.js",
+   "packages/react-devtools-shared/src/utils.js",
+   "packages/react-devtools-shell/src/app/InspectableElements/SimpleValues.js"
+  ],
+  "wn_title_hit": true,
+  "wn_title_noadapt_hit": true,
+  "wn_full_hit": true,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 36525,
+  "pr": 36244,
+  "gold": [
+   "packages/react-devtools-shared/src/devtools/views/Components/InspectedElementBadges.css",
+   "packages/react-devtools-shared/src/devtools/views/Profiler/SidebarSelectedFiberInfo.css",
+   "packages/react-devtools-shared/src/devtools/views/Profiler/SidebarSelectedFiberInfo.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ },
+ {
+  "repo": "facebook/react",
+  "issue": 17855,
+  "pr": 36177,
+  "gold": [
+   "packages/react-devtools-shared/src/devtools/views/Components/Tree.js"
+  ],
+  "wn_title_hit": false,
+  "wn_title_noadapt_hit": false,
+  "wn_full_hit": false,
+  "rgsrc_title_hit": false,
+  "rgsrc_full_hit": false
+ }
+]
