@@ -4,6 +4,7 @@
 //! a process. Every report has a JSON form (`--json`) for agents and a short text form for people.
 
 pub mod agents;
+pub mod ask_text;
 pub mod bench;
 pub mod daemon;
 pub mod progress;
@@ -21,7 +22,7 @@ use wn_core::adapter_lifecycle::{AdapterEvent, AdapterLifecycle, AdapterState};
 use wn_core::encoder::{Encoder, HashEncoder};
 use wn_core::index::{EntryKind, Index, IndexedFile, RefreshStats};
 use wn_core::index_lifecycle::IndexState;
-use wn_core::rank::{render, Outcome};
+use wn_core::rank::Outcome;
 use wn_core::runtime::{
     fit_from_history, load_adapter, save_adapter, suggest_with_exact, HistoryExample,
     StoredAdapter, SuggestOptions,
@@ -63,6 +64,10 @@ pub struct Cli {
     /// (refused by default: everything under it would be indexed).
     #[arg(long, global = true)]
     pub any_dir: bool,
+    /// Color text output: auto (terminal only; honors NO_COLOR and CLICOLOR_FORCE),
+    /// always or never.
+    #[arg(long, global = true, value_enum, value_name = "WHEN", default_value_t = ask_text::ColorWhen::Auto)]
+    pub color: ask_text::ColorWhen,
     /// What to do.
     #[command(subcommand)]
     pub command: Command,
@@ -926,6 +931,18 @@ fn read_context(path: &Option<PathBuf>) -> String {
 
 /// Runs a parsed command, returning the text to print and the exit code.
 pub fn run(cli: Cli) -> (String, i32) {
+    // `ask` text is styled wherever it is built (here or in the daemon); strip it here.
+    let styled = matches!(cli.command, Command::Ask { .. }) && !cli.json;
+    let color = ask_text::color_enabled(cli.color);
+    let (text, code) = run_command(cli);
+    if styled {
+        (ask_text::finish(text, color), code)
+    } else {
+        (text, code)
+    }
+}
+
+fn run_command(cli: Cli) -> (String, i32) {
     let uses_repo = matches!(
         cli.command,
         Command::Init
@@ -1178,8 +1195,7 @@ pub fn run_stats(cli: &Cli, opts: &StatsArgs) -> (String, i32) {
         (Some(c), false) => stats::render_share(c),
         (None, true) => erased::Json::to_json(&stats),
         (None, false) => {
-            use std::io::IsTerminal as _;
-            let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+            let color = ask_text::color_enabled(cli.color);
             stats::render(&stats, stats::Style { color })
         }
     };
@@ -1428,9 +1444,6 @@ pub fn ask_command_with(
         return (erased::Json::to_json(&outcome), 0);
     }
     let note = match outcome.state {
-        AnswerState::EmptyIndex => Some(
-            "no source files found here; run wn inside a repository (see `wn status`)".to_string(),
-        ),
         AnswerState::Ok | AnswerState::Abstain | AnswerState::StaleIndex if ws.info.fallback => {
             Some(match ws.info.reason.as_deref() {
                 None | Some(NO_MODEL) => NO_MODEL_HINT.to_string(),
@@ -1439,10 +1452,7 @@ pub fn ask_command_with(
         }
         _ => None,
     };
-    match note {
-        Some(note) => (format!("{}\nnote: {note}", render(&outcome)), 0),
-        None => (render(&outcome), 0),
-    }
+    (ask_text::render(&outcome, note.as_deref()), 0)
 }
 
 fn run_bench(cli: Cli) -> (String, i32) {

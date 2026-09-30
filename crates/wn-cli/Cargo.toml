@@ -26,6 +26,8 @@ onnx = ["dep:wn-embed", "wn-mcp/onnx"]
 remote = ["onnx", "wn-embed/remote"]
 
 [dependencies]
+anstream = "1"
+anstyle = "1"
 clap = { version = "4.6", features = ["derive"] }
 memchr = "2"
 regex = "1"

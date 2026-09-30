@@ -45,6 +45,12 @@ Options:
           
           [default: 100]
 
+      --color <WHEN>
+          Color text output: auto (terminal only; honors NO_COLOR and CLICOLOR_FORCE), always or never
+          
+          [default: auto]
+          [possible values: auto, always, never]
+
       --with-tests
           Count test files as gold too
 

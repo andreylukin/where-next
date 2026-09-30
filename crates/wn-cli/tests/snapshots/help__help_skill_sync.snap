@@ -41,6 +41,12 @@ Options:
   -y, --yes
           Apply without asking
 
+      --color <WHEN>
+          Color text output: auto (terminal only; honors NO_COLOR and CLICOLOR_FORCE), always or never
+          
+          [default: auto]
+          [possible values: auto, always, never]
+
       --from-state
           Re-sync exactly the targets recorded by earlier syncs (used by `wn update`)
 
