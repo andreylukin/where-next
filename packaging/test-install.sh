@@ -175,20 +175,32 @@ HOME="$work/auto-home" WN_RELEASE_BASE="file://$work/good" WN_INSTALL_DIR="$work
 [ "$("$work/auto-bin/wn")" = "wn-fixture" ] || fail "default did not install the release"
 [ -f "$work/auto-bin/wn.install-method" ] || fail "release install marker missing"
 grep -q 'wn model pull' "$work/auto.err" || fail "model next step missing"
-HOME="$work/fallback-home" PATH="$fake:$PATH" WN_RELEASE_BASE="file://$work/missing" WN_INSTALL_DIR="$work/fallback-bin" WN_TARGET="$target" WN_HOME="$work/fallback-wnhome" WN_BIN_ROOT="$work/fallback-root" WN_REPO_URL="$up" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/fallback.err"
+HOME="$work/fallback-home" PATH="$fake:$PATH" WN_GLIBC=2.39 WN_RELEASE_BASE="file://$work/missing" WN_INSTALL_DIR="$work/fallback-bin" WN_TARGET="$target" WN_HOME="$work/fallback-wnhome" WN_BIN_ROOT="$work/fallback-root" WN_REPO_URL="$up" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/fallback.err"
 [ -x "$work/fallback-root/bin/wn" ] || fail "source fallback did not build"
 
-# Old glibc selects source before fetching an incompatible release.
-HOME="$work/old-home" WN_GLIBC=2.36 WN_DECISION_ONLY=1 WN_RELEASE_BASE="file://$work/good" WN_TARGET="$target" sh "$root/install.sh" 2>"$work/old.err"
-grep -q 'glibc 2.36 is below' "$work/old.err" || fail "old glibc explanation missing"
-grep -q 'source fallback selected' "$work/old.err" || fail "old glibc did not select source"
+# Old or unknown glibc is refused before any release download or source clone.
+for libc in 2.36 unknown; do
+  if HOME="$work/$libc-home" WN_GLIBC="$libc" WN_RELEASE_BASE="file://$work/good" WN_TARGET="$target" sh "$root/install.sh" 2>"$work/$libc.err"; then
+    fail "glibc $libc was accepted"
+  fi
+  grep -q "detected glibc version: $libc" "$work/$libc.err" || fail "glibc $libc detection missing"
+  grep -q 'prebuilt binaries need glibc >= 2.39 (Ubuntu 24.04+, Debian 13+)' "$work/$libc.err" || fail "glibc $libc requirement missing"
+  grep -q 'source build will also fail on this system' "$work/$libc.err" || fail "glibc $libc source warning missing"
+  grep -q 'ubuntu:24.04' "$work/$libc.err" || fail "glibc $libc container option missing"
+  grep -q 'WN_FROM=source' "$work/$libc.err" || fail "glibc $libc override missing"
+  ! grep -q 'downloading\|cloning' "$work/$libc.err" || fail "glibc $libc attempted a download"
+done
+
+# Explicit source mode remains available on old glibc.
+HOME="$work/old-source-home" PATH="$fake:$PATH" WN_GLIBC=2.36 WN_FROM=source WN_HOME="$work/old-source-wnhome" WN_BIN_ROOT="$work/old-source-root" WN_REPO_URL="$up" WN_NO_MODEL=1 sh "$root/install.sh" 2>"$work/old-source.err"
+[ -x "$work/old-source-root/bin/wn" ] || fail "explicit source override did not build"
 
 # Uninstall removes a release install and explains retained skill files.
 HOME="$work/auto-home" WN_INSTALL_DIR="$work/auto-bin" sh "$root/install.sh" --uninstall 2>"$work/release-uninstall.err"
 [ ! -e "$work/auto-bin/wn" ] || fail "release binary remained after uninstall"
 [ ! -e "$work/auto-bin/wn.install-method" ] || fail "release marker remained after uninstall"
 grep -q 'wn skill sync --uninstall' "$work/release-uninstall.err" || fail "uninstall omitted agent skills"
-echo "install.sh: 4 additional auto/release tests passed"
+echo "install.sh: 6 additional auto/release tests passed"
 
 # A non-TTY release install that declines the model includes a pull command in next steps.
 HOME="$work/non-tty-home" WN_RELEASE_BASE="file://$work/good" WN_INSTALL_DIR="$work/non-tty-bin" WN_TARGET="$target" WN_NO_MODEL="" sh "$root/install.sh" </dev/null 2>"$work/non-tty.err"

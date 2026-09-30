@@ -57,14 +57,21 @@ glibc_version() {
   ldd --version 2>&1 | head -n 1 | sed -n 's/.* \([0-9][0-9]*\.[0-9][0-9]*\).*$/\1/p'
 }
 
-release_compatible() {
+require_compatible_glibc() {
   if [ "$(uname -s)" != Linux ] && [ -z "${WN_GLIBC:-}" ]; then return 0; fi
   libc="$(glibc_version)"
-  if [ -z "$libc" ]; then say "Linux libc could not be identified; falling back to source build"; return 1; fi
-  major="${libc%%.*}"; minor="${libc#*.}"; minor="${minor%%.*}"
-  if [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 39 ]; }; then
-    say "glibc $libc is below the release binary requirement (2.39); falling back to source build (ONNX Runtime source linking may also require newer glibc/GCC)"
-    return 1
+  case "$libc" in
+    *.*)
+      major="${libc%%.*}"; minor="${libc#*.}"
+      case "$major:$minor" in :* | *: | *[!0-9:]*) libc="unknown" ;; esac
+      ;;
+    *) libc="unknown" ;;
+  esac
+  if [ "$libc" = unknown ] || [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 39 ]; }; then
+    say "detected glibc version: $libc"
+    say "prebuilt binaries need glibc >= 2.39 (Ubuntu 24.04+, Debian 13+)"
+    say "a source build will also fail on this system (ONNX Runtime needs newer glibc/GCC)"
+    die "run in an ubuntu:24.04 container, or set WN_FROM=source to try anyway"
   fi
 }
 
@@ -216,26 +223,23 @@ installed_commit() { # short sha from `wn --version`, if an installed wn reports
 
 if [ -z "$uninstall" ] && [ "$from" != source ]; then
   if [ "$from" != auto ] && [ "$from" != release ]; then die "WN_FROM must be auto, release, or source"; fi
+  require_compatible_glibc
   if target="${WN_TARGET:-$(detect_target)}"; then
-    if release_compatible; then
-      if [ -n "$dry_run" ]; then
-        say "would install checksum-verified release binary for $target"
-        return 0
-      fi
-      if install_release; then
-        ensure_model
-        say "update later with: wn update"
-        next_steps
-        return 0
-      fi
-      say "release archive unavailable for $target; falling back to source build"
+    if [ -n "$dry_run" ]; then
+      say "would install checksum-verified release binary for $target"
+      return 0
     fi
+    if install_release; then
+      ensure_model
+      say "update later with: wn update"
+      next_steps
+      return 0
+    fi
+    say "release archive unavailable for $target; falling back to source build"
   else
     say "no release binary for this target; falling back to source build"
   fi
 fi
-
-if [ -n "${WN_DECISION_ONLY:-}" ]; then say "source fallback selected"; return 0; fi
 
 if [ -n "$uninstall" ]; then
   release_bin="${WN_INSTALL_DIR:-$HOME/.local/bin}/wn"
