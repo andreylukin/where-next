@@ -11,7 +11,7 @@ Options:
           Show the report and the issue link without posting
 
       --path <PATH>
-          Repository (or any directory inside it)
+          Repository (or any directory inside it), or a directory of repositories
           
           [default: .]
 

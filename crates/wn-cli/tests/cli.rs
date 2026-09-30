@@ -744,3 +744,187 @@ fn ask_colored_output_escapes_repository_filename_controls() {
     assert!(out.contains("socket_\\u{1b}[2J_INJECT.rs"), "{out:?}");
     assert!(!out.contains("\x1b[2J"), "{out:?}");
 }
+
+/// A directory of repositories, as `~` usually is: `repos/auth` and `repos/upload` (git
+/// repositories with a commit each) and `notes` (not a repository).
+fn parent_of_repos() -> tempfile::TempDir {
+    let t = tempfile::tempdir().unwrap();
+    for (repo, files) in [
+        (
+            "repos/auth",
+            &[
+                ("src/session.py", "\"\"\"Login sessions and token verification.\"\"\"\ndef verify_token(token):\n    pass\n"),
+                ("src/users.py", "\"\"\"User accounts and profiles.\"\"\"\ndef create_user(name):\n    pass\n"),
+            ][..],
+        ),
+        (
+            "repos/upload",
+            &[
+                ("src/retry.go", "// Package upload retries storage uploads on timeout.\npackage upload\n\nfunc RetryUpload() {}\n"),
+                ("src/bucket.go", "// Package upload lists storage buckets.\npackage upload\n\nfunc ListBuckets() {}\n"),
+            ][..],
+        ),
+    ] {
+        let d = t.path().join(repo);
+        fs::create_dir_all(&d).unwrap();
+        git(&d, &["init", "-q", "-b", "main"]);
+        git(&d, &["config", "commit.gpgsign", "false"]);
+        for (path, text) in files {
+            write(&d, path, text);
+        }
+        git(&d, &["add", "-A"]);
+        git(&d, &["commit", "-q", "-m", "initial"]);
+    }
+    write(t.path(), "notes/todo.md", "# todo\n");
+    t
+}
+
+/// From a directory of repositories: `wn init` indexes each one, `wn status` lists them and
+/// `wn ask` answers across them with paths that open from that directory; inside a repository
+/// nothing changes.
+#[test]
+fn a_directory_of_repositories_is_one_workspace() {
+    let parent = parent_of_repos();
+    let home = tempfile::tempdir().unwrap();
+    let p = parent.path();
+
+    // Nothing indexed yet: refused as before, saying what `wn init` would do.
+    let (out, code) = wn(p, home.path(), &["ask", "where are tokens verified"]);
+    assert_eq!(code, 2, "{out}");
+    assert!(out.contains("not inside a git repository"), "{out}");
+    assert!(out.contains("indexes the 2 repositories"), "{out}");
+
+    let (out, code) = wn(p, home.path(), &["init"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("repos/auth: 2 source files"), "{out}");
+    assert!(out.contains("repos/upload: 2 source files"), "{out}");
+    assert!(out.contains("indexed 2 of 2 repositories"), "{out}");
+
+    let (out, code) = wn(p, home.path(), &["status"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("2 of 2 repositories indexed"), "{out}");
+    assert!(
+        out.contains("repos/auth    2 source files  indexed just now"),
+        "{out}"
+    );
+
+    let (out, code) = wn(
+        p,
+        home.path(),
+        &["ask", "--json", "login token verification"],
+    );
+    assert_eq!(code, 0, "{out}");
+    let answer: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(answer["state"], "ok", "{out}");
+    assert_eq!(
+        answer["files"][0]["path"], "repos/auth/src/session.py",
+        "{out}"
+    );
+    assert_eq!(answer["files"][0]["repo"], "repos/auth");
+    assert_eq!(answer["files"][0]["repo_path"], "src/session.py");
+    assert_eq!(
+        answer["repos"][0]["repo"], "repos/auth",
+        "repository tier: {out}"
+    );
+    assert!(p
+        .join(answer["files"][0]["path"].as_str().unwrap())
+        .is_file());
+
+    let (text, code) = wn(p, home.path(), &["ask", "retry storage uploads on timeout"]);
+    assert_eq!(code, 0, "{text}");
+    assert!(
+        text.lines()
+            .next()
+            .unwrap()
+            .starts_with("repos/upload/src/retry.go"),
+        "{text}"
+    );
+    assert!(
+        text.contains("2 repositories searched; hints from repos/upload"),
+        "{text}"
+    );
+
+    // Inside a repository: a plain single-repository answer, as before.
+    let (out, code) = wn(
+        &p.join("repos/auth"),
+        home.path(),
+        &["ask", "--json", "login token verification"],
+    );
+    assert_eq!(code, 0, "{out}");
+    let answer: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(answer["files"][0]["path"], "src/session.py", "{out}");
+    assert!(answer.get("repos").is_none(), "{out}");
+}
+
+/// More than ten repositories need a confirmation (`--yes` when not on a terminal).
+#[test]
+fn indexing_many_repositories_asks_first() {
+    let parent = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    for i in 0..11 {
+        let d = parent.path().join(format!("r{i:02}"));
+        fs::create_dir_all(&d).unwrap();
+        git(&d, &["init", "-q", "-b", "main"]);
+        write(&d, "main.rs", "fn main() {}\n");
+    }
+    let (out, code) = wn(parent.path(), home.path(), &["init"]);
+    assert_eq!(code, 2, "{out}");
+    assert!(out.contains("pass --yes"), "{out}");
+    assert!(fs::read_dir(home.path())
+        .unwrap()
+        .flatten()
+        .all(|e| !e.path().join(wn_daemon::workspace::ROOT_FILE).exists()));
+    let (out, code) = wn(parent.path(), home.path(), &["init", "--yes"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("indexed 11 of 11 repositories"), "{out}");
+}
+
+/// `wn mcp` started in a directory of repositories answers across the ones indexed below it.
+#[test]
+fn mcp_in_a_directory_of_repositories_searches_them() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+
+    let parent = parent_of_repos();
+    let home = tempfile::tempdir().unwrap();
+    assert_eq!(wn(parent.path(), home.path(), &["init"]).1, 0);
+    let mut child = wn_command(parent.path(), home.path())
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut send = |v: serde_json::Value| writeln!(stdin, "{v}").unwrap();
+    let mut read_id = |id: i64| loop {
+        let line = lines.next().expect("server closed stdout").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        if v["id"] == id {
+            return v;
+        }
+    };
+    send(
+        serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+        "protocolVersion": "2025-06-18", "capabilities": {},
+        "clientInfo": {"name": "test", "version": "0"}}}),
+    );
+    assert!(read_id(1)["result"]["serverInfo"].is_object());
+    send(serde_json::json!({"jsonrpc": "2.0", "method": "notifications/initialized"}));
+    send(
+        serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+        "name": "where_next", "arguments": {"query": "retry storage uploads on timeout"}}}),
+    );
+    let reply = read_id(2);
+    let answer: serde_json::Value =
+        serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(answer["state"], "ok", "{answer}");
+    assert_eq!(
+        answer["files"][0]["path"], "repos/upload/src/retry.go",
+        "{answer}"
+    );
+    assert_eq!(answer["provenance"]["files_indexed"], 4, "{answer}");
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+}

@@ -11,7 +11,7 @@ Options:
           Replay this repository's past commits (the default)
 
       --path <PATH>
-          Repository (or any directory inside it)
+          Repository (or any directory inside it), or a directory of repositories
           
           [default: .]
 

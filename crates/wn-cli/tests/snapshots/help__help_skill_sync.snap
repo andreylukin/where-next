@@ -13,7 +13,7 @@ Options:
           [possible values: claude, codex, cursor, all]
 
       --path <PATH>
-          Repository (or any directory inside it)
+          Repository (or any directory inside it), or a directory of repositories
           
           [default: .]
 

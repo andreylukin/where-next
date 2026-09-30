@@ -36,14 +36,14 @@ pub fn finish(text: String, color: bool) -> String {
     }
 }
 
-const DIM: Style = Style::new().dimmed();
+pub(crate) const DIM: Style = Style::new().dimmed();
 const BOLD: Style = Style::new().bold();
-const WARN: Style = AnsiColor::Yellow.on_default();
+pub(crate) const WARN: Style = AnsiColor::Yellow.on_default();
 const LOC: Style = AnsiColor::Cyan.on_default();
 const EXACT: Style = AnsiColor::Green.on_default();
 const CONFIG: Style = AnsiColor::Magenta.on_default();
 
-fn paint(style: Style, text: &str) -> String {
+pub(crate) fn paint(style: Style, text: &str) -> String {
     format!("{style}{text}{style:#}")
 }
 

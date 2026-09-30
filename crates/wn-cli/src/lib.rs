@@ -12,6 +12,7 @@ pub mod jsonedit;
 pub mod progress;
 pub mod report;
 pub mod update;
+pub mod workspace;
 
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -51,7 +52,7 @@ pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("WN_VERSION_SU
     after_help = TOP_EXAMPLES
 )]
 pub struct Cli {
-    /// Repository (or any directory inside it).
+    /// Repository (or any directory inside it), or a directory of repositories.
     #[arg(long, global = true, default_value = ".")]
     pub path: PathBuf,
     /// Print JSON instead of text.
@@ -92,12 +93,17 @@ const INIT_EXAMPLES: &str = "\
 Indexes source and config files (untracked included, git-ignored excluded) with the best installed
 model, or the lexical fallback when none is installed, then fits the per-repository adapter from
 recent commits. Safe to re-run; only changed files are re-embedded. Large repositories take minutes
-the first time; progress goes to stderr. Directories outside a git repository, your home directory
-and / are refused unless you pass --any-dir.
+the first time; progress goes to stderr.
+
+Outside a repository (in ~, or any directory that holds repositories), init indexes every git
+repository up to 4 levels below it instead, asking first when there are more than 10; `wn ask` and
+`wn status` there then work across all of them. --any-dir indexes the directory itself as a
+single repository.
 
 Examples:
   wn init
   wn --path ~/src/project init
+  cd ~ && wn init                          index every repository below ~ (workspace search)
   wn --model ~/models/gemma-xl1 init       use a specific model directory";
 
 const ASK_EXAMPLES: &str = "\
@@ -112,7 +118,8 @@ Examples:
   wn ask \"why does the upload fail\" --context-file error.txt        add the error or last tool output
   cargo test 2>&1 | wn ask \"fix the failing test\" --context-file -
   wn ask --json \"where is the config loaded\"                        state, files, adapter
-  wn ask --start \"add rate limiting to the API\"                     task start; skipped below 3,000 files";
+  wn ask --start \"add rate limiting to the API\"                     task start; skipped below 3,000 files
+  cd ~ && wn ask \"where are hook sessions deduplicated\"             every repository indexed below ~";
 
 const UPDATE_DETAILS: &str = "\
 Release installs run the installer for the latest release. Source installs fetch and rebuild
@@ -162,7 +169,8 @@ Examples:
 
 const MCP_EXAMPLES: &str = "\
 Most agents only need `wn setup` (skill + hooks), which calls `wn ask` directly. Use the MCP
-server for clients that prefer tools; it answers for the repository it is started in.
+server for clients that prefer tools; it answers for the repository it is started in, or, started
+in a directory of repositories (such as ~), for every repository indexed below it.
 
 Examples:
   claude mcp add where-next -- wn mcp      register with Claude Code
@@ -173,7 +181,11 @@ Examples:
 pub enum Command {
     /// Index the repository and fit its personal adapter from git history.
     #[command(after_help = INIT_EXAMPLES)]
-    Init,
+    Init {
+        /// In a directory of repositories: index more than ten without asking.
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
     /// Connect Claude Code, Codex and Cursor so hints reach them automatically (skill + hooks).
     ///
     /// Asks first; `wn setup --uninstall` removes everything it added.
@@ -667,6 +679,9 @@ impl Workspace {
         if changed && self.indexer.mark_changed().is_ok() {
             self.revision = self.indexer.revision();
         }
+        if let (Ok(_), Some(repo_dir)) = (&result, self.dir.parent()) {
+            wn_daemon::workspace::record_root(repo_dir, &self.root);
+        }
         self.indexer.finish(result.is_ok());
         result.map(|(value, _)| Some(value))
     }
@@ -965,7 +980,7 @@ pub fn run(cli: Cli) -> (String, i32) {
 fn run_command(cli: Cli) -> (String, i32) {
     if matches!(
         cli.command,
-        Command::Init
+        Command::Init { .. }
             | Command::Status
             | Command::Train
             | Command::Rollback
@@ -992,7 +1007,7 @@ fn run_command(cli: Cli) -> (String, i32) {
     }
     let uses_repo = matches!(
         cli.command,
-        Command::Init
+        Command::Init { .. }
             | Command::Status
             | Command::Train
             | Command::Rollback
@@ -1015,7 +1030,9 @@ fn run_command(cli: Cli) -> (String, i32) {
     if uses_repo && !matches!(cli.command, Command::Stats { .. } | Command::Mcp) {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         if let Err(msg) = check_repo(&cli.path, cli.any_dir, home.as_deref()) {
-            return (msg, 2);
+            // A directory that holds repositories (such as `~`): `init`, `status` and `ask` work
+            // across the repositories below it (see `workspace`).
+            return workspace::run(&cli, msg);
         }
     }
     if let Command::Mcp = cli.command {
@@ -1147,7 +1164,7 @@ fn run_command(cli: Cli) -> (String, i32) {
     ws.progress = Some(render);
     let out = |value: &dyn erased::Json, text: String| if json { value.to_json() } else { text };
     match cli.command {
-        Command::Init => {
+        Command::Init { .. } => {
             let out = status_command(&mut ws, StatusKind::Init, json);
             if !json && out.1 == 0 && !skill::connected(&skill_home(), Some(&ws.root)) {
                 eprintln!("{}", skill::CONNECT_HINT);
@@ -1402,17 +1419,24 @@ pub enum StatusKind {
 /// `wn init | status | train` on an opened workspace: text or JSON, and the exit code. Shared by
 /// the in-process path and the daemon so both print the same thing.
 pub fn status_command(ws: &mut Workspace, kind: StatusKind, json: bool) -> (String, i32) {
-    let mut note = None;
-    let started = std::time::Instant::now();
-    if let Err(e) = ws.refresh(false) {
-        return (
+    match status_report(ws, kind) {
+        Ok(report) if json => (erased::Json::to_json(&report), 0),
+        Ok(report) => (render_status(&report), 0),
+        Err(e) => (
             format!(
                 "wn: could not index {}: {e}",
                 ask_text::escape_controls(&ws.root.display().to_string())
             ),
             1,
-        );
+        ),
     }
+}
+
+/// [`status_command`] before rendering; `Err` when the repository could not be indexed.
+pub fn status_report(ws: &mut Workspace, kind: StatusKind) -> Result<StatusReport, String> {
+    let mut note = None;
+    let started = std::time::Instant::now();
+    ws.refresh(false)?;
     let index_ms = started.elapsed().as_millis();
     let should_fit = match kind {
         StatusKind::Train => true,
@@ -1425,12 +1449,7 @@ pub fn status_command(ws: &mut Workspace, kind: StatusKind, json: bool) -> (Stri
     if kind == StatusKind::Init && ws.index.state() == IndexState::Ready {
         record_index(ws, u64::try_from(index_ms).unwrap_or(u64::MAX));
     }
-    let report = status_of(ws, note);
-    if json {
-        (erased::Json::to_json(&report), 0)
-    } else {
-        (render_status(&report), 0)
-    }
+    Ok(status_of(ws, note))
 }
 
 /// Arguments of `wn ask` (without the context, which is read once by the caller).
@@ -1473,13 +1492,56 @@ pub fn ask_command_with(
         return (text, 2);
     }
     let started = std::time::Instant::now();
+    let encoder = ws.encoder.clone();
+    let outcome = ask_outcome(ws, encoder.as_ref(), args, context, rescan, true);
+    if !args.no_log {
+        record_query(
+            ws,
+            &args.query,
+            context,
+            &outcome,
+            started.elapsed().as_millis(),
+        );
+    }
+    if json {
+        return (erased::Json::to_json(&outcome), 0);
+    }
+    let note = match outcome.state {
+        AnswerState::Ok | AnswerState::Abstain | AnswerState::StaleIndex if ws.info.fallback => {
+            Some(fallback_note(&ws.info))
+        }
+        _ => None,
+    };
+    (ask_text::render(&outcome, note.as_deref()), 0)
+}
+
+/// The note printed with hints from the lexical fallback.
+fn fallback_note(info: &EncoderInfo) -> String {
+    match info.reason.as_deref() {
+        None | Some(NO_MODEL) => NO_MODEL_HINT.to_string(),
+        Some(reason) => format!("{reason}; hints use the lexical fallback"),
+    }
+}
+
+/// One repository's answer, not rendered or logged. `rescan: false` answers from the current
+/// index; `fit: false` never fits a missing adapter; `encoder` embeds the query (a workspace
+/// query passes one that embeds it once for every repository).
+pub fn ask_outcome(
+    ws: &mut Workspace,
+    encoder: &dyn Encoder,
+    args: &AskArgs,
+    context: &str,
+    rescan: bool,
+    fit: bool,
+) -> Outcome {
     let refresh = if rescan {
         ws.refresh(args.functions).map(|_| ())
     } else {
         Ok(())
     };
     // Check the adapter state first: `needs_fit` runs git, which an active adapter never needs.
-    if refresh.is_ok()
+    if fit
+        && refresh.is_ok()
         && !args.no_adapter
         && ws.adapter_life.state() != AdapterState::Active
         && ws.needs_fit()
@@ -1500,37 +1562,15 @@ pub fn ask_command_with(
     } else {
         None
     };
-    let outcome: Outcome = suggest_with_exact(
+    suggest_with_exact(
         &ws.index,
         adapter,
-        ws.encoder.as_ref(),
+        encoder,
         &args.query,
         context,
         opts,
         Some(&ws.root),
-    );
-    if !args.no_log {
-        record_query(
-            ws,
-            &args.query,
-            context,
-            &outcome,
-            started.elapsed().as_millis(),
-        );
-    }
-    if json {
-        return (erased::Json::to_json(&outcome), 0);
-    }
-    let note = match outcome.state {
-        AnswerState::Ok | AnswerState::Abstain | AnswerState::StaleIndex if ws.info.fallback => {
-            Some(match ws.info.reason.as_deref() {
-                None | Some(NO_MODEL) => NO_MODEL_HINT.to_string(),
-                Some(reason) => format!("{reason}; hints use the lexical fallback"),
-            })
-        }
-        _ => None,
-    };
-    (ask_text::render(&outcome, note.as_deref()), 0)
+    )
 }
 
 fn run_bench(cli: Cli) -> (String, i32) {
@@ -1620,8 +1660,9 @@ fn serve_mcp(cli: &Cli) -> (String, i32) {
         Ok(r) => r,
         Err(e) => return (format!("wn mcp: cannot start runtime: {e}"), 1),
     };
-    // Clients often start MCP servers in `~` or another non-repository: serve anyway and fail
-    // open on every call with the reason, rather than exiting or indexing that directory.
+    // Clients often start MCP servers in `~` or another non-repository: serve the repositories
+    // indexed below it (see `workspace`), failing open on every call with the reason while there
+    // are none, rather than exiting or indexing that directory.
     let home_dir = std::env::var_os("HOME").map(PathBuf::from);
     if let Err(reason) = check_repo(&cli.path, cli.any_dir, home_dir.as_deref()) {
         let reason = format!(
@@ -1629,11 +1670,13 @@ fn serve_mcp(cli: &Cli) -> (String, i32) {
              `wn --path <repo> mcp`.",
             reason.trim_start_matches("wn: ").replace('\n', " ")
         );
-        eprintln!("where-next: {reason}");
+        let dir = cli.path.canonicalize().unwrap_or_else(|_| cli.path.clone());
         let service: Arc<std::sync::Mutex<dyn wn_daemon::daemon::Service>> =
-            Arc::new(std::sync::Mutex::new(wn_daemon::daemon::Unavailable {
+            Arc::new(std::sync::Mutex::new(workspace::WorkspaceService::new(
+                &dir,
+                cli.model.as_deref(),
                 reason,
-            }));
+            )));
         return match runtime.block_on(wn_mcp::serve_stdio(service)) {
             Ok(()) => (String::new(), 0),
             Err(e) => (format!("wn mcp: {e}"), 1),

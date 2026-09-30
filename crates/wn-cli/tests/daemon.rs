@@ -29,7 +29,12 @@ fn git(dir: &Path, args: &[&str]) {
 
 fn project() -> tempfile::TempDir {
     let t = tempfile::tempdir().unwrap();
-    let d = t.path();
+    project_in(t.path());
+    t
+}
+
+fn project_in(d: &Path) {
+    fs::create_dir_all(d).unwrap();
     git(d, &["init", "-q", "-b", "main"]);
     git(d, &["config", "commit.gpgsign", "false"]);
     for (path, text) in [
@@ -43,7 +48,6 @@ fn project() -> tempfile::TempDir {
     }
     git(d, &["add", "-A"]);
     git(d, &["commit", "-q", "-m", "initial layout"]);
-    t
 }
 
 /// A cache home with the daemon stopped on drop.
@@ -212,4 +216,33 @@ fn a_stale_socket_file_is_replaced() {
     assert_eq!(code, 0);
     assert!(out.contains("src/upload.go"), "{out}");
     assert_eq!(daemon_status(&h, &[])["running"], true);
+}
+
+/// A workspace query (from a directory of repositories) through the daemon answers exactly like
+/// the in-process one, from the daemon's per-repository slots.
+#[test]
+fn workspace_answers_match_the_in_process_path() {
+    let parent = tempfile::tempdir().unwrap();
+    let home = Home::new();
+    let (p, h) = (parent.path(), home.path());
+    project_in(&p.join("a"));
+    project_in(&p.join("b"));
+    assert_eq!(wn(p, &h, &["init", "--no-daemon"]).1, 0);
+    let first = wn(p, &h, &["ask", "--json", QUERY]);
+    assert_eq!(first.1, 0, "{}", first.0);
+    let status = daemon_status(&h, &[]);
+    assert_eq!(status["running"], true, "a workspace ask starts the daemon");
+    assert_eq!(status["stats"]["repos"], 2);
+    let second = wn(p, &h, &["ask", "--json", QUERY]);
+    let local = wn(p, &h, &["ask", "--json", "--no-daemon", QUERY]);
+    assert_eq!(first, second);
+    assert_eq!(first, local, "daemon and in-process answers differ");
+    let answer: serde_json::Value = serde_json::from_str(&first.0).unwrap();
+    assert_eq!(answer["files"][0]["repo"], "a", "{}", first.0);
+    assert_eq!(answer["files"][1]["repo"], "b", "{}", first.0);
+    assert_eq!(
+        answer["files"][0]["repo_path"], "src/upload.go",
+        "{}",
+        first.0
+    );
 }
