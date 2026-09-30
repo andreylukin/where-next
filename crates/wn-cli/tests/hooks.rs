@@ -224,6 +224,14 @@ fn parses_every_agent_payload() {
 }
 
 #[test]
+fn cursor_start_uses_process_directory_when_payload_has_no_workspace() {
+    let input = r#"{"session_id":"c1","is_background_agent":false,"composer_mode":"agent"}"#;
+    let trigger = hooks::parse(HookKind::CursorStart, input).unwrap();
+    assert_eq!(trigger.cwd, std::env::current_dir().unwrap());
+    assert_eq!(trigger.moment, Moment::Start);
+}
+
+#[test]
 fn ignores_what_it_does_not_answer() {
     for (kind, input) in [
         (HookKind::ClaudePrompt, "garbage".to_string()),

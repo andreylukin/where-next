@@ -14,6 +14,10 @@ explicitly.
 
 ### Fixed
 
+- Cursor session-start hooks warm the daemon when Cursor omits workspace paths from its payload.
+- `wn setup` prints copy-pasteable Codex TOML hooks when inline hooks prevent automatic hookup.
+- `wn setup` recognizes Codex hooks pasted into `config.toml` as manually connected and includes
+  missing inline-hook entries in `--json` output.
 - Installer PATH advice names the shell startup command; `wn uninstall` reports manifest removal
   once and removes only empty directories the installer recorded creating. Install and FAQ docs
   describe the current agent setup and uninstall fallback.
