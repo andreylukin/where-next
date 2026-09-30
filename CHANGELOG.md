@@ -7,6 +7,11 @@ explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- Index Vue, Svelte and Astro components as source files, with compact component content in their
+  file embeddings.
+
 ### Fixed
 
 - Cursor session-start hooks warm the daemon when Cursor omits workspace paths from its payload.
@@ -17,6 +22,14 @@ explicitly.
 - `wn update --help` describes release and source update behavior accurately.
 - `wn bench` fetches missing historical blobs in one request on partial clones, skips and counts
   commits whose candidate files remain unreadable, and discards vectors cached from empty blob text.
+- Daemon fallback sockets now live in a private per-user temporary directory, and clients check
+  socket ownership before sending requests. New cache homes are private, and existing default
+  cache homes are tightened on startup. Existing explicit cache homes are left untouched.
+- Repository scans skip symlinks, including tracked git symlinks, so indexing cannot follow them
+  outside the repository.
+- Symlinked default cache homes work when their target belongs to the current user. Standalone
+  report validation and summaries no longer require a writable cache home, and uninstall removes
+  an empty fallback socket directory.
 
 ## [0.1.1] - 2026-09-30
 

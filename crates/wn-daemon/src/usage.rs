@@ -30,6 +30,38 @@ pub const REPO_META: &str = "usage-repo.json";
 
 const DAY: u64 = 86_400;
 
+/// Creates the wn cache home privately. Existing managed homes are tightened; explicitly
+/// supplied directories are left untouched.
+pub fn prepare_home(home: &Path, managed: bool) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+        if !home.exists() {
+            fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(home)?;
+        }
+        let resolved = fs::canonicalize(home)?;
+        let meta = fs::metadata(&resolved)?;
+        let uid = rustix::fs::fstat(&std::os::unix::net::UnixStream::pair()?.0)
+            .map_err(std::io::Error::from)?
+            .st_uid;
+        if !meta.is_dir() || meta.uid() != uid {
+            return Err(std::io::Error::other(format!(
+                "{} is not a directory owned by this user",
+                home.display()
+            )));
+        }
+        if managed && meta.permissions().mode() & 0o077 != 0 {
+            fs::set_permissions(resolved, fs::Permissions::from_mode(0o700))?;
+        }
+    }
+    #[cfg(not(unix))]
+    fs::create_dir_all(home)?;
+    Ok(())
+}
+
 /// Seconds since the Unix epoch.
 pub fn now() -> u64 {
     SystemTime::now()
@@ -131,6 +163,9 @@ pub fn record_query(repo_dir: &Path, root: &Path, event: &QueryEvent) -> std::io
     if !enabled() {
         return Ok(());
     }
+    if let Some(home) = repo_dir.parent() {
+        prepare_home(home, false)?;
+    }
     fs::create_dir_all(repo_dir)?;
     write_meta(repo_dir, root)?;
     let path = repo_dir.join(QUERY_LOG);
@@ -177,6 +212,9 @@ fn write_json<T: Serialize>(
 ) -> std::io::Result<()> {
     if !enabled() {
         return Ok(());
+    }
+    if let Some(home) = repo_dir.parent() {
+        prepare_home(home, false)?;
     }
     fs::create_dir_all(repo_dir)?;
     write_meta(repo_dir, root)?;
@@ -263,6 +301,65 @@ mod tests {
             files: 10,
             hinted: vec!["a.rs".into()],
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn new_usage_tree_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let parent = tempfile::tempdir().unwrap();
+        let home = parent.path().join("where-next");
+        let root = tempfile::tempdir().unwrap();
+        let dir = home.join("repo");
+        record_query(&dir, root.path(), &ev(now())).unwrap();
+        assert_eq!(
+            fs::metadata(&home).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn managed_home_is_tightened_but_explicit_home_is_not_changed() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let parent = tempfile::tempdir().unwrap();
+        let home = parent.path().join("where-next");
+        fs::create_dir(&home).unwrap();
+        fs::set_permissions(&home, fs::Permissions::from_mode(0o755)).unwrap();
+        prepare_home(&home, false).unwrap();
+        assert_eq!(
+            fs::metadata(&home).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+        prepare_home(&home, true).unwrap();
+        assert_eq!(
+            fs::metadata(&home).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_managed_home_uses_and_tightens_its_target() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let parent = tempfile::tempdir().unwrap();
+        let target = parent.path().join("other-disk");
+        let home = parent.path().join("where-next");
+        fs::create_dir(&target).unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o755)).unwrap();
+        symlink(&target, &home).unwrap();
+        prepare_home(&home, true).unwrap();
+        assert!(fs::symlink_metadata(&home)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
     }
 
     #[test]
