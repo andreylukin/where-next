@@ -16,6 +16,8 @@ explicitly.
   `--color always`.
 - `wn ask --json` reports `fallback` on answers so agents can see lexical fallback use.
 - `wn update --help` describes release and source update behavior accurately.
+- `wn bench` fetches missing historical blobs in one request on partial clones, skips and counts
+  commits whose candidate files remain unreadable, and discards vectors cached from empty blob text.
 
 ## [0.1.1] - 2026-09-30
 
