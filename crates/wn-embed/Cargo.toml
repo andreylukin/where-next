@@ -12,7 +12,7 @@ default = ["onnx"]
 # ONNX Runtime backend. Linux loads a shared library; other targets link prebuilt binaries.
 onnx = ["dep:ort", "dep:tokenizers"]
 # HTTP(S) model downloads (`wn model pull` from a URL or Hugging Face repo).
-remote = ["dep:ureq"]
+remote = ["dep:ureq", "dep:env_proxy"]
 
 [dependencies]
 wn-core.workspace = true
@@ -20,6 +20,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 ureq = { version = "2.12", optional = true, default-features = false, features = ["tls"] }
+env_proxy = { version = "0.4", optional = true }
 tokenizers = { version = "0.23", optional = true, default-features = false, features = ["onig"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
