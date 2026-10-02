@@ -984,11 +984,9 @@ fn stem_of(path: &str) -> (String, bool) {
     for marker in [".test.", ".spec."] {
         test |= file.contains(marker);
     }
-    for prefix in ["test_"] {
-        if let Some(s) = stem.strip_prefix(prefix) {
-            stem = s.to_string();
-            test = true;
-        }
+    if let Some(s) = stem.strip_prefix("test_") {
+        stem = s.to_string();
+        test = true;
     }
     for suffix in ["_test", "_spec", "Tests", "Test"] {
         if let Some(s) = stem.strip_suffix(suffix) {
