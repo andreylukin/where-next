@@ -14,12 +14,30 @@ use crate::store::StoreError;
 /// Largest file accepted from a remote source (4 GiB), so a hostile server cannot fill the disk.
 pub const MAX_FILE_BYTES: u64 = 4 << 30;
 
-fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
+fn agent(url: &str) -> Result<ureq::Agent, StoreError> {
+    let target = ureq::get(url)
+        .request_url()
+        .map_err(|_| StoreError::Fetch("invalid model download URL".into()))?;
+    let mut builder = ureq::AgentBuilder::new()
+        // ureq 2's built-in environment detection ignores NO_PROXY and prefers ALL_PROXY
+        // over the scheme-specific setting. Use curl-compatible selection instead.
+        .try_proxy_from_env(false)
         .timeout_connect(Duration::from_secs(20))
         .timeout_read(Duration::from_secs(120))
-        .user_agent(concat!("where-next/", env!("CARGO_PKG_VERSION")))
-        .build()
+        .user_agent(concat!("where-next/", env!("CARGO_PKG_VERSION")));
+    if let Some(proxy) = env_proxy::for_url(target.as_url())
+        .raw_value()
+        .filter(|value| !value.is_empty())
+    {
+        // A proxy URL can contain credentials: do not include it in error messages.
+        let proxy = ureq::Proxy::new(proxy).map_err(|_| {
+            StoreError::Fetch(
+                "invalid configured HTTP proxy; check proxy environment variables".into(),
+            )
+        })?;
+        builder = builder.proxy(proxy);
+    }
+    Ok(builder.build())
 }
 
 /// Downloads `file` from `source` to `dest`, retaining a `.part` file on interruption.
@@ -39,8 +57,9 @@ pub fn download(source: &ModelSource, file: &str, dest: &Path) -> Result<(), Sto
         fs::remove_file(&part).map_err(|e| StoreError::Fetch(format!("{file}: {e}")))?;
         existing = 0;
     }
+    let client = agent(&url)?;
     let response = loop {
-        let mut request = agent().get(&url);
+        let mut request = client.get(&url);
         if existing > 0 {
             request = request.set("Range", &format!("bytes={existing}-"));
         }

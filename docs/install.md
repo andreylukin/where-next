@@ -178,6 +178,18 @@ wn model remove gemma-xl1 --yes
 
 After pulling a model, run `wn init` again in repositories you indexed without one.
 
+Model downloads support HTTP proxies using `https_proxy` / `HTTPS_PROXY` for HTTPS,
+`http_proxy` for HTTP, and `all_proxy` / `ALL_PROXY` as a fallback. Lowercase variables take
+precedence; uppercase `HTTP_PROXY` is ignored, following curl's CGI-safety convention.
+`no_proxy` / `NO_PROXY` bypasses the proxy for a comma- or space-separated list of hostnames,
+domain suffixes or IP addresses; `*` disables proxying for every host. An empty scheme-specific
+proxy also disables proxying. Proxy values are not printed in configuration errors.
+Selection uses the initial file URL; redirects currently retain that proxy choice rather than
+re-evaluating `NO_PROXY` or scheme-specific settings for the redirect target.
+TLS certificate validation is unchanged: a proxy that replaces server certificates with a custom
+corporate CA may still fail with an unknown-issuer error. Proxy selection does not add that CA to
+the downloader's trust store.
+
 Models fine-tuned from EmbeddingGemma are distributed under the Gemma Terms of Use; the installer
 states this when it asks, and `wn model pull` shows the notice when such a model is first installed. See
 [privacy-and-licensing.md](privacy-and-licensing.md).
